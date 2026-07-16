@@ -1,0 +1,72 @@
+name: Build ATC VFR DEV0.1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atc-vfr-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-portable-windows:
+    name: Build portable Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore src/AtcVfr/AtcVfr.csproj
+
+      - name: Build
+        run: dotnet build src/AtcVfr/AtcVfr.csproj --configuration Release --no-restore
+
+      - name: Publish autonomous Windows x64
+        run: >-
+          dotnet publish src/AtcVfr/AtcVfr.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --no-restore
+          --output dist/ATC-VFR-DEV0.1-win-x64
+          -p:PublishSingleFile=false
+          -p:PublishTrimmed=false
+          -p:PublishReadyToRun=false
+          -p:DebugType=None
+          -p:DebugSymbols=false
+
+      - name: Add build information
+        shell: pwsh
+        run: |
+          $commit = "${{ github.sha }}".Substring(0, 7)
+          @"
+          ATC VFR DEV0.1
+          Commit: $commit
+          Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
+          Runtime: Windows x64 autonome
+          "@ | Set-Content -Encoding UTF8 dist/ATC-VFR-DEV0.1-win-x64/BUILD-INFO.txt
+
+      - name: Create zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/ATC-VFR-DEV0.1-win-x64/* -DestinationPath dist/ATC-VFR-DEV0.1-win-x64.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ATC-VFR-DEV0.1-win-x64
+          path: dist/ATC-VFR-DEV0.1-win-x64.zip
+          if-no-files-found: error
+          retention-days: 14
