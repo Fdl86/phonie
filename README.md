@@ -1,36 +1,43 @@
-# ATC VFR — DEV0.1 SimConnect
+# PHONIE — DEV0.2 Audio & PTT
 
-Première base technique de l'application ATC VFR pour Microsoft Flight Simulator 2020 et Microsoft Flight Simulator 2024.
+PHONIE est une application Windows de contrôle aérien vocal VFR destinée à Microsoft Flight Simulator 2020 et Microsoft Flight Simulator 2024.
 
-## Objectif de cette version
+## Contenu de DEV0.2
 
-DEV0.1 ne contient pas encore de reconnaissance vocale ni de contrôleur ATC. Elle valide uniquement la fondation :
+- renommage intégral du projet et de l'exécutable en `PHONIE` ;
+- compatibilité SimConnect validée avec MSFS 2020 et MSFS 2024 ;
+- reconnexion automatique sans ordre de lancement imposé ;
+- sélection automatique du périphérique de communication Windows ;
+- choix manuel du microphone et de la sortie radio dans l'interface ;
+- mémorisation des périphériques choisis ;
+- vumètre du microphone ;
+- PTT clavier global, actif même lorsque MSFS possède le focus ;
+- touche PTT configurable, `Ctrl droit` par défaut ;
+- enregistrement local pendant l'appui PTT ;
+- réécoute du dernier enregistrement sur la sortie choisie ;
+- thème sombre ou clair, mémorisé ;
+- journal SimConnect moins répétitif ;
+- aucun accès à la webcam et aucune interaction avec OpenTrack.
 
-- lancement dans n'importe quel ordre avec MSFS ;
-- connexion locale automatique à SimConnect ;
-- détection MSFS 2020 / MSFS 2024 ;
-- reconnexion automatique si le simulateur est fermé ou redémarré ;
-- lecture de la position, altitude, cap, vitesses, état sol, COM1 et transpondeur ;
-- calcul de la distance à LFBI ;
-- application Windows x64 portable et autonome.
+DEV0.2 ne contient pas encore Whisper ni le moteur de phraséologie ATC.
 
-## Construction sans installation locale
+## Construction
 
-1. Créer un dépôt GitHub public ou privé.
-2. Conserver uniquement le dossier `.git` dans le dossier local du dépôt.
-3. Copier tout le contenu de ce zip dans le dossier du dépôt.
-4. Pousser sur `main` avec GitHub Desktop.
-5. Ouvrir l'onglet **Actions** du dépôt GitHub.
-6. Attendre le dernier run vert **Build ATC VFR DEV0.1**.
-7. Télécharger l'artifact `ATC-VFR-DEV0.1-win-x64`.
-8. Décompresser l'artifact et lancer `ATC-VFR.exe`.
+1. Conserver uniquement `.git` dans le dossier local du dépôt.
+2. Copier le contenu complet de ce zip dans le dépôt.
+3. Commit puis push sur `main` avec GitHub Desktop.
+4. Attendre le run vert **Build PHONIE DEV0.2**.
+5. Télécharger l'artifact `PHONIE-DEV0.2-win-x64`.
+6. Décompresser puis lancer `PHONIE.exe`.
 
 Aucun SDK MSFS, Visual Studio, .NET, Python ou Node.js n'est requis sur le PC de test.
 
-## Dépendance SimConnect
+## Données locales
 
-Le projet utilise le paquet NuGet `SimConnect.NET` 0.2.1, sous licence MIT. Le paquet embarque la bibliothèque native SimConnect nécessaire à la publication Windows x64.
+Les préférences et les enregistrements de test sont stockés dans :
 
-## Test conseillé
+```text
+%LOCALAPPDATA%\PHONIE
+```
 
-Voir `TEST-DEV0.1.md`.
+Voir `TEST-DEV0.2.md` pour le protocole conseillé.

@@ -1,4 +1,4 @@
-name: Build ATC VFR DEV0.1
+name: Build PHONIE DEV0.2
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: atc-vfr-windows-${{ github.ref }}
+  group: phonie-windows-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -29,19 +29,19 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore
-        run: dotnet restore src/AtcVfr/AtcVfr.csproj
+        run: dotnet restore src/Phonie/Phonie.csproj
 
       - name: Build
-        run: dotnet build src/AtcVfr/AtcVfr.csproj --configuration Release --no-restore
+        run: dotnet build src/Phonie/Phonie.csproj --configuration Release --no-restore
 
       - name: Publish autonomous Windows x64
         run: >-
-          dotnet publish src/AtcVfr/AtcVfr.csproj
+          dotnet publish src/Phonie/Phonie.csproj
           --configuration Release
           --runtime win-x64
           --self-contained true
           --no-restore
-          --output dist/ATC-VFR-DEV0.1-win-x64
+          --output dist/PHONIE-DEV0.2-win-x64
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
@@ -53,20 +53,21 @@ jobs:
         run: |
           $commit = "${{ github.sha }}".Substring(0, 7)
           @"
-          ATC VFR DEV0.1
+          PHONIE DEV0.2
           Commit: $commit
           Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
           Runtime: Windows x64 autonome
-          "@ | Set-Content -Encoding UTF8 dist/ATC-VFR-DEV0.1-win-x64/BUILD-INFO.txt
+          Modules: SimConnect 2020/2024 · Audio WASAPI · PTT global
+          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.2-win-x64/BUILD-INFO.txt
 
       - name: Create zip
         shell: pwsh
-        run: Compress-Archive -Path dist/ATC-VFR-DEV0.1-win-x64/* -DestinationPath dist/ATC-VFR-DEV0.1-win-x64.zip -Force
+        run: Compress-Archive -Path dist/PHONIE-DEV0.2-win-x64/* -DestinationPath dist/PHONIE-DEV0.2-win-x64.zip -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ATC-VFR-DEV0.1-win-x64
-          path: dist/ATC-VFR-DEV0.1-win-x64.zip
+          name: PHONIE-DEV0.2-win-x64
+          path: dist/PHONIE-DEV0.2-win-x64.zip
           if-no-files-found: error
           retention-days: 14

@@ -1,18 +1,7 @@
-# Build outputs
+.vs/
 bin/
 obj/
 dist/
-artifacts/
-
-# IDE
-.vs/
-.vscode/
 *.user
 *.suo
-
-# OS
-Thumbs.db
-.DS_Store
-
-# Logs
-*.log
+*.wav

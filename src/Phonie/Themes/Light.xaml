@@ -1,0 +1,22 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="WindowBackground" Color="#EFF2F5" />
+    <SolidColorBrush x:Key="PanelBackground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="PanelBorder" Color="#CDD5DE" />
+    <SolidColorBrush x:Key="PrimaryText" Color="#141A21" />
+    <SolidColorBrush x:Key="SecondaryText" Color="#5E6B78" />
+    <SolidColorBrush x:Key="Accent" Color="#9B6B12" />
+    <SolidColorBrush x:Key="Success" Color="#13834D" />
+    <SolidColorBrush x:Key="Warning" Color="#A76A09" />
+    <SolidColorBrush x:Key="Danger" Color="#B63E45" />
+    <SolidColorBrush x:Key="ButtonBackground" Color="#E2E7EC" />
+    <SolidColorBrush x:Key="ButtonBorder" Color="#AEB9C5" />
+    <SolidColorBrush x:Key="ButtonHover" Color="#D4DBE3" />
+    <SolidColorBrush x:Key="InputBackground" Color="#F8FAFC" />
+    <SolidColorBrush x:Key="InputBorder" Color="#AEB9C5" />
+    <SolidColorBrush x:Key="LogBackground" Color="#17202A" />
+    <SolidColorBrush x:Key="LogForeground" Color="#E6EDF4" />
+    <SolidColorBrush x:Key="MeterBackground" Color="#D3DAE2" />
+    <SolidColorBrush x:Key="PttIdleBackground" Color="#EEF1F4" />
+    <SolidColorBrush x:Key="PttActiveBackground" Color="#DDF3E7" />
+</ResourceDictionary>
