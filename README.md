@@ -1,41 +1,50 @@
-# PHONIE — DEV0.2.2 Interface & scanner radio
+# PHONIE — DEV0.2.3 PTT HOTAS & légèreté mesurée
 
 PHONIE est une application Windows de contrôle aérien vocal VFR destinée à Microsoft Flight Simulator 2020 et Microsoft Flight Simulator 2024.
 
-## Contenu de DEV0.2.2
+## Contenu de DEV0.2.3
 
-- refonte complète de l'interface selon la direction visuelle CAP CLAIR ;
-- véritable mode sombre, y compris barre de titre, listes, menus déroulants, journal et états désactivés ;
-- thème clair cohérent, avec mémorisation du choix ;
-- cartes plus compactes et barre d'état SimConnect / Audio / PTT ;
-- états PTT plus lisibles et vumètre micro à trois niveaux ;
-- conservation de l'audio, du PTT global et de la réécoute validés en DEV0.2.1 ;
-- scanner de la station actuellement réglée sur COM1 : identifiant, type de service, espacement 25/8,33 kHz, réception et statut ;
-- première règle de comportement radio : contrôle, information/AFIS, ATIS/AWS, auto-information ou fréquence inconnue ;
-- lecture de la météo locale du simulateur : vent, QNH, température et visibilité ;
-- données enrichies rendues optionnelles pour ne pas casser la connexion si un avion ou une version de MSFS n'expose pas une SimVar ;
-- compatibilité MSFS 2020 et MSFS 2024 conservée ;
-- aucune interaction avec la webcam ou OpenTrack.
+- conservation du socle SimConnect, audio, météo locale et scanner radio validé en DEV0.2.2 ;
+- interface sombre inspirée de CAP CLAIR, avec thème clair optionnel ;
+- affectation directe d'un bouton joystick/HOTAS depuis l'interface ;
+- PTT clavier conservé en secours et utilisable simultanément ;
+- mémorisation du périphérique HOTAS par constructeur, produit et nom Windows ;
+- reconnexion automatique du HOTAS après débranchement/rebranchement ;
+- lecture des boutons à 20 Hz uniquement sur les périphériques réellement connectés ;
+- aucun SDK, pilote ou logiciel supplémentaire requis pour le PTT HOTAS ;
+- log de légèreté automatique, prêt à être envoyé après une batterie de tests ;
+- mesures toutes les cinq secondes : CPU courant/moyen/maximal, mémoire, threads, handles et cadence SimConnect ;
+- résumé de session écrit à la fermeture de PHONIE ;
+- bouton **Marquer le test** pour placer un repère dans le log pendant une manipulation ;
+- bouton **Ouvrir les logs** pour accéder immédiatement au fichier ;
+- vumètre audio optimisé : le périphérique Windows n'est plus rouvert à chaque rafraîchissement ;
+- enregistrement audio optimisé : suppression des écritures forcées sur disque à chaque paquet audio ;
+- météo locale lue toutes les 30 secondes au lieu d'être redemandée chaque seconde ;
+- journal visuel limité à 250 lignes, tandis que le log de session reste complet sur disque.
 
-DEV0.2.2 ne diffuse pas encore d'ATIS et ne contient pas encore Whisper. Elle valide d'abord l'environnement radio, les données météo et la nouvelle interface.
+## Emplacement du log diagnostic
 
-## Règles radio posées
+Chaque lancement crée un fichier autonome dans :
 
-- `TWR`, `GND`, `CLR`, `APPR`, `DEP` : organisme contrôlé, PHONIE répondra au pilote ;
-- `FSS` : service d'information / AFIS, PHONIE pourra répondre et transmettre les paramètres ;
-- `ATIS`, `AWS` : information automatique, diffusion sans dialogue ;
-- `CTAF`, `UNI` : auto-information, PHONIE reste silencieux ;
-- service inconnu : aucune réponse automatique.
+```text
+%LOCALAPPDATA%\PHONIE\Diagnostics
+```
 
-Cette première classification dépend de ce que la base du simulateur expose. Les profils aérodrome officiels compléteront ensuite les cas où MSFS ne distingue pas correctement AFIS et auto-information.
+Nom type :
+
+```text
+PHONIE-DEV0.2.3-20260717-071530.log
+```
+
+Le fichier contient des événements lisibles et des lignes `PERF` séparées par tabulations. À la fermeture, un résumé indique le CPU moyen/maximal, la mémoire maximale, le nombre de snapshots SimConnect et les PTT enregistrés.
 
 ## Construction
 
 1. Conserver uniquement `.git` dans le dossier local du dépôt.
-2. Copier le contenu complet de ce zip dans le dépôt.
+2. Copier le contenu complet du zip dans le dépôt.
 3. Commit puis push sur `main` avec GitHub Desktop.
-4. Attendre le run vert **Build PHONIE DEV0.2.2**.
-5. Télécharger l'artifact `PHONIE-DEV0.2.2-win-x64`.
+4. Attendre le run vert **Build PHONIE DEV0.2.3**.
+5. Télécharger l'artifact `PHONIE-DEV0.2.3-win-x64`.
 6. Décompresser puis lancer `PHONIE.exe`.
 
 Aucun SDK MSFS, Visual Studio, .NET, Python ou Node.js n'est requis sur le PC de test.
@@ -44,12 +53,4 @@ Aucun SDK MSFS, Visual Studio, .NET, Python ou Node.js n'est requis sur le PC de
 
 Désactiver les communications radio IA et les voix de l'ATC intégré afin d'éviter que PHONIE et l'ATC de Microsoft Flight Simulator parlent en même temps.
 
-## Données locales
-
-Les préférences et les enregistrements de test sont stockés dans :
-
-```text
-%LOCALAPPDATA%\PHONIE
-```
-
-Voir `TEST-DEV0.2.2.md` pour le protocole conseillé.
+Voir `TEST-DEV0.2.3.md` pour le protocole conseillé.

@@ -9,12 +9,15 @@ namespace Phonie.Services;
 public sealed class AudioService : IDisposable
 {
     private readonly object syncRoot = new();
+    private readonly object meterSyncRoot = new();
     private WasapiCapture? capture;
     private WaveFileWriter? writer;
     private Stopwatch? recordingWatch;
     private string? currentRecordingPath;
     private WasapiOut? playback;
     private AudioFileReader? playbackReader;
+    private MMDevice? meterInputDevice;
+    private string? meterInputDeviceId;
     private bool disposed;
 
     public event EventHandler<string>? LogMessage;
@@ -40,15 +43,27 @@ public sealed class AudioService : IDisposable
             return 0;
         }
 
-        try
+        lock (this.meterSyncRoot)
         {
-            using var enumerator = new MMDeviceEnumerator();
-            using var device = enumerator.GetDevice(deviceId);
-            return Math.Clamp(device.AudioMeterInformation.MasterPeakValue, 0, 1);
-        }
-        catch
-        {
-            return 0;
+            try
+            {
+                if (this.meterInputDevice is null || !string.Equals(this.meterInputDeviceId, deviceId, StringComparison.Ordinal))
+                {
+                    this.meterInputDevice?.Dispose();
+                    using var enumerator = new MMDeviceEnumerator();
+                    this.meterInputDevice = enumerator.GetDevice(deviceId);
+                    this.meterInputDeviceId = deviceId;
+                }
+
+                return Math.Clamp(this.meterInputDevice.AudioMeterInformation.MasterPeakValue, 0, 1);
+            }
+            catch
+            {
+                this.meterInputDevice?.Dispose();
+                this.meterInputDevice = null;
+                this.meterInputDeviceId = null;
+                return 0;
+            }
         }
     }
 
@@ -197,7 +212,6 @@ public sealed class AudioService : IDisposable
         lock (this.syncRoot)
         {
             this.writer?.Write(e.Buffer, 0, e.BytesRecorded);
-            this.writer?.Flush();
         }
     }
 
@@ -311,6 +325,13 @@ public sealed class AudioService : IDisposable
 
             this.CleanupCapture();
             this.StopPlaybackInternal();
+        }
+
+        lock (this.meterSyncRoot)
+        {
+            this.meterInputDevice?.Dispose();
+            this.meterInputDevice = null;
+            this.meterInputDeviceId = null;
         }
     }
 }

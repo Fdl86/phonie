@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="PHONIE — DEV0.2.2"
+        Title="PHONIE — DEV0.2.3"
         Width="1260"
         Height="900"
         MinWidth="1040"
@@ -44,7 +44,7 @@
 
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
                         <Ellipse Width="10" Height="10" Fill="{DynamicResource Accent}" Margin="0,0,9,0" />
-                        <TextBlock Text="PHONIE — DEV0.2.2"
+                        <TextBlock Text="PHONIE — DEV0.2.3"
                                    Foreground="{DynamicResource PrimaryText}"
                                    FontSize="12"
                                    FontWeight="SemiBold"
@@ -89,6 +89,8 @@
                         <RowDefinition Height="240" />
                         <RowDefinition Height="12" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0">
@@ -112,7 +114,7 @@
                             </Border>
                             <StackPanel>
                                 <TextBlock Text="PHONIE" FontSize="29" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" />
-                                <TextBlock Text="DEV0.2.2 · INTERFACE CAP CLAIR · SCANNER RADIO"
+                                <TextBlock Text="DEV0.2.3 · PTT HOTAS · LÉGÈRETÉ MESURÉE"
                                            Foreground="{DynamicResource Accent}"
                                            FontSize="11"
                                            FontWeight="SemiBold"
@@ -250,12 +252,39 @@
                                     <TextBlock Text="●" Foreground="{DynamicResource Accent}" Margin="0,0,8,0" />
                                     <TextBlock Text="PUSH-TO-TALK" Style="{StaticResource LabelStyle}" />
                                 </StackPanel>
-                                <TextBlock x:Name="PttKeyText" Text="CTRL DROIT" Style="{StaticResource ValueStyle}" FontSize="20" />
+                                <TextBlock x:Name="PttKeyText" Text="CLAVIER : CTRL DROIT" Style="{StaticResource ValueStyle}" FontSize="16" />
+                                <TextBlock x:Name="PttJoystickText"
+                                           Text="HOTAS : non assigné"
+                                           Foreground="{DynamicResource Accent}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap"
+                                           Margin="0,5,0,0" />
                                 <TextBlock x:Name="PttStateText"
                                            Text="Relâché"
                                            Foreground="{DynamicResource SecondaryText}"
-                                           Margin="0,5,0,12" />
-                                <Button x:Name="ChoosePttButton" Content="Changer la touche" Click="ChoosePttButton_OnClick" />
+                                           Margin="0,5,0,10" />
+                                <Button x:Name="AssignJoystickPttButton"
+                                        Content="Assigner un bouton HOTAS"
+                                        Margin="0,0,0,6"
+                                        Click="AssignJoystickPttButton_OnClick" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="6" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button x:Name="ChoosePttButton"
+                                            Content="Clavier"
+                                            Padding="8,7"
+                                            Click="ChoosePttButton_OnClick" />
+                                    <Button x:Name="ClearJoystickPttButton"
+                                            Grid.Column="2"
+                                            Content="Effacer HOTAS"
+                                            Padding="8,7"
+                                            IsEnabled="False"
+                                            Click="ClearJoystickPttButton_OnClick" />
+                                </Grid>
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -364,7 +393,48 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="12"
+                    <Border Grid.Row="12" Style="{StaticResource CardStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.2*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="1.2*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="1.1*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="DIAGNOSTIC DE LÉGÈRETÉ" Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="CpuDiagnosticText" Text="CPU : mesure en cours…" Style="{StaticResource ValueStyle}" FontSize="16" />
+                                <TextBlock x:Name="CpuAverageDiagnosticText" Text="Moyenne : — · maximum : —" Style="{StaticResource SubtitleStyle}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="MÉMOIRE &amp; PROCESSUS" Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="MemoryDiagnosticText" Text="Mémoire : mesure en cours…" Style="{StaticResource ValueStyle}" FontSize="16" />
+                                <TextBlock x:Name="ProcessDiagnosticText" Text="Threads — · handles —" Style="{StaticResource SubtitleStyle}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="TÉLÉMÉTRIE" Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="TelemetryDiagnosticText" Text="SimConnect : mesure en cours…" Style="{StaticResource ValueStyle}" FontSize="16" />
+                                <TextBlock x:Name="DiagnosticsPathText"
+                                           Text="Log : initialisation…"
+                                           Style="{StaticResource SubtitleStyle}"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="6" VerticalAlignment="Center">
+                                <Button Content="Marquer le test" Margin="0,0,0,7" Click="MarkDiagnosticsButton_OnClick" />
+                                <Button Content="Ouvrir les logs" Click="OpenDiagnosticsFolderButton_OnClick" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="14"
                             Background="{DynamicResource StatusStripBackground}"
                             BorderBrush="{DynamicResource PanelBorder}"
                             BorderThickness="1"

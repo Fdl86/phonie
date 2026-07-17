@@ -18,6 +18,8 @@ public sealed class SimConnectService : IAsyncDisposable
     private DateTimeOffset lastRepeatedErrorLog = DateTimeOffset.MinValue;
     private string? lastErrorMessage;
     private bool connectedAtLeastOnce;
+    private DateTimeOffset lastWeatherRefresh = DateTimeOffset.MinValue;
+    private WeatherSnapshot cachedWeather = WeatherSnapshot.Empty;
     private bool disposed;
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -53,7 +55,7 @@ public sealed class SimConnectService : IAsyncDisposable
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         this.PublishStatus(ConnectionState.Waiting, "En attente de Microsoft Flight Simulator");
-        this.PublishLog("PHONIE DEV0.2.2 démarrée. Recherche locale de SimConnect.");
+        this.PublishLog("PHONIE DEV0.2.3 démarrée. Recherche locale de SimConnect.");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -106,7 +108,7 @@ public sealed class SimConnectService : IAsyncDisposable
     {
         this.PublishStatus(ConnectionState.Connecting, "Connexion à SimConnect…");
 
-        var newClient = new SimConnectClient("PHONIE DEV0.2.2")
+        var newClient = new SimConnectClient("PHONIE DEV0.2.3")
         {
             AutoReconnectEnabled = false,
         };
@@ -121,6 +123,8 @@ public sealed class SimConnectService : IAsyncDisposable
             {
                 this.client = newClient;
                 this.optionalReadWarnings.Clear();
+                this.lastWeatherRefresh = DateTimeOffset.MinValue;
+                this.cachedWeather = WeatherSnapshot.Empty;
             }
             finally
             {
@@ -164,11 +168,7 @@ public sealed class SimConnectService : IAsyncDisposable
         var spacingTask = this.GetOptionalAsync(connectedClient, "COM SPACING MODE:1", "enum", 0, cancellationToken);
         var receiveTask = this.GetOptionalAsync(connectedClient, "COM RECEIVE:1", "bool", 1, cancellationToken);
         var comStatusTask = this.GetOptionalAsync(connectedClient, "COM STATUS:1", "enum", 0, cancellationToken);
-        var windDirectionTask = this.GetOptionalAsync(connectedClient, "AMBIENT WIND DIRECTION", "degrees", double.NaN, cancellationToken);
-        var windVelocityTask = this.GetOptionalAsync(connectedClient, "AMBIENT WIND VELOCITY", "knots", double.NaN, cancellationToken);
-        var qnhTask = this.GetOptionalAsync(connectedClient, "SEA LEVEL PRESSURE", "millibars", double.NaN, cancellationToken);
-        var temperatureTask = this.GetOptionalAsync(connectedClient, "AMBIENT TEMPERATURE", "celsius", double.NaN, cancellationToken);
-        var visibilityTask = this.GetOptionalAsync(connectedClient, "AMBIENT VISIBILITY", "meters", double.NaN, cancellationToken);
+        var weatherTask = this.ReadWeatherWhenDueAsync(connectedClient, cancellationToken);
 
         await Task.WhenAll(
             titleTask,
@@ -187,15 +187,13 @@ public sealed class SimConnectService : IAsyncDisposable
             spacingTask,
             receiveTask,
             comStatusTask,
-            windDirectionTask,
-            windVelocityTask,
-            qnhTask,
-            temperatureTask,
-            visibilityTask).ConfigureAwait(false);
+            weatherTask).ConfigureAwait(false);
 
         var latitude = await latitudeTask.ConfigureAwait(false);
         var longitude = await longitudeTask.ConfigureAwait(false);
         var distance = GeoMath.DistanceNm(latitude, longitude, LfbiLatitude, LfbiLongitude);
+
+        var weather = await weatherTask.ConfigureAwait(false);
 
         return new SimulatorSnapshot(
             DateTimeOffset.Now,
@@ -217,11 +215,44 @@ public sealed class SimConnectService : IAsyncDisposable
             await comStatusTask.ConfigureAwait(false),
             DecodeBco16(await transponderTask.ConfigureAwait(false)),
             distance,
-            NormalizeHeading(await windDirectionTask.ConfigureAwait(false)),
+            NormalizeHeading(weather.WindDirectionTrueDegrees),
+            weather.WindVelocityKnots,
+            weather.QnhHpa,
+            weather.TemperatureCelsius,
+            weather.VisibilityMeters);
+    }
+
+    private async Task<WeatherSnapshot> ReadWeatherWhenDueAsync(
+        SimConnectClient connectedClient,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now - this.lastWeatherRefresh < TimeSpan.FromSeconds(30))
+        {
+            return this.cachedWeather;
+        }
+
+        var windDirectionTask = this.GetOptionalAsync(connectedClient, "AMBIENT WIND DIRECTION", "degrees", double.NaN, cancellationToken);
+        var windVelocityTask = this.GetOptionalAsync(connectedClient, "AMBIENT WIND VELOCITY", "knots", double.NaN, cancellationToken);
+        var qnhTask = this.GetOptionalAsync(connectedClient, "SEA LEVEL PRESSURE", "millibars", double.NaN, cancellationToken);
+        var temperatureTask = this.GetOptionalAsync(connectedClient, "AMBIENT TEMPERATURE", "celsius", double.NaN, cancellationToken);
+        var visibilityTask = this.GetOptionalAsync(connectedClient, "AMBIENT VISIBILITY", "meters", double.NaN, cancellationToken);
+
+        await Task.WhenAll(
+            windDirectionTask,
+            windVelocityTask,
+            qnhTask,
+            temperatureTask,
+            visibilityTask).ConfigureAwait(false);
+
+        this.cachedWeather = new WeatherSnapshot(
+            await windDirectionTask.ConfigureAwait(false),
             await windVelocityTask.ConfigureAwait(false),
             await qnhTask.ConfigureAwait(false),
             await temperatureTask.ConfigureAwait(false),
             await visibilityTask.ConfigureAwait(false));
+        this.lastWeatherRefresh = now;
+        return this.cachedWeather;
     }
 
     private async Task<T> GetOptionalAsync<T>(
@@ -318,6 +349,21 @@ public sealed class SimConnectService : IAsyncDisposable
 
     private void PublishLog(string message) =>
         this.LogMessage?.Invoke(this, $"[{DateTime.Now:HH:mm:ss}] {message}");
+
+    private sealed record WeatherSnapshot(
+        double WindDirectionTrueDegrees,
+        double WindVelocityKnots,
+        double QnhHpa,
+        double TemperatureCelsius,
+        double VisibilityMeters)
+    {
+        public static WeatherSnapshot Empty { get; } = new(
+            double.NaN,
+            double.NaN,
+            double.NaN,
+            double.NaN,
+            double.NaN);
+    }
 
     public async ValueTask DisposeAsync()
     {

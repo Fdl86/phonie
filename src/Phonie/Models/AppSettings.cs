@@ -9,4 +9,10 @@ public sealed class AppSettings
     public string? OutputDeviceId { get; set; }
 
     public int PttVirtualKey { get; set; } = 0xA3; // Right Control
+
+    public string? JoystickPttDeviceKey { get; set; }
+
+    public string? JoystickPttDeviceName { get; set; }
+
+    public int? JoystickPttButton { get; set; }
 }
