@@ -1,4 +1,4 @@
-name: Build PHONIE DEV0.2
+name: Build PHONIE DEV0.2.1
 
 on:
   workflow_dispatch:
@@ -41,7 +41,7 @@ jobs:
           --runtime win-x64
           --self-contained true
           --no-restore
-          --output dist/PHONIE-DEV0.2-win-x64
+          --output dist/PHONIE-DEV0.2.1-win-x64
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
@@ -53,21 +53,21 @@ jobs:
         run: |
           $commit = "${{ github.sha }}".Substring(0, 7)
           @"
-          PHONIE DEV0.2
+          PHONIE DEV0.2.1
           Commit: $commit
           Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
           Runtime: Windows x64 autonome
           Modules: SimConnect 2020/2024 · Audio WASAPI · PTT global
-          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.2-win-x64/BUILD-INFO.txt
+          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.2.1-win-x64/BUILD-INFO.txt
 
       - name: Create zip
         shell: pwsh
-        run: Compress-Archive -Path dist/PHONIE-DEV0.2-win-x64/* -DestinationPath dist/PHONIE-DEV0.2-win-x64.zip -Force
+        run: Compress-Archive -Path dist/PHONIE-DEV0.2.1-win-x64/* -DestinationPath dist/PHONIE-DEV0.2.1-win-x64.zip -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PHONIE-DEV0.2-win-x64
-          path: dist/PHONIE-DEV0.2-win-x64.zip
+          name: PHONIE-DEV0.2.1-win-x64
+          path: dist/PHONIE-DEV0.2.1-win-x64.zip
           if-no-files-found: error
           retention-days: 14

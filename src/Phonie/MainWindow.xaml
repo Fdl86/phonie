@@ -1,7 +1,7 @@
 <Window x:Class="Phonie.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PHONIE — DEV0.2"
+        Title="PHONIE — DEV0.2.1"
         Width="1080"
         Height="880"
         MinWidth="940"
@@ -30,7 +30,7 @@
 
             <StackPanel>
                 <TextBlock Text="PHONIE" FontSize="30" FontWeight="Bold" />
-                <TextBlock Text="DEV0.2 · AUDIO &amp; PTT · TERRAIN TEST LFBI"
+                <TextBlock Text="DEV0.2.1 · AUDIO &amp; PTT · TERRAIN TEST LFBI"
                            Foreground="{DynamicResource Accent}"
                            FontSize="12"
                            FontWeight="SemiBold"

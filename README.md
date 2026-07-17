@@ -1,8 +1,8 @@
-# PHONIE — DEV0.2 Audio & PTT
+# PHONIE — DEV0.2.1 Audio & PTT
 
 PHONIE est une application Windows de contrôle aérien vocal VFR destinée à Microsoft Flight Simulator 2020 et Microsoft Flight Simulator 2024.
 
-## Contenu de DEV0.2
+## Contenu de DEV0.2.1
 
 - renommage intégral du projet et de l'exécutable en `PHONIE` ;
 - compatibilité SimConnect validée avec MSFS 2020 et MSFS 2024 ;
@@ -19,15 +19,15 @@ PHONIE est une application Windows de contrôle aérien vocal VFR destinée à M
 - journal SimConnect moins répétitif ;
 - aucun accès à la webcam et aucune interaction avec OpenTrack.
 
-DEV0.2 ne contient pas encore Whisper ni le moteur de phraséologie ATC.
+DEV0.2.1 ne contient pas encore Whisper ni le moteur de phraséologie ATC.
 
 ## Construction
 
 1. Conserver uniquement `.git` dans le dossier local du dépôt.
 2. Copier le contenu complet de ce zip dans le dépôt.
 3. Commit puis push sur `main` avec GitHub Desktop.
-4. Attendre le run vert **Build PHONIE DEV0.2**.
-5. Télécharger l'artifact `PHONIE-DEV0.2-win-x64`.
+4. Attendre le run vert **Build PHONIE DEV0.2.1**.
+5. Télécharger l'artifact `PHONIE-DEV0.2.1-win-x64`.
 6. Décompresser puis lancer `PHONIE.exe`.
 
 Aucun SDK MSFS, Visual Studio, .NET, Python ou Node.js n'est requis sur le PC de test.
@@ -40,4 +40,4 @@ Les préférences et les enregistrements de test sont stockés dans :
 %LOCALAPPDATA%\PHONIE
 ```
 
-Voir `TEST-DEV0.2.md` pour le protocole conseillé.
+Voir `TEST-DEV0.2.1.md` pour le protocole conseillé.
