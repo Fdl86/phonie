@@ -1,237 +1,404 @@
 <Window x:Class="Phonie.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PHONIE — DEV0.2.1"
-        Width="1080"
-        Height="880"
-        MinWidth="940"
-        MinHeight="760"
-        WindowStartupLocation="CenterScreen">
-    <Grid Margin="24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="14" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="14" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="14" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="14" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="PHONIE — DEV0.2.2"
+        Width="1260"
+        Height="900"
+        MinWidth="1040"
+        MinHeight="720"
+        WindowStyle="None"
+        ResizeMode="CanResize"
+        WindowStartupLocation="CenterScreen"
+        StateChanged="MainWindow_OnStateChanged">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="40"
+                            ResizeBorderThickness="7"
+                            CornerRadius="8"
+                            GlassFrameThickness="0"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
 
-        <Grid Grid.Row="0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="10" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <StackPanel>
-                <TextBlock Text="PHONIE" FontSize="30" FontWeight="Bold" />
-                <TextBlock Text="DEV0.2.1 · AUDIO &amp; PTT · TERRAIN TEST LFBI"
-                           Foreground="{DynamicResource Accent}"
-                           FontSize="12"
-                           FontWeight="SemiBold"
-                           Margin="0,4,0,0" />
-            </StackPanel>
-
-            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                <TextBlock Text="APPARENCE" Style="{StaticResource LabelStyle}" Margin="0,0,0,4" />
-                <ComboBox x:Name="ThemeComboBox"
-                          Width="118"
-                          SelectionChanged="ThemeComboBox_OnSelectionChanged">
-                    <ComboBoxItem Content="Sombre" Tag="Dark" />
-                    <ComboBoxItem Content="Clair" Tag="Light" />
-                </ComboBox>
-            </StackPanel>
-
-            <Button Grid.Column="3"
-                    Content="Forcer la reconnexion"
-                    Click="ReconnectButton_OnClick"
-                    VerticalAlignment="Bottom" />
-        </Grid>
-
-        <Border Grid.Row="2" Style="{StaticResource PanelStyle}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="14" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <Ellipse x:Name="StatusDot" Width="12" Height="12" Fill="{DynamicResource Warning}" VerticalAlignment="Center" />
-                <StackPanel Grid.Column="2">
-                    <TextBlock x:Name="ConnectionText" Text="En attente du simulateur" FontSize="17" FontWeight="SemiBold" />
-                    <TextBlock Text="Connexion locale automatique · MSFS 2020 et 2024 · aucun ordre de lancement imposé"
-                               Style="{StaticResource LabelStyle}"
-                               Margin="0,3,0,0" />
-                </StackPanel>
-                <TextBlock x:Name="LastUpdateText"
-                           Grid.Column="3"
-                           Text="Aucune donnée"
-                           Foreground="{DynamicResource SecondaryText}"
-                           VerticalAlignment="Center" />
-            </Grid>
-        </Border>
-
-        <Grid Grid.Row="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1.25*" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="1.25*" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="0.9*" />
-            </Grid.ColumnDefinitions>
-
-            <Border Grid.Column="0" Style="{StaticResource PanelStyle}">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="8" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Text="MICROPHONE" Style="{StaticResource LabelStyle}" />
-                    <ComboBox x:Name="InputDeviceComboBox"
-                              Grid.Row="1"
-                              Margin="0,7,0,0"
-                              SelectionChanged="InputDeviceComboBox_OnSelectionChanged" />
-                    <ProgressBar x:Name="MicrophoneLevelBar" Grid.Row="3" Minimum="0" Maximum="100" Value="0" />
-                </Grid>
-            </Border>
-
-            <Border Grid.Column="2" Style="{StaticResource PanelStyle}">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="8" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Text="SORTIE RADIO" Style="{StaticResource LabelStyle}" />
-                    <ComboBox x:Name="OutputDeviceComboBox"
-                              Grid.Row="1"
-                              Margin="0,7,0,0"
-                              SelectionChanged="OutputDeviceComboBox_OnSelectionChanged" />
-                    <StackPanel Grid.Row="3" Orientation="Horizontal">
-                        <Button Content="Actualiser" Padding="10,5" Click="RefreshAudioButton_OnClick" />
-                        <Button x:Name="PlayLastRecordingButton"
-                                Content="Écouter le dernier PTT"
-                                Padding="10,5"
-                                Margin="8,0,0,0"
-                                IsEnabled="False"
-                                Click="PlayLastRecordingButton_OnClick" />
-                    </StackPanel>
-                </Grid>
-            </Border>
-
-            <Border x:Name="PttPanel" Grid.Column="4" Style="{StaticResource PanelStyle}" Background="{DynamicResource PttIdleBackground}">
-                <StackPanel>
-                    <TextBlock Text="PUSH-TO-TALK" Style="{StaticResource LabelStyle}" />
-                    <TextBlock x:Name="PttKeyText" Text="CTRL DROIT" Style="{StaticResource ValueStyle}" FontSize="18" />
-                    <TextBlock x:Name="PttStateText"
-                               Text="Relâché"
-                               Foreground="{DynamicResource SecondaryText}"
-                               Margin="0,5,0,10" />
-                    <Button x:Name="ChoosePttButton" Content="Changer la touche" Padding="10,5" Click="ChoosePttButton_OnClick" />
-                </StackPanel>
-            </Border>
-        </Grid>
-
-        <Grid Grid.Row="6">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+    <Border Background="{DynamicResource WindowBackground}"
+            BorderBrush="{DynamicResource PanelBorder}"
+            BorderThickness="1"
+            CornerRadius="8">
+        <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="12" />
-                <RowDefinition Height="Auto" />
+                <RowDefinition Height="40" />
+                <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Border Grid.Column="0" Style="{StaticResource PanelStyle}">
-                <StackPanel>
-                    <TextBlock Text="SIMULATEUR" Style="{StaticResource LabelStyle}" />
-                    <TextBlock x:Name="SimulatorText" Text="—" Style="{StaticResource ValueStyle}" />
-                    <TextBlock x:Name="AircraftText" Text="Avion non détecté" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-            </Border>
+            <Border Grid.Row="0"
+                    Background="{DynamicResource ChromeBackground}"
+                    BorderBrush="{DynamicResource Divider}"
+                    BorderThickness="0,0,0,1"
+                    MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="2" Style="{StaticResource PanelStyle}">
-                <StackPanel>
-                    <TextBlock Text="POSITION" Style="{StaticResource LabelStyle}" />
-                    <TextBlock x:Name="PositionText" Text="—" Style="{StaticResource ValueStyle}" FontSize="17" />
-                    <TextBlock x:Name="DistanceText" Text="Distance LFBI : —" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
-                </StackPanel>
-            </Border>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                        <Ellipse Width="10" Height="10" Fill="{DynamicResource Accent}" Margin="0,0,9,0" />
+                        <TextBlock Text="PHONIE — DEV0.2.2"
+                                   Foreground="{DynamicResource PrimaryText}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
 
-            <Border Grid.Column="4" Style="{StaticResource PanelStyle}">
-                <StackPanel>
-                    <TextBlock Text="ÉTAT DE VOL" Style="{StaticResource LabelStyle}" />
-                    <TextBlock x:Name="GroundText" Text="—" Style="{StaticResource ValueStyle}" />
-                    <TextBlock x:Name="AltitudeText" Text="Altitude : —" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
-                </StackPanel>
-            </Border>
-
-            <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource PanelStyle}">
-                <StackPanel>
-                    <TextBlock Text="NAVIGATION" Style="{StaticResource LabelStyle}" />
-                    <TextBlock x:Name="HeadingText" Text="Cap : —" Style="{StaticResource ValueStyle}" />
-                    <TextBlock x:Name="SpeedText" Text="IAS — · GS —" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
-                </StackPanel>
-            </Border>
-
-            <Border Grid.Row="2" Grid.Column="2" Style="{StaticResource PanelStyle}">
-                <StackPanel>
-                    <TextBlock Text="COM 1" Style="{StaticResource LabelStyle}" />
-                    <TextBlock x:Name="ComActiveText" Text="Active : —" Style="{StaticResource ValueStyle}" />
-                    <TextBlock x:Name="ComStandbyText" Text="Standby : —" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
-                </StackPanel>
-            </Border>
-
-            <Border Grid.Row="2" Grid.Column="4" Style="{StaticResource PanelStyle}">
-                <StackPanel>
-                    <TextBlock Text="TRANSPONDEUR" Style="{StaticResource LabelStyle}" />
-                    <TextBlock x:Name="XpdrText" Text="—" Style="{StaticResource ValueStyle}" />
-                    <TextBlock Text="Lecture SimConnect" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
-                </StackPanel>
-            </Border>
-        </Grid>
-
-        <Border Grid.Row="8" Style="{StaticResource PanelStyle}" Padding="0">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-
-                <Grid Margin="16,12,16,10">
-                    <TextBlock Text="JOURNAL DIAGNOSTIC" Foreground="{DynamicResource SecondaryText}" FontSize="12" FontWeight="SemiBold" />
-                    <Button Content="Effacer"
-                            HorizontalAlignment="Right"
-                            Padding="10,4"
-                            Click="ClearLogButton_OnClick" />
+                    <Button Grid.Column="1"
+                            Style="{StaticResource ChromeButtonStyle}"
+                            Content="&#xE921;"
+                            ToolTip="Réduire"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                            Click="MinimizeButton_OnClick" />
+                    <Button x:Name="MaximizeButton"
+                            Grid.Column="2"
+                            Style="{StaticResource ChromeButtonStyle}"
+                            Content="&#xE922;"
+                            ToolTip="Agrandir"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                            Click="MaximizeButton_OnClick" />
+                    <Button Grid.Column="3"
+                            Style="{StaticResource ChromeButtonStyle}"
+                            Content="&#xE8BB;"
+                            ToolTip="Fermer"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                            Click="CloseButton_OnClick" />
                 </Grid>
+            </Border>
 
-                <TextBox x:Name="LogBox"
-                         Grid.Row="1"
-                         Background="{DynamicResource LogBackground}"
-                         Foreground="{DynamicResource LogForeground}"
-                         BorderThickness="0"
-                         Padding="16"
-                         FontFamily="Consolas"
-                         FontSize="12"
-                         IsReadOnly="True"
-                         TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Auto"
-                         HorizontalScrollBarVisibility="Disabled" />
-            </Grid>
-        </Border>
-    </Grid>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <Grid Margin="22,20,22,18">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="14" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="14" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="14" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="14" />
+                        <RowDefinition Height="240" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Width="50" Height="50" CornerRadius="25" Background="{DynamicResource AccentSoft}" Margin="0,0,14,0">
+                                <Grid>
+                                    <Ellipse Width="23" Height="23" Stroke="{DynamicResource Accent}" StrokeThickness="2" />
+                                    <Ellipse Width="7" Height="7" Fill="{DynamicResource Accent}" />
+                                    <Line X1="25" Y1="8" X2="25" Y2="2" Stroke="{DynamicResource Accent}" StrokeThickness="2" />
+                                    <Line X1="25" Y1="48" X2="25" Y2="42" Stroke="{DynamicResource Accent}" StrokeThickness="2" />
+                                    <Line X1="8" Y1="25" X2="2" Y2="25" Stroke="{DynamicResource Accent}" StrokeThickness="2" />
+                                    <Line X1="48" Y1="25" X2="42" Y2="25" Stroke="{DynamicResource Accent}" StrokeThickness="2" />
+                                </Grid>
+                            </Border>
+                            <StackPanel>
+                                <TextBlock Text="PHONIE" FontSize="29" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" />
+                                <TextBlock Text="DEV0.2.2 · INTERFACE CAP CLAIR · SCANNER RADIO"
+                                           Foreground="{DynamicResource Accent}"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Margin="0,3,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="APPARENCE" Style="{StaticResource LabelStyle}" Margin="0,0,0,5" />
+                            <ComboBox x:Name="ThemeComboBox"
+                                      Width="130"
+                                      SelectionChanged="ThemeComboBox_OnSelectionChanged">
+                                <ComboBoxItem Content="Sombre" Tag="Dark" />
+                                <ComboBoxItem Content="Clair" Tag="Light" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <Button Grid.Column="3"
+                                Style="{StaticResource AccentButtonStyle}"
+                                Content="Forcer la reconnexion"
+                                MinWidth="174"
+                                VerticalAlignment="Bottom"
+                                Click="ReconnectButton_OnClick" />
+                    </Grid>
+
+                    <Border Grid.Row="2" Style="{StaticResource CardStyle}" Background="{DynamicResource StatusStripBackground}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="14" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Ellipse x:Name="StatusDot" Width="12" Height="12" Fill="{DynamicResource Warning}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="2">
+                                <TextBlock x:Name="ConnectionText" Text="En attente du simulateur" FontSize="17" FontWeight="SemiBold" />
+                                <TextBlock Text="Connexion locale automatique · MSFS 2020 et 2024 · aucun ordre de lancement imposé"
+                                           Style="{StaticResource SubtitleStyle}" />
+                            </StackPanel>
+                            <TextBlock x:Name="LastUpdateText"
+                                       Grid.Column="3"
+                                       Text="Aucune donnée"
+                                       Foreground="{DynamicResource SecondaryText}"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="4"
+                            Background="{DynamicResource AccentSoft}"
+                            BorderBrush="{DynamicResource Accent}"
+                            BorderThickness="1"
+                            CornerRadius="7"
+                            Padding="12,8">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="●" Foreground="{DynamicResource Accent}" Margin="0,0,8,0" />
+                            <TextBlock Text="ATC et voix ATC de Microsoft Flight Simulator à désactiver avant utilisation de PHONIE."
+                                       Foreground="{DynamicResource PrimaryText}"
+                                       FontSize="12" />
+                        </StackPanel>
+                    </Border>
+
+                    <Grid Grid.Row="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.15*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="1.15*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="0.85*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="10" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="5" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="●" Foreground="{DynamicResource Accent}" Margin="0,0,8,0" />
+                                    <TextBlock Text="MICROPHONE" Style="{StaticResource LabelStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="InputDeviceComboBox"
+                                          Grid.Row="1"
+                                          Margin="0,8,0,0"
+                                          SelectionChanged="InputDeviceComboBox_OnSelectionChanged" />
+                                <ProgressBar x:Name="MicrophoneLevelBar" Grid.Row="3" Minimum="0" Maximum="100" Value="0" />
+                                <TextBlock x:Name="MicrophoneLevelText" Grid.Row="5" Text="Niveau d'entrée : 0 %" Style="{StaticResource SubtitleStyle}" Margin="0" />
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="12" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="●" Foreground="{DynamicResource Accent}" Margin="0,0,8,0" />
+                                    <TextBlock Text="SORTIE RADIO" Style="{StaticResource LabelStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="OutputDeviceComboBox"
+                                          Grid.Row="1"
+                                          Margin="0,8,0,0"
+                                          SelectionChanged="OutputDeviceComboBox_OnSelectionChanged" />
+                                <Grid Grid.Row="3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="10" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button x:Name="PlayLastRecordingButton"
+                                            Content="Écouter le dernier PTT"
+                                            IsEnabled="False"
+                                            Click="PlayLastRecordingButton_OnClick" />
+                                    <Button Grid.Column="2"
+                                            Content="Actualiser"
+                                            MinWidth="105"
+                                            Click="RefreshAudioButton_OnClick" />
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <Border x:Name="PttPanel"
+                                Grid.Column="4"
+                                Style="{StaticResource CardStyle}"
+                                Background="{DynamicResource PttIdleBackground}">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="●" Foreground="{DynamicResource Accent}" Margin="0,0,8,0" />
+                                    <TextBlock Text="PUSH-TO-TALK" Style="{StaticResource LabelStyle}" />
+                                </StackPanel>
+                                <TextBlock x:Name="PttKeyText" Text="CTRL DROIT" Style="{StaticResource ValueStyle}" FontSize="20" />
+                                <TextBlock x:Name="PttStateText"
+                                           Text="Relâché"
+                                           Foreground="{DynamicResource SecondaryText}"
+                                           Margin="0,5,0,12" />
+                                <Button x:Name="ChoosePttButton" Content="Changer la touche" Click="ChoosePttButton_OnClick" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Grid Grid.Row="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Column="0" Style="{StaticResource CompactCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="SIMULATEUR" Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="SimulatorText" Text="—" Style="{StaticResource ValueStyle}" />
+                                <TextBlock x:Name="AircraftText" Text="Avion non détecté" Style="{StaticResource SubtitleStyle}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Style="{StaticResource CompactCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="POSITION" Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="PositionText" Text="—" Style="{StaticResource ValueStyle}" FontSize="17" />
+                                <TextBlock x:Name="DistanceText" Text="Distance LFBI : —" Style="{StaticResource SubtitleStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="4" Style="{StaticResource CompactCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="ÉTAT DE VOL" Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="GroundText" Text="—" Style="{StaticResource ValueStyle}" />
+                                <TextBlock x:Name="AltitudeText" Text="Altitude : —" Style="{StaticResource SubtitleStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="RadioPolicyCard" Grid.Column="6" Style="{StaticResource CompactCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="SERVICE RADIO" Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="StationText" Text="—" Style="{StaticResource ValueStyle}" FontSize="17" />
+                                <TextBlock x:Name="RadioPolicyTitleText" Text="Fréquence non identifiée" Foreground="{DynamicResource Accent}" FontWeight="SemiBold" Margin="0,5,0,0" />
+                                <TextBlock x:Name="RadioPolicyText" Text="Aucune réponse automatique." Style="{StaticResource SubtitleStyle}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource CompactCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="NAVIGATION" Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="HeadingText" Text="Cap : —" Style="{StaticResource ValueStyle}" />
+                                <TextBlock x:Name="SpeedText" Text="IAS — · GS —" Style="{StaticResource SubtitleStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="2" Grid.Column="2" Style="{StaticResource CompactCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="COM 1" Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="ComActiveText" Text="Active : —" Style="{StaticResource ValueStyle}" FontSize="17" />
+                                <TextBlock x:Name="ComStandbyText" Text="Standby : —" Style="{StaticResource SubtitleStyle}" />
+                                <TextBlock x:Name="ComMetaText" Text="Station — · espacement —" Foreground="{DynamicResource Accent}" FontSize="11" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="2" Grid.Column="4" Style="{StaticResource CompactCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="TRANSPONDEUR" Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="XpdrText" Text="—" Style="{StaticResource ValueStyle}" />
+                                <TextBlock Text="Lecture SimConnect" Style="{StaticResource SubtitleStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="2" Grid.Column="6" Style="{StaticResource CompactCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="MÉTÉO LOCALE SIMULATEUR" Style="{StaticResource LabelStyle}" />
+                                <TextBlock x:Name="WeatherPrimaryText" Text="Vent — · QNH —" Style="{StaticResource ValueStyle}" FontSize="16" TextWrapping="Wrap" />
+                                <TextBlock x:Name="WeatherSecondaryText" Text="Température — · visibilité —" Style="{StaticResource SubtitleStyle}" TextWrapping="Wrap" />
+                                <TextBlock Text="Valeurs à la position de l'avion" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Border Grid.Row="10" Style="{StaticResource CardStyle}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="48" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Margin="16,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="JOURNAL DIAGNOSTIC" Style="{StaticResource LabelStyle}" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="Effacer" Padding="12,6" Click="ClearLogButton_OnClick" />
+                            </Grid>
+                            <Border Grid.Row="1" BorderBrush="{DynamicResource Divider}" BorderThickness="0,1,0,0">
+                                <TextBox x:Name="LogBox" Style="{StaticResource LogTextBoxStyle}" />
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="12"
+                            Background="{DynamicResource StatusStripBackground}"
+                            BorderBrush="{DynamicResource PanelBorder}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14,9">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="22" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="22" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse x:Name="ReadyFooterDot" Width="9" Height="9" Fill="{DynamicResource Warning}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock x:Name="ReadyFooterText" Text="Initialisation" Foreground="{DynamicResource SecondaryText}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <TextBlock Text="SimConnect" Foreground="{DynamicResource SecondaryText}" Margin="0,0,8,0" />
+                                <Ellipse x:Name="SimFooterDot" Width="9" Height="9" Fill="{DynamicResource Warning}" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="3" Orientation="Horizontal">
+                                <TextBlock Text="Audio" Foreground="{DynamicResource SecondaryText}" Margin="0,0,8,0" />
+                                <Ellipse x:Name="AudioFooterDot" Width="9" Height="9" Fill="{DynamicResource Warning}" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="5" Orientation="Horizontal">
+                                <TextBlock Text="PTT" Foreground="{DynamicResource SecondaryText}" Margin="0,0,8,0" />
+                                <Ellipse x:Name="PttFooterDot" Width="9" Height="9" Fill="{DynamicResource Warning}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </ScrollViewer>
+        </Grid>
+    </Border>
 </Window>

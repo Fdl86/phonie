@@ -1,22 +1,34 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <SolidColorBrush x:Key="WindowBackground" Color="#EFF2F5" />
+    <SolidColorBrush x:Key="WindowBackground" Color="#EEF4F7" />
+    <SolidColorBrush x:Key="ChromeBackground" Color="#F9FBFC" />
     <SolidColorBrush x:Key="PanelBackground" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="PanelBorder" Color="#CDD5DE" />
-    <SolidColorBrush x:Key="PrimaryText" Color="#141A21" />
-    <SolidColorBrush x:Key="SecondaryText" Color="#5E6B78" />
-    <SolidColorBrush x:Key="Accent" Color="#9B6B12" />
-    <SolidColorBrush x:Key="Success" Color="#13834D" />
-    <SolidColorBrush x:Key="Warning" Color="#A76A09" />
-    <SolidColorBrush x:Key="Danger" Color="#B63E45" />
-    <SolidColorBrush x:Key="ButtonBackground" Color="#E2E7EC" />
-    <SolidColorBrush x:Key="ButtonBorder" Color="#AEB9C5" />
-    <SolidColorBrush x:Key="ButtonHover" Color="#D4DBE3" />
-    <SolidColorBrush x:Key="InputBackground" Color="#F8FAFC" />
-    <SolidColorBrush x:Key="InputBorder" Color="#AEB9C5" />
-    <SolidColorBrush x:Key="LogBackground" Color="#17202A" />
-    <SolidColorBrush x:Key="LogForeground" Color="#E6EDF4" />
-    <SolidColorBrush x:Key="MeterBackground" Color="#D3DAE2" />
-    <SolidColorBrush x:Key="PttIdleBackground" Color="#EEF1F4" />
-    <SolidColorBrush x:Key="PttActiveBackground" Color="#DDF3E7" />
+    <SolidColorBrush x:Key="PanelBackgroundElevated" Color="#F7FAFC" />
+    <SolidColorBrush x:Key="PanelBorder" Color="#CFDCE5" />
+    <SolidColorBrush x:Key="PrimaryText" Color="#10202D" />
+    <SolidColorBrush x:Key="SecondaryText" Color="#536A7C" />
+    <SolidColorBrush x:Key="MutedText" Color="#7D8F9E" />
+    <SolidColorBrush x:Key="Accent" Color="#168DA2" />
+    <SolidColorBrush x:Key="AccentSoft" Color="#DDF2F5" />
+    <SolidColorBrush x:Key="Success" Color="#168A50" />
+    <SolidColorBrush x:Key="Warning" Color="#A66B00" />
+    <SolidColorBrush x:Key="Danger" Color="#BF394B" />
+    <SolidColorBrush x:Key="ButtonBackground" Color="#E7EFF4" />
+    <SolidColorBrush x:Key="ButtonBorder" Color="#B9CBD7" />
+    <SolidColorBrush x:Key="ButtonHover" Color="#D9E8EF" />
+    <SolidColorBrush x:Key="ButtonPressed" Color="#C9DEE8" />
+    <SolidColorBrush x:Key="InputBackground" Color="#F9FBFC" />
+    <SolidColorBrush x:Key="InputBorder" Color="#B9CBD7" />
+    <SolidColorBrush x:Key="InputHover" Color="#8FB2C2" />
+    <SolidColorBrush x:Key="LogBackground" Color="#F7FAFC" />
+    <SolidColorBrush x:Key="LogForeground" Color="#273B49" />
+    <SolidColorBrush x:Key="MeterBackground" Color="#DCE7ED" />
+    <SolidColorBrush x:Key="MeterLow" Color="#28A964" />
+    <SolidColorBrush x:Key="MeterMedium" Color="#C88505" />
+    <SolidColorBrush x:Key="MeterHigh" Color="#D94B5C" />
+    <SolidColorBrush x:Key="PttIdleBackground" Color="#F3F7F9" />
+    <SolidColorBrush x:Key="PttActiveBackground" Color="#E2F4EA" />
+    <SolidColorBrush x:Key="StatusStripBackground" Color="#F5F9FB" />
+    <SolidColorBrush x:Key="Divider" Color="#D9E4EA" />
+    <SolidColorBrush x:Key="Overlay" Color="#AAFFFFFF" />
 </ResourceDictionary>

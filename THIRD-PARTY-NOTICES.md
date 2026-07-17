@@ -1,6 +1,6 @@
 # Bibliothèques tierces
 
-PHONIE DEV0.2.1 utilise :
+PHONIE DEV0.2.2 utilise :
 
 - `SimConnect.NET` 0.2.1 — licence MIT ;
 - `NAudio` 2.3.0 — licence MIT.

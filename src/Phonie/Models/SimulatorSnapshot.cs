@@ -13,5 +13,15 @@ public sealed record SimulatorSnapshot(
     bool IsOnGround,
     double Com1ActiveMhz,
     double Com1StandbyMhz,
+    string Com1StationIdent,
+    string Com1StationType,
+    int Com1SpacingMode,
+    bool Com1Receiving,
+    int Com1Status,
     string TransponderCode,
-    double DistanceToLfbiNm);
+    double DistanceToLfbiNm,
+    double WindDirectionTrueDegrees,
+    double WindVelocityKnots,
+    double QnhHpa,
+    double TemperatureCelsius,
+    double VisibilityMeters);

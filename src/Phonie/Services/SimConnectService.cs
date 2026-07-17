@@ -11,6 +11,7 @@ public sealed class SimConnectService : IAsyncDisposable
     private const double LfbiLongitude = 0.306667;
 
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
+    private readonly HashSet<string> optionalReadWarnings = new(StringComparer.Ordinal);
     private CancellationTokenSource? cancellation;
     private Task? worker;
     private SimConnectClient? client;
@@ -52,7 +53,7 @@ public sealed class SimConnectService : IAsyncDisposable
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         this.PublishStatus(ConnectionState.Waiting, "En attente de Microsoft Flight Simulator");
-        this.PublishLog("PHONIE DEV0.2.1 démarrée. Recherche locale de SimConnect.");
+        this.PublishLog("PHONIE DEV0.2.2 démarrée. Recherche locale de SimConnect.");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -105,7 +106,7 @@ public sealed class SimConnectService : IAsyncDisposable
     {
         this.PublishStatus(ConnectionState.Connecting, "Connexion à SimConnect…");
 
-        var newClient = new SimConnectClient("PHONIE DEV0.2.1")
+        var newClient = new SimConnectClient("PHONIE DEV0.2.2")
         {
             AutoReconnectEnabled = false,
         };
@@ -119,6 +120,7 @@ public sealed class SimConnectService : IAsyncDisposable
             try
             {
                 this.client = newClient;
+                this.optionalReadWarnings.Clear();
             }
             finally
             {
@@ -130,6 +132,7 @@ public sealed class SimConnectService : IAsyncDisposable
             this.lastErrorMessage = null;
             this.PublishStatus(ConnectionState.Connected, $"Connecté — {simulator}");
             this.PublishLog($"Connexion SimConnect établie avec {simulator}.");
+            this.PublishLog("Scanner radio actif : station, type de service, espacement et météo locale.");
         }
         catch
         {
@@ -142,6 +145,7 @@ public sealed class SimConnectService : IAsyncDisposable
         SimConnectClient connectedClient,
         CancellationToken cancellationToken)
     {
+        // Variables indispensables : une erreur sur l'une d'elles déclenche une reconnexion propre.
         var titleTask = connectedClient.SimVars.GetAsync<string>("TITLE", string.Empty, cancellationToken: cancellationToken);
         var latitudeTask = connectedClient.SimVars.GetAsync<double>("PLANE LATITUDE", "degrees", cancellationToken: cancellationToken);
         var longitudeTask = connectedClient.SimVars.GetAsync<double>("PLANE LONGITUDE", "degrees", cancellationToken: cancellationToken);
@@ -154,6 +158,18 @@ public sealed class SimConnectService : IAsyncDisposable
         var comStandbyTask = connectedClient.SimVars.GetAsync<double>("COM STANDBY FREQUENCY:1", "MHz", cancellationToken: cancellationToken);
         var transponderTask = connectedClient.SimVars.GetAsync<int>("TRANSPONDER CODE:1", "BCO16", cancellationToken: cancellationToken);
 
+        // Variables enrichies : elles sont optionnelles pour préserver la compatibilité entre avions et versions du simulateur.
+        var stationIdentTask = this.GetOptionalAsync(connectedClient, "COM ACTIVE FREQ IDENT:1", string.Empty, string.Empty, cancellationToken);
+        var stationTypeTask = this.GetOptionalAsync(connectedClient, "COM ACTIVE FREQ TYPE:1", string.Empty, string.Empty, cancellationToken);
+        var spacingTask = this.GetOptionalAsync(connectedClient, "COM SPACING MODE:1", "enum", 0, cancellationToken);
+        var receiveTask = this.GetOptionalAsync(connectedClient, "COM RECEIVE:1", "bool", 1, cancellationToken);
+        var comStatusTask = this.GetOptionalAsync(connectedClient, "COM STATUS:1", "enum", 0, cancellationToken);
+        var windDirectionTask = this.GetOptionalAsync(connectedClient, "AMBIENT WIND DIRECTION", "degrees", double.NaN, cancellationToken);
+        var windVelocityTask = this.GetOptionalAsync(connectedClient, "AMBIENT WIND VELOCITY", "knots", double.NaN, cancellationToken);
+        var qnhTask = this.GetOptionalAsync(connectedClient, "SEA LEVEL PRESSURE", "millibars", double.NaN, cancellationToken);
+        var temperatureTask = this.GetOptionalAsync(connectedClient, "AMBIENT TEMPERATURE", "celsius", double.NaN, cancellationToken);
+        var visibilityTask = this.GetOptionalAsync(connectedClient, "AMBIENT VISIBILITY", "meters", double.NaN, cancellationToken);
+
         await Task.WhenAll(
             titleTask,
             latitudeTask,
@@ -165,7 +181,17 @@ public sealed class SimConnectService : IAsyncDisposable
             onGroundTask,
             comActiveTask,
             comStandbyTask,
-            transponderTask).ConfigureAwait(false);
+            transponderTask,
+            stationIdentTask,
+            stationTypeTask,
+            spacingTask,
+            receiveTask,
+            comStatusTask,
+            windDirectionTask,
+            windVelocityTask,
+            qnhTask,
+            temperatureTask,
+            visibilityTask).ConfigureAwait(false);
 
         var latitude = await latitudeTask.ConfigureAwait(false);
         var longitude = await longitudeTask.ConfigureAwait(false);
@@ -184,8 +210,44 @@ public sealed class SimConnectService : IAsyncDisposable
             await onGroundTask.ConfigureAwait(false) != 0,
             await comActiveTask.ConfigureAwait(false),
             await comStandbyTask.ConfigureAwait(false),
+            (await stationIdentTask.ConfigureAwait(false)).Trim().ToUpperInvariant(),
+            (await stationTypeTask.ConfigureAwait(false)).Trim().ToUpperInvariant(),
+            await spacingTask.ConfigureAwait(false),
+            await receiveTask.ConfigureAwait(false) != 0,
+            await comStatusTask.ConfigureAwait(false),
             DecodeBco16(await transponderTask.ConfigureAwait(false)),
-            distance);
+            distance,
+            NormalizeHeading(await windDirectionTask.ConfigureAwait(false)),
+            await windVelocityTask.ConfigureAwait(false),
+            await qnhTask.ConfigureAwait(false),
+            await temperatureTask.ConfigureAwait(false),
+            await visibilityTask.ConfigureAwait(false));
+    }
+
+    private async Task<T> GetOptionalAsync<T>(
+        SimConnectClient connectedClient,
+        string name,
+        string unit,
+        T fallback,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await connectedClient.SimVars.GetAsync<T>(name, unit, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            if (this.optionalReadWarnings.Add(name))
+            {
+                this.PublishLog($"Donnée optionnelle indisponible ({name}) : {CleanMessage(exception)}");
+            }
+
+            return fallback;
+        }
     }
 
     private async Task ResetClientAsync()
