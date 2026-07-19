@@ -49,6 +49,7 @@ public partial class MainWindow : Window
         this.simConnectService.StatusChanged += this.SimConnectService_OnStatusChanged;
         this.simConnectService.SnapshotReceived += this.SimConnectService_OnSnapshotReceived;
         this.simConnectService.LogMessage += this.Service_OnLogMessage;
+        this.simConnectService.AirportDataReceived += this.SimConnectService_OnAirportDataReceived;
 
         this.audioService.LogMessage += this.Service_OnLogMessage;
         this.audioService.RecordingStateChanged += this.AudioService_OnRecordingStateChanged;
@@ -237,6 +238,16 @@ public partial class MainWindow : Window
         var marker = $"{markerName} - {this.diagnosticsSimulator} - COM1 {this.diagnosticsCom1:F3} - {this.diagnosticsStation} - PTT {this.diagnosticsPttSource} - gain +{this.settings.MicrophoneGainDb} dB";
         this.diagnosticsService.Mark(marker);
         this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Marque ajoutée : {markerName}.");
+    }
+
+    private void RequestLfbiAirportDataButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        this.AirportDataText.Text = "Airport Data : lecture LFBI...";
+        if (!this.simConnectService.RequestAirportData("LFBI"))
+        {
+            this.AirportDataText.Text = "Airport Data : SimConnect indisponible";
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Airport Data LFBI : attendre la connexion au simulateur.");
+        }
     }
 
     private void OpenDiagnosticsFolderButton_OnClick(object sender, RoutedEventArgs e)
@@ -682,6 +693,20 @@ public partial class MainWindow : Window
                 this.lastRadioSignature = radioSignature;
                 this.AppendLog($"[{DateTime.Now:HH:mm:ss}] COM1 : {snapshot.Com1ActiveMhz:F3} - {stationIdent} - {stationType} - {spacing} - {policy.Title}.");
             }
+        });
+    }
+
+    private void SimConnectService_OnAirportDataReceived(object? sender, AirportFacilityReport report)
+    {
+        _ = this.Dispatcher.BeginInvoke(() =>
+        {
+            var icao = string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao;
+            this.AirportDataText.Text = $"{icao} : {report.Runways.Count} piste(s), {report.Frequencies.Count} fréquence(s)";
+            this.AppendLog(
+                $"[{DateTime.Now:HH:mm:ss}] Airport Data {icao} terminé : " +
+                $"{report.Runways.Count} piste(s), {report.Frequencies.Count} fréquence(s), " +
+                $"{report.TaxiParkings.Count} parking(s), {report.TaxiPaths.Count} chemin(s). " +
+                $"Fichier : logs\\airport-data\\{System.IO.Path.GetFileName(report.TextPath)}");
         });
     }
 

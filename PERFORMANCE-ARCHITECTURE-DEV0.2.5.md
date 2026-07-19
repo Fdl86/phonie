@@ -1,4 +1,4 @@
-# Architecture de légèreté - DEV0.2.4
+# Architecture de légèreté - DEV0.2.5
 
 ## Principes conservés
 
@@ -8,7 +8,8 @@
 - diagnostic échantillonné toutes les 5 secondes ;
 - indicateur micro à 8 Hz ;
 - aucune boucle agressive ;
-- aucune génération audio récurrente.
+- aucune génération audio récurrente ;
+- Airport Data demandé ponctuellement, jamais interrogé à chaque snapshot.
 
 ## Optimisations ajoutées
 
@@ -19,6 +20,7 @@
 - un seul fichier PTT valide conservé ;
 - traitement du gain directement sur les échantillons capturés ;
 - limiteur par simple écrêtage numérique à -1 dBFS ;
-- rotation des logs à 10 sessions.
+- rotation des logs à 10 sessions ;
+- rotation des rapports Airport Data aux 10 dernières lectures.
 
 Le traitement du gain est une multiplication simple par échantillon. Son coût CPU attendu reste négligeable face au simulateur.

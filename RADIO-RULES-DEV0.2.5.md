@@ -1,4 +1,4 @@
-# Règles de comportement radio - base DEV0.2.4
+# Règles de comportement radio - base DEV0.2.5
 
 Ces règles restent inchangées dans ce build UI et portable.
 

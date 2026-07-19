@@ -15,6 +15,8 @@ public sealed class SimConnectService : IAsyncDisposable
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
     private readonly ConcurrentDictionary<string, byte> optionalReadWarnings = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> optionalRetryAfter = new(StringComparer.Ordinal);
+    private readonly AirportFacilityService airportFacilityService = new();
+    private readonly ConcurrentDictionary<string, byte> automaticAirportRequests = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? cancellation;
     private Task? worker;
     private SimConnectClient? client;
@@ -30,6 +32,14 @@ public sealed class SimConnectService : IAsyncDisposable
     public event EventHandler<SimulatorSnapshot>? SnapshotReceived;
 
     public event EventHandler<string>? LogMessage;
+
+    public event EventHandler<AirportFacilityReport>? AirportDataReceived;
+
+    public SimConnectService()
+    {
+        this.airportFacilityService.LogMessage += (_, message) => this.LogMessage?.Invoke(this, message);
+        this.airportFacilityService.ReportCompleted += (_, report) => this.AirportDataReceived?.Invoke(this, report);
+    }
 
     public void Start()
     {
@@ -58,7 +68,7 @@ public sealed class SimConnectService : IAsyncDisposable
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         this.PublishStatus(ConnectionState.Waiting, "En attente de Microsoft Flight Simulator");
-        this.PublishLog("PHONIE DEV0.2.4 démarrée. Recherche locale de SimConnect.");
+        this.PublishLog("PHONIE DEV0.2.5 démarrée. Recherche locale de SimConnect.");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -72,6 +82,7 @@ public sealed class SimConnectService : IAsyncDisposable
                 if (this.client is { IsConnected: true } connectedClient)
                 {
                     var snapshot = await this.ReadSnapshotAsync(connectedClient, cancellationToken).ConfigureAwait(false);
+                    this.TryRequestAirportDataAutomatically(snapshot);
                     this.SnapshotReceived?.Invoke(this, snapshot);
                     await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
                 }
@@ -111,7 +122,7 @@ public sealed class SimConnectService : IAsyncDisposable
     {
         this.PublishStatus(ConnectionState.Connecting, "Connexion à SimConnect...");
 
-        var newClient = new SimConnectClient("PHONIE DEV0.2.4")
+        var newClient = new SimConnectClient("PHONIE DEV0.2.5")
         {
             AutoReconnectEnabled = false,
         };
@@ -133,6 +144,7 @@ public sealed class SimConnectService : IAsyncDisposable
                 this.optionalRetryAfter.Clear();
                 this.lastWeatherRefresh = DateTimeOffset.MinValue;
                 this.cachedWeather = WeatherSnapshot.Empty;
+                this.automaticAirportRequests.Clear();
             }
             finally
             {
@@ -145,11 +157,71 @@ public sealed class SimConnectService : IAsyncDisposable
             this.PublishStatus(ConnectionState.Connected, $"Connecté - {simulator}");
             this.PublishLog($"Connexion SimConnect établie avec {simulator}.");
             this.PublishLog("Scanner radio actif : station, type de service, espacement et météo locale.");
+
+            try
+            {
+                this.airportFacilityService.Attach(newClient, simulator);
+            }
+            catch (Exception exception)
+            {
+                this.PublishLog($"Airport Data indisponible : {CleanMessage(exception)}");
+            }
         }
         catch
         {
             await newClient.DisposeAsync().ConfigureAwait(false);
             throw;
+        }
+    }
+
+    public bool RequestAirportData(string icao)
+    {
+        if (this.disposed)
+        {
+            return false;
+        }
+
+        try
+        {
+            return this.airportFacilityService.RequestAirport(icao);
+        }
+        catch (Exception exception)
+        {
+            this.PublishLog($"Airport Data : demande impossible - {CleanMessage(exception)}");
+            return false;
+        }
+    }
+
+    private void TryRequestAirportDataAutomatically(SimulatorSnapshot snapshot)
+    {
+        string? candidate = null;
+        var station = snapshot.Com1StationIdent.Trim().ToUpperInvariant();
+        if (station.Length == 4 && station.All(char.IsAsciiLetterOrDigit))
+        {
+            candidate = station;
+        }
+        else if (snapshot.DistanceToLfbiNm <= 30.0)
+        {
+            // LFBI is only the geographic first-test target. Its frequencies are never hardcoded.
+            candidate = "LFBI";
+        }
+
+        if (candidate is null || this.automaticAirportRequests.ContainsKey(candidate))
+        {
+            return;
+        }
+
+        try
+        {
+            if (this.airportFacilityService.RequestAirport(candidate))
+            {
+                this.automaticAirportRequests.TryAdd(candidate, 0);
+            }
+        }
+        catch (Exception exception)
+        {
+            this.PublishLog($"Airport Data automatique {candidate} : {CleanMessage(exception)}");
+            this.automaticAirportRequests.TryAdd(candidate, 0);
         }
     }
 
@@ -312,6 +384,8 @@ public sealed class SimConnectService : IAsyncDisposable
 
             var oldClient = this.client;
             this.client = null;
+            this.airportFacilityService.Detach();
+            this.automaticAirportRequests.Clear();
 
             try
             {
@@ -411,6 +485,7 @@ public sealed class SimConnectService : IAsyncDisposable
             }
         }
 
+        this.airportFacilityService.Dispose();
         this.cancellation?.Dispose();
         this.lifecycleGate.Dispose();
     }

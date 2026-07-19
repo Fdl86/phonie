@@ -10,11 +10,13 @@ public static class AppPaths
 
     public static string RecordingsDirectory { get; } = Path.Combine(BaseDirectory, "recordings");
 
+    public static string AirportDataDirectory { get; } = Path.Combine(LogsDirectory, "airport-data");
+
     public static string CacheDirectory { get; } = Path.Combine(BaseDirectory, "cache");
 
     public static void EnsurePortableStorage()
     {
-        foreach (var directory in new[] { ConfigDirectory, LogsDirectory, RecordingsDirectory, CacheDirectory })
+        foreach (var directory in new[] { ConfigDirectory, LogsDirectory, AirportDataDirectory, RecordingsDirectory, CacheDirectory })
         {
             Directory.CreateDirectory(directory);
             VerifyWritable(directory);

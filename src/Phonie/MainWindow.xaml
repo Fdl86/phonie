@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="PHONIE - DEV0.2.4"
+        Title="PHONIE - DEV0.2.5"
         Icon="Assets/Phonie.ico"
         Width="1380"
         Height="860"
@@ -45,7 +45,7 @@
 
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
                         <Image Source="Assets/PhonieIcon.png" Width="22" Height="22" Margin="0,0,8,0" />
-                        <TextBlock Text="PHONIE - DEV0.2.4"
+                        <TextBlock Text="PHONIE - DEV0.2.5"
                                    Foreground="{DynamicResource PrimaryText}"
                                    FontSize="12"
                                    FontWeight="SemiBold"
@@ -103,7 +103,7 @@
                         <Image Source="Assets/PhonieIcon.png" Width="46" Height="46" Margin="0,0,12,0" />
                         <StackPanel VerticalAlignment="Center">
                             <TextBlock Text="PHONIE" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" />
-                            <TextBlock Text="DEV0.2.4 - UI PREMIUM - MODE PORTABLE"
+                            <TextBlock Text="DEV0.2.5 - AIRPORT DATA - MODE PORTABLE"
                                        Foreground="{DynamicResource Accent}"
                                        FontSize="10"
                                        FontWeight="SemiBold"
@@ -348,6 +348,12 @@
                             </StackPanel>
                             <TextBlock x:Name="SimulatorText" Text="-" Style="{StaticResource ValueStyle}" FontSize="15" />
                             <TextBlock x:Name="AircraftText" Text="Avion non détecté" Style="{StaticResource SubtitleStyle}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="AirportDataText"
+                                       Text="Airport Data : en attente"
+                                       Foreground="{DynamicResource Accent}"
+                                       FontSize="9"
+                                       Margin="0,2,0,0"
+                                       TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                     </Border>
 
@@ -523,6 +529,8 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="7" />
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="7" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <ComboBox x:Name="MarkerComboBox" SelectedIndex="0">
                                     <ComboBoxItem Content="REPOS SANS SIMU" />
@@ -534,7 +542,8 @@
                                     <ComboBoxItem Content="FIN TEST" />
                                 </ComboBox>
                                 <Button Grid.Column="2" Content="Marquer" Click="MarkDiagnosticsButton_OnClick" />
-                                <Button Grid.Column="4" Content="Ouvrir les logs" Click="OpenDiagnosticsFolderButton_OnClick" />
+                                <Button Grid.Column="4" Content="Lire LFBI" Click="RequestLfbiAirportDataButton_OnClick" />
+                                <Button Grid.Column="6" Content="Ouvrir logs" Click="OpenDiagnosticsFolderButton_OnClick" />
                             </Grid>
                         </Grid>
                     </Border>
