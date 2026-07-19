@@ -79,7 +79,7 @@ public partial class MainWindow : Window
             ? this.audioService.LastRecordingPath
             : null;
         this.PlayLastRecordingButton.IsEnabled = this.lastRecordingPath is not null;
-        this.DiagnosticsPathText.Text = Path.Combine("logs", Path.GetFileName(this.diagnosticsService.SessionFilePath));
+        this.DiagnosticsPathText.Text = System.IO.Path.Combine("logs", System.IO.Path.GetFileName(this.diagnosticsService.SessionFilePath));
 
         this.diagnosticsService.Start(() => new DiagnosticsContext(
             this.pttHeld,
