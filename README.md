@@ -1,10 +1,10 @@
-# PHONIE DEV0.3.0 - FIRST CONTACT
+# PHONIE DEV0.3.0.1 - FIRST CONTACT STARTUP HOTFIX
 
 PHONIE est une application Windows x64 portable destinée à construire un contrôle aérien VFR vocal en français pour Microsoft Flight Simulator 2020 et 2024.
 
 ## Première avancée opérationnelle
 
-DEV0.3.0 regroupe les corrections prévues pour DEV0.2.6 et le premier jalon vocal :
+DEV0.3.0.1 corrige le démarrage silencieux de DEV0.3.0 et conserve intégralement le périmètre First Contact. Cette base regroupe les corrections prévues pour DEV0.2.6 et le premier jalon vocal :
 
 - interface compacte adaptée à la zone de travail Windows, sans passer sous la barre des tâches ;
 - fiche aérodrome LFBI visible ;
@@ -58,7 +58,7 @@ PHONIE\
 |-- config\
 |   `-- settings.json
 |-- logs\
-|   |-- PHONIE-DEV0.3.0-*.log
+|   |-- PHONIE-DEV0.3.0.1-*.log
 |   |-- airport-data\
 |   `-- sessions\
 |-- models\
@@ -74,4 +74,4 @@ PHONIE ne stocke pas ses réglages, journaux, enregistrements, modèles ou cache
 
 Le workflow GitHub Actions produit une version Windows x64 autonome. Le modèle Whisper reste séparé afin de ne pas alourdir chaque archive de build.
 
-Commencer par `TEST-DEV0.3.0.md`.
+Commencer par `TEST-DEV0.3.0.1.md`.

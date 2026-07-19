@@ -1,4 +1,4 @@
-# Architecture de légèreté DEV0.3.0
+# Architecture de légèreté DEV0.3.0.1
 
 - télémétrie SimConnect autour de 1 Hz ;
 - Airport Data demandé ponctuellement ;

@@ -1,4 +1,4 @@
-# Whisper dans PHONIE DEV0.3.0
+# Whisper dans PHONIE DEV0.3.0.1
 
 ## Moteur retenu
 

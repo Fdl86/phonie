@@ -1,4 +1,4 @@
-# Airport Data DEV0.3.0
+# Airport Data DEV0.3.0.1
 
 PHONIE interroge la Facilities API de SimConnect pour l'OACI LFBI.
 
@@ -17,7 +17,7 @@ PHONIE interroge la Facilities API de SimConnect pour l'OACI LFBI.
 
 DEV0.2.5 omettait plusieurs champs situés entre `RUNWAY_DESIGNATOR` et `START`. Cela décalait le décodage d'une partie des chemins taxi.
 
-DEV0.3.0 lit maintenant :
+DEV0.3.0.1 lit maintenant :
 
 - demi-largeur gauche et droite ;
 - type de bord gauche et droit ;

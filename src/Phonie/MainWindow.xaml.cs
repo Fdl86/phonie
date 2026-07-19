@@ -27,7 +27,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, string> activePttSourceLabels = new(StringComparer.Ordinal);
     private AppSettings settings;
     private ConnectionState currentConnectionState = ConnectionState.Waiting;
-    private bool suppressSettingsEvents;
+    private bool suppressSettingsEvents = true;
     private bool awaitingPttKey;
     private bool awaitingJoystickButton;
     private bool pttHeld;
@@ -63,6 +63,7 @@ public partial class MainWindow : Window
         ThemeService.Apply(this.settings.Theme);
 
         this.InitializeComponent();
+        this.suppressSettingsEvents = false;
 
         this.simConnectService.StatusChanged += this.SimConnectService_OnStatusChanged;
         this.simConnectService.SnapshotReceived += this.SimConnectService_OnSnapshotReceived;
@@ -410,7 +411,7 @@ public partial class MainWindow : Window
 
     private void AutoTranscribeCheckBox_OnChanged(object sender, RoutedEventArgs e)
     {
-        if (this.suppressSettingsEvents)
+        if (this.suppressSettingsEvents || !this.IsInitialized || this.AutoTranscribeCheckBox is null)
         {
             return;
         }
@@ -1074,6 +1075,14 @@ public partial class MainWindow : Window
     private void AppendLog(string message)
     {
         this.diagnosticsService.WriteEvent("APP", message);
+
+        // Some XAML controls can raise events while InitializeComponent is still
+        // building the visual tree. The portable log is already available, but
+        // the diagnostic TextBox may not exist yet.
+        if (this.LogBox is null)
+        {
+            return;
+        }
 
         if (this.LogBox.LineCount > 250)
         {

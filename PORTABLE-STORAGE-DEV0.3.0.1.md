@@ -1,4 +1,4 @@
-# Stockage portable DEV0.3.0
+# Stockage portable DEV0.3.0.1
 
 Toutes les données propres à PHONIE restent sous le dossier de l'application :
 

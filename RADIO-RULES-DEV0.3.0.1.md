@@ -1,4 +1,4 @@
-# Règles radio DEV0.3.0
+# Règles radio DEV0.3.0.1
 
 - Organisme contrôlé : dialogue autorisé.
 - Approche / SIV / service d'information : dialogue autorisé selon la logique disponible.

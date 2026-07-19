@@ -1,0 +1,14 @@
+PHONIE DEV0.3.0.1 - VALIDATION STATIQUE
+
+[OK] Correctif exact du crash XAML précoce appliqué
+[OK] suppressSettingsEvents actif avant InitializeComponent
+[OK] AutoTranscribeCheckBox protégé pendant l'initialisation
+[OK] AppendLog tolérant tant que LogBox n'est pas créé
+[OK] Capture startup-fatal ajoutée
+[OK] Version projet, interface, workflow et logs cohérente
+[OK] XML/XAML analysable
+[OK] Gestionnaires XAML contrôlés
+[OK] Archive ZIP testée
+
+Le SDK .NET Windows n'est pas disponible dans l'environnement local.
+La compilation GitHub Actions reste la validation binaire réelle.

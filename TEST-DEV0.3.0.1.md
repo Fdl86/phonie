@@ -1,12 +1,12 @@
-# Protocole de test PHONIE DEV0.3.0
+# Protocole de test PHONIE DEV0.3.0.1
 
 ## 1. Compilation et démarrage
 
 - Lancer le workflow GitHub Actions.
-- Vérifier que l'archive `PHONIE-DEV0.3.0-win-x64.zip` est produite.
+- Vérifier que l'archive `PHONIE-DEV0.3.0.1-win-x64.zip` est produite.
 - Extraire l'archive dans un dossier accessible en écriture.
 - Lancer `PHONIE.exe`.
-- Vérifier l'affichage `DEV0.3.0 - FIRST CONTACT`.
+- Vérifier l'affichage `DEV0.3.0.1 - FIRST CONTACT`.
 - Agrandir la fenêtre et vérifier que la barre inférieure reste au-dessus de la barre des tâches.
 - Vérifier l'absence de scroll vertical dans une zone de travail 1920 x 1080 standard.
 
