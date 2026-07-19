@@ -466,7 +466,7 @@ public sealed class AirportFacilityService : IDisposable
     private static string BuildTextReport(AirportFacilityReport report)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("PHONIE DEV0.3.0.3 - AIRPORT DATA");
+        builder.AppendLine("PHONIE DEV0.3.0.4 - AIRPORT DATA");
         builder.AppendLine($"Date : {report.Timestamp:yyyy-MM-dd HH:mm:ss zzz}");
         builder.AppendLine($"Simulateur : {report.Simulator}");
         builder.AppendLine($"Source : {report.Source}");

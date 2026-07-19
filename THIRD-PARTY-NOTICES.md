@@ -1,6 +1,6 @@
 # Third-party notices
 
-PHONIE DEV0.3.0.3 utilise :
+PHONIE DEV0.3.0.4 utilise :
 
 - `SimConnect.NET` 0.2.1 - licence MIT ;
 - `NAudio` 2.3.0 - licence MIT ;
@@ -14,3 +14,5 @@ PHONIE DEV0.3.0.3 utilise :
 Les modèles ne sont pas redistribués dans le dépôt source ni dans l'archive PHONIE produite par défaut. L'utilisateur déclenche leur téléchargement dans l'application.
 
 L'icône PHONIE intégrée à cette version a été créée spécifiquement pour le projet à partir de la maquette visuelle validée.
+
+- Modèle optionnel Whisper Large-v3 Turbo q5_0, téléchargé depuis le dépôt ggerganov/whisper.cpp sur Hugging Face.

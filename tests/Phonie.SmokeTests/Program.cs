@@ -2,6 +2,15 @@ using Phonie.Services;
 
 var failures = new List<string>();
 
+var turboProfile = Phonie.Models.SpeechRecognitionProfiles.Get(
+    Phonie.Models.SpeechRecognitionProfile.WhisperLargeV3TurboVulkan);
+if (!turboProfile.UsesVulkan
+    || turboProfile.Backend != Phonie.Models.SpeechRecognitionBackend.Whisper
+    || !turboProfile.DisplayName.Contains("Large-v3 Turbo", StringComparison.Ordinal))
+{
+    failures.Add("Profil Whisper Large-v3 Turbo Vulkan absent ou mal configuré.");
+}
+
 Check(
     "Phrase laboratoire exacte",
     "Poitiers Tour, Fox Hôtel Novembre Novembre Yankee, au parking pour tours de piste.",

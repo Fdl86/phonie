@@ -35,6 +35,13 @@ public sealed class WhisperService : IDisposable
                 "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
                 185_000_000,
                 "181 Mio"),
+            [SpeechRecognitionProfile.WhisperLargeV3TurboVulkan] = new(
+                "Whisper Large-v3 Turbo q5_0 multilingue Vulkan",
+                "ggml-large-v3-turbo-q5_0.bin",
+                new Uri("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin"),
+                "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+                570_000_000,
+                "548 Mio"),
         };
 
     private readonly SemaphoreSlim operationLock = new(1, 1);

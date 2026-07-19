@@ -14,7 +14,9 @@ public sealed class SpeechRecognitionService : IDisposable
     public SpeechRecognitionService(SpeechRecognitionProfile startupProfile)
     {
         this.selectedProfile = startupProfile;
-        this.startupWhisperUsesVulkan = startupProfile == SpeechRecognitionProfile.WhisperSmallVulkan;
+        var startupDefinition = SpeechRecognitionProfiles.Get(startupProfile);
+        this.startupWhisperUsesVulkan = startupDefinition.Backend == SpeechRecognitionBackend.Whisper
+            && startupDefinition.UsesVulkan;
         if (this.startupWhisperUsesVulkan)
         {
             RuntimeOptions.RuntimeLibraryOrder =
@@ -142,8 +144,18 @@ public sealed class SpeechRecognitionService : IDisposable
     {
         var results = new List<SpeechComparisonResult>();
         var compatibleProfiles = this.startupWhisperUsesVulkan
-            ? new[] { SpeechRecognitionProfile.WhisperSmallVulkan, SpeechRecognitionProfile.VoskFrench }
-            : new[] { SpeechRecognitionProfile.WhisperBaseCpu, SpeechRecognitionProfile.WhisperSmallCpu, SpeechRecognitionProfile.VoskFrench };
+            ? new[]
+            {
+                SpeechRecognitionProfile.WhisperSmallVulkan,
+                SpeechRecognitionProfile.WhisperLargeV3TurboVulkan,
+                SpeechRecognitionProfile.VoskFrench,
+            }
+            : new[]
+            {
+                SpeechRecognitionProfile.WhisperBaseCpu,
+                SpeechRecognitionProfile.WhisperSmallCpu,
+                SpeechRecognitionProfile.VoskFrench,
+            };
 
         foreach (var profile in compatibleProfiles)
         {

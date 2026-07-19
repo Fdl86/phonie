@@ -5,6 +5,7 @@ public enum SpeechRecognitionProfile
     WhisperBaseCpu,
     WhisperSmallCpu,
     WhisperSmallVulkan,
+    WhisperLargeV3TurboVulkan,
     VoskFrench,
 }
 
@@ -46,7 +47,14 @@ public static class SpeechRecognitionProfiles
             "Whisper Small Vulkan",
             SpeechRecognitionBackend.Whisper,
             true,
-            "Accélération GPU Vulkan avec retour explicite en cas d'indisponibilité."),
+            "Accélération GPU Vulkan légère avec retour explicite au CPU en cas d'indisponibilité."),
+        new(
+            SpeechRecognitionProfile.WhisperLargeV3TurboVulkan,
+            "Whisper Large-v3 Turbo Vulkan - qualité",
+            "Whisper Large-v3 Turbo Vulkan",
+            SpeechRecognitionBackend.Whisper,
+            true,
+            "Profil qualité GPU pour améliorer la transcription des phrases ATC et des indicatifs."),
         new(
             SpeechRecognitionProfile.VoskFrench,
             "Vosk FR - expérimental",

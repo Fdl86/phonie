@@ -1,0 +1,13 @@
+PHONIE DEV0.3.0.4 - VALIDATION STATIQUE
+
+- version 0.3.0.4 cohérente dans le projet, l'application et le workflow
+- profil WhisperLargeV3TurboVulkan présent dans l'énumération
+- profil déclaré comme Whisper + Vulkan
+- option visible dans la liste de profils
+- modèle Turbo q5_0 déclaré avec URL HTTPS, SHA-256 et taille minimale
+- comparateur Vulkan inclut Small, Large-v3 Turbo et Vosk
+- smoke test du profil Turbo ajouté
+- modèle absent du ZIP source
+- dossiers portables inchangés
+
+La compilation Windows réelle et l'exécution Vulkan restent validées par GitHub Actions puis par le test utilisateur.
