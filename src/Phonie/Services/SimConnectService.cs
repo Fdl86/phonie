@@ -68,7 +68,7 @@ public sealed class SimConnectService : IAsyncDisposable
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         this.PublishStatus(ConnectionState.Waiting, "En attente de Microsoft Flight Simulator");
-        this.PublishLog("PHONIE DEV0.3.0.1 démarrée. Recherche locale de SimConnect.");
+        this.PublishLog("PHONIE DEV0.3.0.2 démarrée. Recherche locale de SimConnect.");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -122,7 +122,7 @@ public sealed class SimConnectService : IAsyncDisposable
     {
         this.PublishStatus(ConnectionState.Connecting, "Connexion à SimConnect...");
 
-        var newClient = new SimConnectClient("PHONIE DEV0.3.0.1")
+        var newClient = new SimConnectClient("PHONIE DEV0.3.0.2")
         {
             AutoReconnectEnabled = false,
         };
@@ -260,6 +260,7 @@ public sealed class SimConnectService : IAsyncDisposable
         var distance = GeoMath.DistanceNm(latitude, longitude, LfbiLatitude, LfbiLongitude);
 
         // Enriched variables are optional and independently cooled down after a failure.
+        var aircraftAtcIdTask = this.GetOptionalAsync(connectedClient, "ATC ID", string.Empty, string.Empty, cancellationToken);
         var stationIdentTask = this.GetOptionalAsync(connectedClient, "COM ACTIVE FREQ IDENT:1", string.Empty, string.Empty, cancellationToken);
         var stationTypeTask = this.GetOptionalAsync(connectedClient, "COM ACTIVE FREQ TYPE:1", string.Empty, string.Empty, cancellationToken);
         var spacingTask = this.GetOptionalAsync(connectedClient, "COM SPACING MODE:1", "enum", 0, cancellationToken);
@@ -268,6 +269,7 @@ public sealed class SimConnectService : IAsyncDisposable
         var weatherTask = this.ReadWeatherWhenDueAsync(connectedClient, cancellationToken);
 
         await Task.WhenAll(
+            aircraftAtcIdTask,
             stationIdentTask,
             stationTypeTask,
             spacingTask,
@@ -281,6 +283,7 @@ public sealed class SimConnectService : IAsyncDisposable
             DateTimeOffset.Now,
             connectedClient.IsMSFS2024 ? "MSFS 2024" : "MSFS 2020",
             (await titleTask.ConfigureAwait(false)).Trim(),
+            NormalizeAtcId(await aircraftAtcIdTask.ConfigureAwait(false)),
             latitude,
             longitude,
             await altitudeTask.ConfigureAwait(false),
@@ -414,6 +417,22 @@ public sealed class SimConnectService : IAsyncDisposable
         this.lastErrorMessage = message;
         this.lastRepeatedErrorLog = now;
         this.PublishLog($"SimConnect indisponible : {message}");
+    }
+
+    private static string NormalizeAtcId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var compact = new string(value.Trim().ToUpperInvariant().Where(char.IsAsciiLetterOrDigit).ToArray());
+        if (compact.Length >= 4 && char.IsAsciiLetter(compact[0]))
+        {
+            return $"{compact[0]}-{compact[1..]}";
+        }
+
+        return value.Trim().ToUpperInvariant();
     }
 
     private static double NormalizeHeading(double heading)

@@ -20,12 +20,15 @@ public partial class MainWindow : Window
     private readonly GlobalKeyboardHook keyboardHook = new();
     private readonly JoystickService joystickService = new();
     private readonly DiagnosticsService diagnosticsService = new();
-    private readonly WhisperService whisperService = new();
+    private readonly SpeechRecognitionService speechRecognitionService;
     private readonly AtisService atisService = new();
     private readonly DispatcherTimer audioMeterTimer = new() { Interval = TimeSpan.FromMilliseconds(125) };
     private readonly HashSet<string> activePttSources = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> activePttSourceLabels = new(StringComparer.Ordinal);
     private AppSettings settings;
+    private readonly SpeechRecognitionProfile startupSpeechProfile;
+    private SpeechRecognitionProfile selectedSpeechProfile;
+    private bool speechProfileRestartRequired;
     private ConnectionState currentConnectionState = ConnectionState.Waiting;
     private bool suppressSettingsEvents = true;
     private bool awaitingPttKey;
@@ -60,6 +63,9 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         this.settings = this.settingsService.Load();
+        this.startupSpeechProfile = SpeechRecognitionProfiles.Parse(this.settings.SpeechRecognitionProfile);
+        this.selectedSpeechProfile = this.startupSpeechProfile;
+        this.speechRecognitionService = new SpeechRecognitionService(this.startupSpeechProfile);
         ThemeService.Apply(this.settings.Theme);
 
         this.InitializeComponent();
@@ -82,7 +88,7 @@ public partial class MainWindow : Window
         this.joystickService.LogMessage += this.Service_OnLogMessage;
 
         this.diagnosticsService.SampleAvailable += this.DiagnosticsService_OnSampleAvailable;
-        this.whisperService.StatusChanged += this.WhisperService_OnStatusChanged;
+        this.speechRecognitionService.StatusChanged += this.WhisperService_OnStatusChanged;
         this.audioMeterTimer.Tick += this.AudioMeterTimer_OnTick;
 
         this.Loaded += this.MainWindow_OnLoaded;
@@ -93,6 +99,7 @@ public partial class MainWindow : Window
     {
         this.SelectThemeInUi();
         this.SelectGainInUi();
+        this.SelectSpeechProfileInUi();
         this.RefreshAudioDevices();
         this.UpdatePttLabels();
         this.suppressSettingsEvents = true;
@@ -103,7 +110,7 @@ public partial class MainWindow : Window
             ? this.audioService.LastRecordingPath
             : null;
         this.PlayLastRecordingButton.IsEnabled = this.lastRecordingPath is not null;
-        this.UpdateWhisperStatus(this.whisperService.GetStatus());
+        this.UpdateWhisperStatus(this.speechRecognitionService.GetSelectedStatus());
         this.DiagnosticsPathText.Text = System.IO.Path.Combine("logs", System.IO.Path.GetFileName(this.diagnosticsService.SessionFilePath));
 
         this.diagnosticsService.Start(() => new DiagnosticsContext(
@@ -133,6 +140,9 @@ public partial class MainWindow : Window
         this.audioMeterTimer.Start();
         this.simConnectService.Start();
         this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Log portable : {this.diagnosticsService.SessionFilePath}");
+        var startupDefinition = SpeechRecognitionProfiles.Get(this.startupSpeechProfile);
+        var runtimeOrder = this.speechRecognitionService.StartupWhisperUsesVulkan ? "Vulkan puis CPU" : "CPU";
+        this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Profil ASR au démarrage : {startupDefinition.ShortName} - runtime Whisper {runtimeOrder}.");
     }
 
     private async void MainWindow_OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -149,7 +159,7 @@ public partial class MainWindow : Window
         await this.joystickService.DisposeAsync();
         this.transcriptionCancellation?.Cancel();
         this.transcriptionCancellation?.Dispose();
-        this.whisperService.Dispose();
+        this.speechRecognitionService.Dispose();
         this.audioService.Dispose();
         await this.simConnectService.DisposeAsync();
         await this.diagnosticsService.DisposeAsync();
@@ -363,26 +373,34 @@ public partial class MainWindow : Window
 
     private async void DownloadWhisperButton_OnClick(object sender, RoutedEventArgs e)
     {
+        var definition = SpeechRecognitionProfiles.Get(this.selectedSpeechProfile);
+        if (this.speechProfileRestartRequired)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Profil {definition.ShortName} enregistré. Redémarrage requis avant installation.");
+            this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(this.selectedSpeechProfile));
+            return;
+        }
+
         this.DownloadWhisperButton.IsEnabled = false;
         try
         {
             this.transcriptionCancellation?.Cancel();
             this.transcriptionCancellation?.Dispose();
             this.transcriptionCancellation = new CancellationTokenSource();
-            await this.whisperService.DownloadModelAsync(this.transcriptionCancellation.Token);
-            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Whisper Small q5_1 multilingue téléchargé et vérifié.");
+            await this.speechRecognitionService.DownloadSelectedModelAsync(this.transcriptionCancellation.Token);
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] {definition.DisplayName} téléchargé et vérifié.");
         }
         catch (OperationCanceledException)
         {
-            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Téléchargement Whisper annulé.");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Téléchargement ASR annulé.");
         }
         catch (Exception exception)
         {
-            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Téléchargement Whisper impossible : {CleanMessage(exception)}");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Téléchargement ASR impossible : {CleanMessage(exception)}");
         }
         finally
         {
-            this.UpdateWhisperStatus(this.whisperService.GetStatus());
+            this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(this.selectedSpeechProfile));
         }
     }
 
@@ -390,11 +408,80 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrWhiteSpace(this.lastRecordingPath) || !File.Exists(this.lastRecordingPath))
         {
-            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Aucun enregistrement PTT disponible pour Whisper.");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Aucun enregistrement PTT disponible pour la reconnaissance.");
             return;
         }
 
         await this.TranscribeAndProcessAsync(this.lastRecordingPath, true);
+    }
+
+    private async void CompareAsrButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (this.transcriptionInProgress)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Une reconnaissance est déjà en cours.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(this.lastRecordingPath) || !File.Exists(this.lastRecordingPath))
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Aucun enregistrement PTT disponible pour la comparaison.");
+            return;
+        }
+
+        this.transcriptionInProgress = true;
+        this.transcriptionCancellation?.Cancel();
+        this.transcriptionCancellation?.Dispose();
+        this.transcriptionCancellation = new CancellationTokenSource();
+        this.ExchangeLatencyText.Text = "COMPARAISON...";
+        this.PilotTranscriptTextBox.Text = "Comparaison des profils ASR installés sur le même enregistrement...";
+        this.CompareAsrButton.IsEnabled = false;
+        this.TranscribeLastButton.IsEnabled = false;
+        try
+        {
+            var results = await this.speechRecognitionService.CompareInstalledAsync(
+                this.lastRecordingPath,
+                this.transcriptionCancellation.Token);
+            var expectedCallsign = this.latestSnapshot?.AircraftAtcId;
+            var lines = results.Select(result =>
+            {
+                var name = SpeechRecognitionProfiles.Get(result.Profile).ShortName;
+                if (!result.WasRun)
+                {
+                    return $"{name} - {result.Status}";
+                }
+
+                var analysis = PhraseologyService.Analyze(result.Transcript, expectedCallsign);
+                return $"{name} - {result.ProcessingTime.TotalSeconds:F2} s\n" +
+                       $"Indicatif {analysis.Callsign ?? "-"} | Station {analysis.CalledStation ?? "-"} | Intention {analysis.Intention ?? "-"}\n" +
+                       result.Transcript;
+            });
+            this.PilotTranscriptTextBox.Text = string.Join(Environment.NewLine + Environment.NewLine, lines);
+            this.ExchangeLatencyText.Text = "COMPARAISON TERMINÉE";
+            foreach (var result in results)
+            {
+                var operationalSummary = result.WasRun
+                    ? FormatAnalysis(PhraseologyService.Analyze(result.Transcript, expectedCallsign))
+                    : result.Status;
+                this.diagnosticsService.WriteEvent(
+                    "ASR_COMPARE",
+                    $"{SpeechRecognitionProfiles.Get(result.Profile).ShortName} - {(result.WasRun ? $"{result.ProcessingTime.TotalSeconds:F2} s - {operationalSummary} - {result.Transcript}" : result.Status)}");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            this.ExchangeLatencyText.Text = "ANNULÉ";
+        }
+        catch (Exception exception)
+        {
+            this.ExchangeLatencyText.Text = "ERREUR COMPARAISON";
+            this.PilotTranscriptTextBox.Text = $"Comparaison impossible : {CleanMessage(exception)}";
+        }
+        finally
+        {
+            this.transcriptionInProgress = false;
+            this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(this.selectedSpeechProfile));
+        }
     }
 
     private void AnalyzeLabTextButton_OnClick(object sender, RoutedEventArgs e)
@@ -419,6 +506,33 @@ public partial class MainWindow : Window
         this.settings.AutoTranscribePtt = this.AutoTranscribeCheckBox.IsChecked == true;
         this.SaveSettings();
         this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Transcription automatique PTT : {(this.settings.AutoTranscribePtt ? "activée" : "désactivée")}.");
+    }
+
+    private void SpeechProfileComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (this.suppressSettingsEvents
+            || this.SpeechProfileComboBox.SelectedItem is not ComboBoxItem item
+            || item.Tag is not string tag
+            || !Enum.TryParse<SpeechRecognitionProfile>(tag, true, out var profile))
+        {
+            return;
+        }
+
+        this.selectedSpeechProfile = profile;
+        this.settings.SpeechRecognitionProfile = profile.ToString();
+        this.speechProfileRestartRequired = !this.speechRecognitionService.SelectProfile(profile);
+        this.SaveSettings();
+        var definition = SpeechRecognitionProfiles.Get(profile);
+        if (this.speechProfileRestartRequired)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Profil {definition.ShortName} enregistré. Redémarrez PHONIE pour changer de runtime Whisper.");
+        }
+        else
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Profil ASR actif : {definition.ShortName}.");
+        }
+
+        this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(profile));
     }
 
     private void ClearLogButton_OnClick(object sender, RoutedEventArgs e) => this.LogBox.Clear();
@@ -726,7 +840,7 @@ public partial class MainWindow : Window
 
             this.lastRecordingPath = result.FilePath;
             this.PlayLastRecordingButton.IsEnabled = result.FileSizeBytes > 44;
-            this.TranscribeLastButton.IsEnabled = result.FileSizeBytes > 44 && this.whisperService.IsModelReady;
+            this.TranscribeLastButton.IsEnabled = result.FileSizeBytes > 44 && this.speechRecognitionService.IsSelectedModelReady && !this.speechProfileRestartRequired;
             this.PttStateText.Text = $"Enregistré - +{result.GainDb} dB";
             this.SetForegroundResource(this.PttStateText, result.LimitedSampleCount > 0 ? "Warning" : "Success");
             this.SetDotResource(this.PttFooterDot, "Success");
@@ -739,13 +853,18 @@ public partial class MainWindow : Window
 
             if (this.settings.AutoTranscribePtt)
             {
-                if (this.whisperService.IsModelReady)
+                if (this.speechProfileRestartRequired)
+                {
+                    this.PilotTranscriptTextBox.Text = "PTT enregistré. Redémarrez PHONIE pour activer le profil ASR sélectionné.";
+                    this.ExchangeLatencyText.Text = "REDÉMARRAGE REQUIS";
+                }
+                else if (this.speechRecognitionService.IsSelectedModelReady)
                 {
                     await this.TranscribeAndProcessAsync(result.FilePath, true);
                 }
                 else
                 {
-                    this.PilotTranscriptTextBox.Text = "PTT enregistré. Téléchargez Whisper Small q5_1 pour activer la transcription locale.";
+                    this.PilotTranscriptTextBox.Text = "PTT enregistré. Installez le modèle du profil ASR sélectionné.";
                     this.ExchangeLatencyText.Text = "MODÈLE MANQUANT";
                 }
             }
@@ -818,9 +937,12 @@ public partial class MainWindow : Window
             this.diagnosticsStation = this.currentOperationalFrequency.ServiceName;
 
             this.SimulatorText.Text = snapshot.Simulator;
-            this.AircraftText.Text = string.IsNullOrWhiteSpace(snapshot.AircraftTitle)
+            var aircraftTitle = string.IsNullOrWhiteSpace(snapshot.AircraftTitle)
                 ? "Avion sans titre SimConnect"
                 : snapshot.AircraftTitle;
+            this.AircraftText.Text = string.IsNullOrWhiteSpace(snapshot.AircraftAtcId)
+                ? aircraftTitle
+                : $"{aircraftTitle} - ATC ID {snapshot.AircraftAtcId}";
 
             this.PositionText.Text = FormatCoordinates(snapshot.Latitude, snapshot.Longitude);
             this.DistanceText.Text = $"Distance LFBI : {snapshot.DistanceToLfbiNm:F1} NM";
@@ -884,13 +1006,24 @@ public partial class MainWindow : Window
 
     private void UpdateWhisperStatus(SpeechModelStatus status)
     {
+        var definition = SpeechRecognitionProfiles.Get(this.selectedSpeechProfile);
         this.WhisperStatusText.Text = status.Message;
         this.WhisperProgressBar.Value = Math.Clamp(status.ProgressPercent, 0, 100);
         this.WhisperProgressBar.Visibility = status.State == SpeechModelState.Downloading ? Visibility.Visible : Visibility.Collapsed;
-        this.DownloadWhisperButton.IsEnabled = status.State is not SpeechModelState.Downloading and not SpeechModelState.Loading and not SpeechModelState.Transcribing;
-        this.DownloadWhisperButton.Content = this.whisperService.IsModelReady ? "Small q5_1 installé" : "Télécharger Small q5_1";
-        this.TranscribeLastButton.IsEnabled = this.whisperService.IsModelReady
+        var busy = status.State is SpeechModelState.Downloading or SpeechModelState.Loading or SpeechModelState.Transcribing;
+        var modelReady = this.speechRecognitionService.IsModelReady(this.selectedSpeechProfile);
+        this.DownloadWhisperButton.IsEnabled = !busy && !this.speechProfileRestartRequired;
+        this.DownloadWhisperButton.Content = this.speechProfileRestartRequired
+            ? "Redémarrer"
+            : modelReady
+                ? "Profil installé"
+                : "Installer profil";
+        this.TranscribeLastButton.IsEnabled = modelReady
+            && !this.speechProfileRestartRequired
             && !this.transcriptionInProgress
+            && !string.IsNullOrWhiteSpace(this.lastRecordingPath)
+            && File.Exists(this.lastRecordingPath);
+        this.CompareAsrButton.IsEnabled = !this.transcriptionInProgress
             && !string.IsNullOrWhiteSpace(this.lastRecordingPath)
             && File.Exists(this.lastRecordingPath);
 
@@ -898,43 +1031,54 @@ public partial class MainWindow : Window
         {
             SpeechModelState.Ready => "Success",
             SpeechModelState.Downloading or SpeechModelState.Loading or SpeechModelState.Transcribing => "Accent",
+            SpeechModelState.RestartRequired => "Warning",
             SpeechModelState.Error => "Danger",
             _ => "Warning",
         };
         this.SetForegroundResource(this.WhisperStatusText, resource);
+        this.DownloadWhisperButton.ToolTip = definition.Description;
     }
 
     private async Task TranscribeAndProcessAsync(string audioPath, bool fromMicrophone)
     {
         if (this.transcriptionInProgress)
         {
-            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Whisper est déjà en cours de traitement.");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Une reconnaissance est déjà en cours.");
             return;
         }
 
-        if (!this.whisperService.IsModelReady)
+        if (this.speechProfileRestartRequired)
         {
-            this.UpdateWhisperStatus(this.whisperService.GetStatus());
-            this.PilotTranscriptTextBox.Text = "Modèle Whisper Small q5_1 manquant.";
+            this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(this.selectedSpeechProfile));
+            this.PilotTranscriptTextBox.Text = "Redémarrez PHONIE pour activer le runtime du profil sélectionné.";
             return;
         }
 
+        if (!this.speechRecognitionService.IsSelectedModelReady)
+        {
+            this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(this.selectedSpeechProfile));
+            this.PilotTranscriptTextBox.Text = "Modèle du profil ASR sélectionné manquant.";
+            return;
+        }
+
+        var definition = SpeechRecognitionProfiles.Get(this.selectedSpeechProfile);
         this.transcriptionInProgress = true;
         this.transcriptionCancellation?.Cancel();
         this.transcriptionCancellation?.Dispose();
         this.transcriptionCancellation = new CancellationTokenSource();
         this.ExchangeLatencyText.Text = "TRANSCRIPTION...";
-        this.PilotTranscriptTextBox.Text = "Whisper Small q5_1 analyse le dernier PTT en français...";
+        this.PilotTranscriptTextBox.Text = $"{definition.ShortName} analyse le dernier PTT en français...";
         this.TranscribeLastButton.IsEnabled = false;
+        this.CompareAsrButton.IsEnabled = false;
 
         try
         {
-            var result = await this.whisperService.TranscribeAsync(audioPath, this.transcriptionCancellation.Token);
+            var result = await this.speechRecognitionService.TranscribeAsync(audioPath, this.transcriptionCancellation.Token);
             this.ProcessPilotText(result.NormalizedText, fromMicrophone, result.ProcessingTime);
             this.diagnosticsService.WriteEvent(
                 "ASR",
-                $"Whisper Small q5_1 - {result.ProcessingTime.TotalSeconds:F2} s - {result.Segments.Count} segment(s) - {result.NormalizedText}");
-            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Whisper Small q5_1 : transcription terminée en {result.ProcessingTime.TotalSeconds:F1} s.");
+                $"{result.ModelName} - {result.ProcessingTime.TotalSeconds:F2} s - {result.Segments.Count} segment(s) - {result.NormalizedText}");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] {result.ModelName} : transcription terminée en {result.ProcessingTime.TotalSeconds:F1} s.");
         }
         catch (OperationCanceledException)
         {
@@ -945,19 +1089,19 @@ public partial class MainWindow : Window
             var message = CleanMessage(exception);
             this.ExchangeLatencyText.Text = "ERREUR ASR";
             this.PilotTranscriptTextBox.Text = $"Transcription impossible : {message}";
-            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Whisper : {message}");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] ASR : {message}");
         }
         finally
         {
             this.transcriptionInProgress = false;
-            this.UpdateWhisperStatus(this.whisperService.GetStatus());
+            this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(this.selectedSpeechProfile));
         }
     }
 
     private void ProcessPilotText(string text, bool fromMicrophone, TimeSpan processingTime)
     {
         var cleanText = text.Trim();
-        var analysis = PhraseologyService.Analyze(cleanText);
+        var analysis = PhraseologyService.Analyze(cleanText, this.latestSnapshot?.AircraftAtcId);
         var response = PhraseologyService.BuildFirstContactResponse(
             analysis,
             this.currentOperationalFrequency,
@@ -1047,9 +1191,14 @@ public partial class MainWindow : Window
         this.RadioPolicyCard.SetResourceReference(Border.BorderBrushProperty, resource);
     }
 
-    private static string FormatAnalysis(PilotMessageAnalysis analysis) =>
-        $"Station {analysis.CalledStation ?? "-"} | Indicatif {analysis.Callsign ?? "-"} | Position {analysis.Position ?? "-"} | Intention {analysis.Intention ?? "-"} | ATIS {analysis.AtisLetter ?? "-"}" +
-        (analysis.MissingCriticalFields.Count > 0 ? $" | Manque : {string.Join(", ", analysis.MissingCriticalFields)}" : string.Empty);
+    private static string FormatAnalysis(PilotMessageAnalysis analysis)
+    {
+        var callsignDetail = analysis.Callsign is null
+            ? "-"
+            : $"{analysis.Callsign} ({analysis.CallsignSource}, {analysis.CallsignConfidence:P0})";
+        return $"Station {analysis.CalledStation ?? "-"} | Indicatif {callsignDetail} | Position {analysis.Position ?? "-"} | Intention {analysis.Intention ?? "-"} | ATIS {analysis.AtisLetter ?? "-"}" +
+               (analysis.MissingCriticalFields.Count > 0 ? $" | Manque : {string.Join(", ", analysis.MissingCriticalFields)}" : string.Empty);
+    }
 
     private static string CleanMessage(Exception exception)
     {
@@ -1101,6 +1250,21 @@ public partial class MainWindow : Window
         try
         {
             this.ThemeComboBox.SelectedIndex = string.Equals(this.settings.Theme, ThemeService.Light, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        }
+        finally
+        {
+            this.suppressSettingsEvents = false;
+        }
+    }
+
+    private void SelectSpeechProfileInUi()
+    {
+        this.suppressSettingsEvents = true;
+        try
+        {
+            this.SpeechProfileComboBox.SelectedItem = this.SpeechProfileComboBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), this.selectedSpeechProfile.ToString(), StringComparison.OrdinalIgnoreCase));
         }
         finally
         {

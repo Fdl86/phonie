@@ -4,6 +4,7 @@ public sealed record SimulatorSnapshot(
     DateTimeOffset Timestamp,
     string Simulator,
     string AircraftTitle,
+    string AircraftAtcId,
     double Latitude,
     double Longitude,
     double AltitudeFeet,

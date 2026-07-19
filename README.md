@@ -1,77 +1,123 @@
-# PHONIE DEV0.3.0.1 - FIRST CONTACT STARTUP HOTFIX
+# PHONIE DEV0.3.0.2 - ASR PROFILES & CALLSIGN FUZZY
 
 PHONIE est une application Windows x64 portable destinée à construire un contrôle aérien VFR vocal en français pour Microsoft Flight Simulator 2020 et 2024.
 
-## Première avancée opérationnelle
+DEV0.3.0.2 prolonge le jalon First Contact avec une vraie couche de comparaison des moteurs de reconnaissance et une récupération plus robuste de l'indicatif de l'avion.
 
-DEV0.3.0.1 corrige le démarrage silencieux de DEV0.3.0 et conserve intégralement le périmètre First Contact. Cette base regroupe les corrections prévues pour DEV0.2.6 et le premier jalon vocal :
+## Nouveautés principales
 
-- interface compacte adaptée à la zone de travail Windows, sans passer sous la barre des tâches ;
-- fiche aérodrome LFBI visible ;
-- classification opérationnelle des fréquences ;
-- ATIS texte expérimental à partir de la météo locale et des pistes SimConnect ;
-- transcription locale du dernier PTT avec Whisper Small q5_1 multilingue ;
-- analyse de la station appelée, de l'indicatif, de la position, de l'intention et de l'information ATIS ;
-- première réponse ATC écrite pour un appel au parking en vue de tours de piste ;
-- mode laboratoire permettant de tester une phrase sans refaire un vol ;
-- export des échanges dans `logs\sessions`.
+- quatre profils de reconnaissance sélectionnables ;
+- Whisper Base q5_1 CPU pour privilégier la vitesse ;
+- Whisper Small q5_1 CPU pour privilégier la précision ;
+- Whisper Small q5_1 avec runtime Vulkan pour tester l'accélération GPU ;
+- Vosk Small FR 0.22 comme moteur expérimental indépendant ;
+- comparaison de tous les profils installés sur le même fichier PTT ;
+- lecture de l'identifiant ATC de l'avion directement depuis SimConnect ;
+- rapprochement phonétique de la transcription avec cet identifiant ;
+- tolérance aux variantes telles que Golf, Golfe, Gold, Alfa ou Charlie ;
+- gain micro par défaut ramené à +9 dB pour les nouvelles installations ;
+- conservation de tous les réglages, modèles, journaux et caches dans le dossier PHONIE.
 
-Vosk n'est pas intégré.
+## Profils ASR
 
-## Whisper
+### Whisper Base CPU - rapide
 
-Le modèle retenu est `small-q5_1`, multilingue et configuré explicitement en français. Il représente le compromis initial poids/précision de PHONIE.
+Modèle `ggml-base-q5_1.bin`, environ 57 Mio. Il vise une latence plus faible que le modèle Small.
 
-Le modèle n'est pas inclus dans l'archive compilée. Le bouton `Télécharger Small q5_1` l'enregistre dans :
+### Whisper Small CPU - équilibré
+
+Modèle `ggml-small-q5_1.bin`, environ 181 Mio. Il reste le profil CPU de précision.
+
+### Whisper Small Vulkan - GPU
+
+Utilise le même modèle Small avec le runtime Vulkan. Le runtime Whisper est choisi au démarrage. Le passage CPU vers Vulkan, ou Vulkan vers CPU, demande donc un redémarrage de PHONIE.
+
+Le runtime Vulkan peut revenir au runtime CPU si Vulkan ne peut pas être chargé. PHONIE ne bascule jamais silencieusement vers Vosk.
+
+### Vosk FR - expérimental
+
+Utilise `vosk-model-small-fr-0.22`. Ce profil est séparé de Whisper et sert à mesurer la vitesse et la qualité sur la phraséologie ATC française.
+
+## Installation des modèles
+
+Les modèles ne sont pas inclus dans l'archive compilée. Sélectionner un profil puis cliquer sur `Installer profil`.
+
+Les téléchargements sont vérifiés par SHA-256 avant installation :
 
 ```text
+PHONIE\models\whisper\ggml-base-q5_1.bin
 PHONIE\models\whisper\ggml-small-q5_1.bin
+PHONIE\models\vosk\vosk-model-small-fr-0.22\
 ```
 
-PHONIE vérifie l'empreinte SHA-1 officielle avant de l'accepter. Après ce téléchargement unique, la transcription fonctionne entièrement en local.
+## Indicatif issu du simulateur
 
-Le runtime CPU nécessite les instructions AVX/AVX2/FMA/F16C et le redistribuable Microsoft Visual C++ 2019 ou plus récent. La configuration cible actuelle répond aux exigences CPU ; le redistribuable est généralement déjà présent avec MSFS et les jeux récents.
+PHONIE lit la SimVar `ATC ID`. Cet identifiant devient la référence contextuelle pour analyser la transmission.
 
-## Profil radio LFBI
+Exemple :
 
-Le build distingue données brutes du simulateur et interprétation opérationnelle :
+```text
+ATC ID SimConnect : F-GABC
+Transcription : Fox Colf Alfa Bravo Charlie
+Résultat PHONIE : F-GABC - rapprochement phonétique
+```
 
-- `118.505` - Poitiers Tour MSFS 2024 - dialogue autorisé ;
-- `118.500` - Poitiers Tour MSFS 2020 ou doublon hérité - dialogue autorisé ;
-- `121.780` - ATIS - diffusion automatique, aucune réponse au pilote ;
-- `124.000` - répondeur enregistré - aucune conversation ;
-- `134.100` - Poitiers Approche / SIV - dialogue autorisé.
+PHONIE ne remplace pas arbitrairement une suite de mots par un indicatif. La détection utilise l'ordre des lettres, la proximité phonétique et un seuil de confiance.
 
-Le scenery LFBI personnalisé peut ajouter ou dupliquer des entrées. PHONIE conserve les données brutes dans les rapports et applique ensuite ses règles opérationnelles.
+## Comparaison sur le même PTT
 
-## Airport Data
+Le bouton `Comparer` reprend le dernier enregistrement et exécute tous les profils compatibles déjà installés. Aucun nouveau son n'est enregistré entre les essais.
 
-La définition `TAXI_PATH` a été réalignée sur la structure complète de la Facilities API. Les champs de bord, d'éclairage et de ligne centrale sont lus avant les index de début et de fin. Les valeurs incohérentes génèrent maintenant des avertissements explicites.
+Un démarrage CPU compare :
 
-Les départs de type non-piste restent disponibles dans les données brutes, mais ne sont plus présentés comme de vrais seuils.
+```text
+Whisper Base CPU
+Whisper Small CPU
+Vosk FR
+```
 
-## Arborescence portable
+Un démarrage Vulkan compare :
+
+```text
+Whisper Small Vulkan
+Vosk FR
+```
+
+## Périmètre First Contact conservé
+
+- connexion MSFS 2020 et MSFS 2024 ;
+- PTT clavier et HOTAS ;
+- Airport Data LFBI ;
+- ATIS texte ;
+- classification opérationnelle des fréquences ;
+- silence sur ATIS, répondeur et fréquence inconnue ;
+- première réponse écrite de la TOUR ;
+- export des échanges dans `logs\sessions`.
+
+## Stockage portable
 
 ```text
 PHONIE\
 |-- PHONIE.exe
 |-- config\
-|   `-- settings.json
 |-- logs\
-|   |-- PHONIE-DEV0.3.0.1-*.log
 |   |-- airport-data\
 |   `-- sessions\
 |-- models\
-|   `-- whisper\
+|   |-- whisper\
+|   `-- vosk\
 |-- recordings\
-|   `-- last-ptt.wav
 `-- cache\
 ```
 
-PHONIE ne stocke pas ses réglages, journaux, enregistrements, modèles ou caches dans AppData ou le registre. Son dossier doit être accessible en écriture.
+PHONIE n'utilise ni AppData ni le registre pour ses propres données. Le dossier d'installation doit être accessible en écriture.
+
+## Limite Airport Data connue
+
+Les TaxiPaths du scenery LFBI custom produisent encore des champs de piste incohérents dans la structure brute. PHONIE les signale comme avertissements et ne doit pas les utiliser comme données opérationnelles valides. Cette version reste centrée sur la reconnaissance vocale et l'indicatif.
 
 ## Compilation
 
-Le workflow GitHub Actions produit une version Windows x64 autonome. Le modèle Whisper reste séparé afin de ne pas alourdir chaque archive de build.
+Le workflow GitHub Actions produit une version Windows x64 autonome. Le SDK .NET Windows n'étant pas disponible dans l'environnement de préparation, GitHub Actions reste la validation réelle de compilation.
 
-Commencer par `TEST-DEV0.3.0.1.md`.
+Commencer par `TEST-DEV0.3.0.2.md`.

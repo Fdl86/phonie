@@ -1,0 +1,52 @@
+PHONIE DEV0.3.0.2 - VALIDATION STATIQUE
+
+Date de préparation : 2026-07-19
+Base : DEV0.3.0.1 Startup Hotfix
+Cible : .NET 8 WPF - Windows x64 autonome
+
+CONTRÔLES RÉUSSIS
+
+- App.xaml : XML valide
+- MainWindow.xaml : XML valide
+- Themes/Dark.xaml : XML valide
+- Themes/Light.xaml : XML valide
+- Phonie.csproj : XML valide
+- build-windows.yml : YAML valide
+- 26 gestionnaires XAML repérés et présents dans MainWindow.xaml.cs
+- aucun doublon de méthode détecté dans MainWindow.xaml.cs
+- délimiteurs C# contrôlés sur tous les fichiers source
+- aucune occurrence de tiret long dans les sources et documents
+- version 0.3.0.2 cohérente dans le projet, l'application et le workflow
+- PackageReference Whisper.net.Runtime.Vulkan 1.7.4 présent
+- PackageReference Vosk 0.3.38 présent
+- lecture de la SimVar ATC ID présente
+- modèles Whisper Base et Small séparés
+- empreintes SHA-256 Whisper présentes
+- empreinte SHA-256 officielle de l'archive Vosk présente
+- extraction Vosk protégée contre la traversée de chemins
+- stockage portable Vosk ajouté à AppPaths
+- profil ASR persistant ajouté aux réglages
+- gain par défaut +9 dB pour une nouvelle configuration
+- comparaison multi-profils fondée sur le même enregistrement
+- analyse station, indicatif et intention ajoutée à la comparaison
+- rapprochement fuzzy testé statiquement sur les cinq transcriptions de la campagne utilisateur
+- aucune fréquence LFBI universelle ajoutée à la couche SimConnect brute
+- aucun dossier bin, obj, cache de compilation ou SDK local inclus
+
+TESTS FUZZY AVEC ATC ID F-GABC
+
+- Fox Golf Alfa Marvo Charlie : 85,1 %
+- Fox Gold Fabre Beauchardie : 72,3 %
+- Fox Gold va pas Bravo Charlie : 87,5 %
+- FoxGolf Alfa Bravo Charlie : 93,6 %
+- Fox Colf Alfa Bravo Charlie : 89,4 %
+
+Seuil actuel : 68 %.
+
+LIMITES DE LA VALIDATION
+
+- aucun SDK .NET Windows n'est installé dans l'environnement de préparation ;
+- aucune compilation C# locale n'a donc été exécutée ;
+- le premier workflow GitHub Actions reste la validation réelle des API NuGet, du runtime Vulkan, de Vosk et du binaire Windows ;
+- les performances et la précision doivent être mesurées en situation réelle avec le HyperX, MSFS 2024 et la RX 7800 XT ;
+- les avertissements TaxiPath liés au scenery LFBI custom restent hors du périmètre ASR de cette version.

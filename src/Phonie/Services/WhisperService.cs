@@ -2,8 +2,6 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
-using NAudio.Wave;
-using NAudio.Wave.SampleProviders;
 using Phonie.Models;
 using Whisper.net;
 
@@ -11,49 +9,82 @@ namespace Phonie.Services;
 
 public sealed class WhisperService : IDisposable
 {
-    public const string ModelDisplayName = "Whisper Small q5_1 multilingue";
-    public const string ModelFileName = "ggml-small-q5_1.bin";
-    public const long ExpectedModelSizeBytes = 190_000_000;
-    public const string ExpectedSha1 = "6fe57ddcfdd1c6b07cdcc73aaf620810ce5fc771";
-
-    private static readonly Uri ModelUri = new("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin");
     private static readonly HttpClient HttpClient = new() { Timeout = Timeout.InfiniteTimeSpan };
+
+    private static readonly IReadOnlyDictionary<SpeechRecognitionProfile, WhisperModelSpec> Models =
+        new Dictionary<SpeechRecognitionProfile, WhisperModelSpec>
+        {
+            [SpeechRecognitionProfile.WhisperBaseCpu] = new(
+                "Whisper Base q5_1 multilingue",
+                "ggml-base-q5_1.bin",
+                new Uri("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin"),
+                "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898",
+                59_000_000,
+                "57 Mio"),
+            [SpeechRecognitionProfile.WhisperSmallCpu] = new(
+                "Whisper Small q5_1 multilingue",
+                "ggml-small-q5_1.bin",
+                new Uri("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin"),
+                "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+                185_000_000,
+                "181 Mio"),
+            [SpeechRecognitionProfile.WhisperSmallVulkan] = new(
+                "Whisper Small q5_1 multilingue Vulkan",
+                "ggml-small-q5_1.bin",
+                new Uri("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin"),
+                "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+                185_000_000,
+                "181 Mio"),
+        };
 
     private readonly SemaphoreSlim operationLock = new(1, 1);
     private WhisperFactory? factory;
+    private string? loadedModelPath;
     private bool disposed;
 
     public event EventHandler<SpeechModelStatus>? StatusChanged;
 
-    public string ModelPath => Path.Combine(AppPaths.WhisperModelsDirectory, ModelFileName);
+    public bool IsModelReady(SpeechRecognitionProfile profile)
+    {
+        var model = GetModel(profile);
+        var path = GetModelPath(profile);
+        return File.Exists(path) && new FileInfo(path).Length >= model.MinimumSizeBytes;
+    }
 
-    public bool IsModelReady => File.Exists(this.ModelPath) && new FileInfo(this.ModelPath).Length > 170_000_000;
+    public string GetModelPath(SpeechRecognitionProfile profile)
+    {
+        var model = GetModel(profile);
+        return Path.Combine(AppPaths.WhisperModelsDirectory, model.FileName);
+    }
 
-    public SpeechModelStatus GetStatus() => this.IsModelReady
-        ? new SpeechModelStatus(SpeechModelState.Ready, $"{ModelDisplayName} prêt - 181 Mio")
-        : new SpeechModelStatus(SpeechModelState.Missing, "Modèle Whisper Small q5_1 non installé");
+    public SpeechModelStatus GetStatus(SpeechRecognitionProfile profile)
+    {
+        var model = GetModel(profile);
+        return this.IsModelReady(profile)
+            ? new SpeechModelStatus(profile, SpeechModelState.Ready, $"{model.DisplayName} prêt - {model.SizeLabel}")
+            : new SpeechModelStatus(profile, SpeechModelState.Missing, $"{model.DisplayName} non installé");
+    }
 
-    public async Task DownloadModelAsync(CancellationToken cancellationToken = default)
+    public async Task DownloadModelAsync(SpeechRecognitionProfile profile, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(this.disposed, this);
+        var model = GetModel(profile);
+        var modelPath = this.GetModelPath(profile);
         await this.operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (this.IsModelReady)
+            if (this.IsModelReady(profile))
             {
-                this.PublishStatus(new SpeechModelStatus(SpeechModelState.Ready, $"{ModelDisplayName} déjà présent"));
+                this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Ready, $"{model.DisplayName} déjà présent"));
                 return;
             }
 
             Directory.CreateDirectory(AppPaths.WhisperModelsDirectory);
-            var temporaryPath = this.ModelPath + ".download";
-            if (File.Exists(temporaryPath))
-            {
-                File.Delete(temporaryPath);
-            }
+            var temporaryPath = modelPath + ".download";
+            TryDelete(temporaryPath);
 
-            this.PublishStatus(new SpeechModelStatus(SpeechModelState.Downloading, "Téléchargement de Whisper Small q5_1..."));
-            using var response = await HttpClient.GetAsync(ModelUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Downloading, $"Téléchargement de {model.DisplayName}..."));
+            using var response = await HttpClient.GetAsync(model.Uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             var total = response.Content.Headers.ContentLength;
             await using var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -63,7 +94,7 @@ public sealed class WhisperService : IDisposable
             var lastPublished = DateTimeOffset.MinValue;
             while (true)
             {
-                var read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                var read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken).ConfigureAwait(false);
                 if (read == 0)
                 {
                     break;
@@ -76,8 +107,9 @@ public sealed class WhisperService : IDisposable
                 {
                     var progress = total is > 0 ? downloaded * 100.0 / total.Value : 0;
                     this.PublishStatus(new SpeechModelStatus(
+                        profile,
                         SpeechModelState.Downloading,
-                        total is > 0 ? $"Téléchargement Whisper Small q5_1 - {progress:F0} %" : "Téléchargement Whisper Small q5_1...",
+                        total is > 0 ? $"Téléchargement {model.DisplayName} - {progress:F0} %" : $"Téléchargement {model.DisplayName}...",
                         progress,
                         downloaded,
                         total));
@@ -88,24 +120,24 @@ public sealed class WhisperService : IDisposable
             await output.FlushAsync(cancellationToken).ConfigureAwait(false);
             output.Close();
 
-            var actualHash = await ComputeSha1Async(temporaryPath, cancellationToken).ConfigureAwait(false);
-            if (!string.Equals(actualHash, ExpectedSha1, StringComparison.OrdinalIgnoreCase))
+            var actualHash = await ComputeSha256Async(temporaryPath, cancellationToken).ConfigureAwait(false);
+            if (!string.Equals(actualHash, model.Sha256, StringComparison.OrdinalIgnoreCase))
             {
-                File.Delete(temporaryPath);
-                throw new InvalidDataException($"Empreinte du modèle invalide : {actualHash}.");
+                TryDelete(temporaryPath);
+                throw new InvalidDataException($"Empreinte SHA-256 du modèle invalide : {actualHash}.");
             }
 
-            File.Move(temporaryPath, this.ModelPath, true);
-            this.PublishStatus(new SpeechModelStatus(SpeechModelState.Ready, $"{ModelDisplayName} prêt - 181 Mio", 100, downloaded, total));
+            File.Move(temporaryPath, modelPath, true);
+            this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Ready, $"{model.DisplayName} prêt - {model.SizeLabel}", 100, downloaded, total));
         }
         catch (OperationCanceledException)
         {
-            this.PublishStatus(new SpeechModelStatus(SpeechModelState.Missing, "Téléchargement Whisper annulé"));
+            this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Missing, "Téléchargement Whisper annulé"));
             throw;
         }
         catch (Exception exception)
         {
-            this.PublishStatus(new SpeechModelStatus(SpeechModelState.Error, $"Whisper : {CleanMessage(exception)}"));
+            this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Error, $"Whisper : {CleanMessage(exception)}"));
             throw;
         }
         finally
@@ -114,29 +146,38 @@ public sealed class WhisperService : IDisposable
         }
     }
 
-    public async Task<SpeechTranscriptionResult> TranscribeAsync(string inputWavPath, CancellationToken cancellationToken = default)
+    public async Task<SpeechTranscriptionResult> TranscribeAsync(
+        SpeechRecognitionProfile profile,
+        string inputWavPath,
+        CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(this.disposed, this);
-        if (!this.IsModelReady)
+        var model = GetModel(profile);
+        var modelPath = this.GetModelPath(profile);
+        if (!this.IsModelReady(profile))
         {
-            throw new FileNotFoundException("Le modèle Whisper Small q5_1 doit être téléchargé avant la transcription.", this.ModelPath);
+            throw new FileNotFoundException($"Le modèle {model.DisplayName} doit être téléchargé avant la transcription.", modelPath);
         }
 
         await this.operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         var preparedPath = Path.Combine(AppPaths.CacheDirectory, $"whisper-{Guid.NewGuid():N}.wav");
         try
         {
-            this.PublishStatus(new SpeechModelStatus(SpeechModelState.Loading, "Préparation audio 16 kHz mono..."));
-            PrepareAudio(inputWavPath, preparedPath);
+            this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Loading, "Préparation audio 16 kHz mono..."));
+            AudioPreparation.CreateMono16KhzPcmWav(inputWavPath, preparedPath);
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (this.factory is null)
+            if (this.factory is null || !string.Equals(this.loadedModelPath, modelPath, StringComparison.OrdinalIgnoreCase))
             {
-                this.PublishStatus(new SpeechModelStatus(SpeechModelState.Loading, "Chargement de Whisper Small q5_1..."));
-                this.factory = WhisperFactory.FromPath(this.ModelPath);
+                this.factory?.Dispose();
+                this.factory = null;
+                this.loadedModelPath = null;
+                this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Loading, $"Chargement de {model.DisplayName}..."));
+                this.factory = WhisperFactory.FromPath(modelPath);
+                this.loadedModelPath = modelPath;
             }
 
-            this.PublishStatus(new SpeechModelStatus(SpeechModelState.Transcribing, "Transcription locale en français..."));
+            this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Transcribing, "Transcription locale en français..."));
             var watch = Stopwatch.StartNew();
             var segments = new List<string>();
             using var processor = this.factory.CreateBuilder()
@@ -156,51 +197,36 @@ public sealed class WhisperService : IDisposable
             watch.Stop();
             var raw = string.Join(" ", segments).Trim();
             var normalized = NormalizeWhitespace(raw);
-            this.PublishStatus(new SpeechModelStatus(SpeechModelState.Ready, $"Transcription terminée en {watch.Elapsed.TotalSeconds:F1} s"));
-            return new SpeechTranscriptionResult(raw, normalized, watch.Elapsed, ModelDisplayName, "fr", segments);
+            this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Ready, $"{model.DisplayName} - {watch.Elapsed.TotalSeconds:F1} s"));
+            return new SpeechTranscriptionResult(profile, raw, normalized, watch.Elapsed, model.DisplayName, "fr", segments);
         }
         catch (Exception exception)
         {
-            this.PublishStatus(new SpeechModelStatus(SpeechModelState.Error, $"Transcription : {CleanMessage(exception)}"));
+            this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Error, $"Transcription : {CleanMessage(exception)}"));
             throw;
         }
         finally
         {
-            try
-            {
-                if (File.Exists(preparedPath))
-                {
-                    File.Delete(preparedPath);
-                }
-            }
-            catch
-            {
-                // Le cache sera nettoyé lors d'une prochaine session.
-            }
-
+            TryDelete(preparedPath);
             this.operationLock.Release();
         }
     }
 
-    private static void PrepareAudio(string sourcePath, string destinationPath)
+    private static WhisperModelSpec GetModel(SpeechRecognitionProfile profile)
     {
-        Directory.CreateDirectory(AppPaths.CacheDirectory);
-        using var reader = new AudioFileReader(sourcePath);
-        ISampleProvider mono = reader.WaveFormat.Channels switch
+        if (!Models.TryGetValue(profile, out var model))
         {
-            1 => reader,
-            2 => new StereoToMonoSampleProvider(reader) { LeftVolume = 0.5f, RightVolume = 0.5f },
-            _ => new ChannelToMonoSampleProvider(reader),
-        };
-        var resampled = new WdlResamplingSampleProvider(mono, 16_000);
-        WaveFileWriter.CreateWaveFile16(destinationPath, resampled);
+            throw new ArgumentOutOfRangeException(nameof(profile), profile, "Ce profil n'utilise pas Whisper.");
+        }
+
+        return model;
     }
 
-    private static async Task<string> ComputeSha1Async(string filePath, CancellationToken cancellationToken)
+    private static async Task<string> ComputeSha256Async(string filePath, CancellationToken cancellationToken)
     {
         await using var stream = File.OpenRead(filePath);
-        using var sha1 = SHA1.Create();
-        var hash = await sha1.ComputeHashAsync(stream, cancellationToken).ConfigureAwait(false);
+        using var sha256 = SHA256.Create();
+        var hash = await sha256.ComputeHashAsync(stream, cancellationToken).ConfigureAwait(false);
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
@@ -231,6 +257,21 @@ public sealed class WhisperService : IDisposable
         return string.IsNullOrWhiteSpace(message) ? exception.GetType().Name : message;
     }
 
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // Le cache sera nettoyé lors d'une prochaine session.
+        }
+    }
+
     public void Dispose()
     {
         if (this.disposed)
@@ -244,38 +285,11 @@ public sealed class WhisperService : IDisposable
         this.operationLock.Dispose();
     }
 
-    private sealed class ChannelToMonoSampleProvider : ISampleProvider
-    {
-        private readonly ISampleProvider source;
-        private readonly float[] sourceBuffer;
-
-        public ChannelToMonoSampleProvider(ISampleProvider source)
-        {
-            this.source = source;
-            this.WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(source.WaveFormat.SampleRate, 1);
-            this.sourceBuffer = new float[source.WaveFormat.Channels * 4096];
-        }
-
-        public WaveFormat WaveFormat { get; }
-
-        public int Read(float[] buffer, int offset, int count)
-        {
-            var channels = this.source.WaveFormat.Channels;
-            var requested = Math.Min(count * channels, this.sourceBuffer.Length);
-            var read = this.source.Read(this.sourceBuffer, 0, requested);
-            var frames = read / channels;
-            for (var frame = 0; frame < frames; frame++)
-            {
-                var sum = 0.0f;
-                for (var channel = 0; channel < channels; channel++)
-                {
-                    sum += this.sourceBuffer[(frame * channels) + channel];
-                }
-
-                buffer[offset + frame] = sum / channels;
-            }
-
-            return frames;
-        }
-    }
+    private sealed record WhisperModelSpec(
+        string DisplayName,
+        string FileName,
+        Uri Uri,
+        string Sha256,
+        long MinimumSizeBytes,
+        string SizeLabel);
 }

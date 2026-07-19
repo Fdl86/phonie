@@ -18,11 +18,24 @@ public static class AppPaths
 
     public static string WhisperModelsDirectory { get; } = Path.Combine(ModelsDirectory, "whisper");
 
+    public static string VoskModelsDirectory { get; } = Path.Combine(ModelsDirectory, "vosk");
+
     public static string SessionsDirectory { get; } = Path.Combine(LogsDirectory, "sessions");
 
     public static void EnsurePortableStorage()
     {
-        foreach (var directory in new[] { ConfigDirectory, LogsDirectory, AirportDataDirectory, RecordingsDirectory, CacheDirectory, ModelsDirectory, WhisperModelsDirectory, SessionsDirectory })
+        foreach (var directory in new[]
+                 {
+                     ConfigDirectory,
+                     LogsDirectory,
+                     AirportDataDirectory,
+                     RecordingsDirectory,
+                     CacheDirectory,
+                     ModelsDirectory,
+                     WhisperModelsDirectory,
+                     VoskModelsDirectory,
+                     SessionsDirectory,
+                 })
         {
             Directory.CreateDirectory(directory);
             VerifyWritable(directory);
