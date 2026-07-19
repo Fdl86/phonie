@@ -165,7 +165,9 @@ public sealed class AirportFacilityService : IDisposable
             "CLOSE TAXI_POINT",
 
             "OPEN TAXI_PATH",
-            "TYPE", "WIDTH", "WEIGHT", "RUNWAY_NUMBER", "RUNWAY_DESIGNATOR", "START", "END", "NAME_INDEX",
+            "TYPE", "WIDTH", "LEFT_HALF_WIDTH", "RIGHT_HALF_WIDTH", "WEIGHT", "RUNWAY_NUMBER", "RUNWAY_DESIGNATOR",
+            "LEFT_EDGE", "LEFT_EDGE_LIGHTED", "RIGHT_EDGE", "RIGHT_EDGE_LIGHTED", "CENTER_LINE", "CENTER_LINE_LIGHTED",
+            "START", "END", "NAME_INDEX",
             "CLOSE TAXI_PATH",
 
             "OPEN TAXI_NAME",
@@ -295,6 +297,7 @@ public sealed class AirportFacilityService : IDisposable
     {
         try
         {
+            ValidateReport(report);
             Directory.CreateDirectory(AppPaths.AirportDataDirectory);
             var safeSimulator = report.Simulator.Replace(" ", string.Empty, StringComparison.Ordinal);
             var safeIcao = string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao;
@@ -400,17 +403,70 @@ public sealed class AirportFacilityService : IDisposable
         index,
         reader.ReadInt32(),
         reader.ReadSingle(),
+        reader.ReadSingle(),
+        reader.ReadSingle(),
         reader.ReadUInt32(),
         reader.ReadInt32(),
         reader.ReadInt32(),
         reader.ReadInt32(),
+        reader.ReadInt32() != 0,
+        reader.ReadInt32(),
+        reader.ReadInt32() != 0,
+        reader.ReadInt32() != 0,
+        reader.ReadInt32() != 0,
+        reader.ReadInt32(),
         reader.ReadInt32(),
         reader.ReadUInt32());
+
+
+    private static void ValidateReport(AirportFacilityReport report)
+    {
+        if (report.Runways.Count != report.RunwayCountDeclared)
+        {
+            report.ParseWarnings.Add($"Pistes reçues : {report.Runways.Count}, déclaré : {report.RunwayCountDeclared}.");
+        }
+
+        if (report.Frequencies.Count != report.FrequencyCountDeclared)
+        {
+            report.ParseWarnings.Add($"Fréquences reçues : {report.Frequencies.Count}, déclaré : {report.FrequencyCountDeclared}.");
+        }
+
+        foreach (var start in report.Starts.Where(item => item.Type == 1))
+        {
+            if (start.Number is < 1 or > 36 || start.Designator is < 0 or > 7)
+            {
+                report.ParseWarnings.Add($"Départ piste #{start.Index} incohérent : numéro {start.Number}, désignateur {start.Designator}.");
+            }
+        }
+
+        foreach (var path in report.TaxiPaths)
+        {
+            if (path.Type is < 0 or > 8)
+            {
+                report.ParseWarnings.Add($"TaxiPath #{path.Index} : type {path.Type} hors plage.");
+            }
+
+            if (path.RunwayNumber is < 0 or > 45)
+            {
+                report.ParseWarnings.Add($"TaxiPath #{path.Index} : numéro de piste {path.RunwayNumber} hors plage.");
+            }
+
+            if (path.RunwayDesignator is < 0 or > 7)
+            {
+                report.ParseWarnings.Add($"TaxiPath #{path.Index} : désignateur {path.RunwayDesignator} hors plage.");
+            }
+
+            if (path.StartIndex is < 0 or > 3999 || path.EndIndex is < 0 or > 3999)
+            {
+                report.ParseWarnings.Add($"TaxiPath #{path.Index} : index {path.StartIndex}->{path.EndIndex} hors plage.");
+            }
+        }
+    }
 
     private static string BuildTextReport(AirportFacilityReport report)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("PHONIE DEV0.2.5 - AIRPORT DATA");
+        builder.AppendLine("PHONIE DEV0.3.0 - AIRPORT DATA");
         builder.AppendLine($"Date : {report.Timestamp:yyyy-MM-dd HH:mm:ss zzz}");
         builder.AppendLine($"Simulateur : {report.Simulator}");
         builder.AppendLine($"Source : {report.Source}");
@@ -431,7 +487,14 @@ public sealed class AirportFacilityService : IDisposable
         builder.AppendLine($"Départs : {report.Starts.Count} / déclaré {report.StartCountDeclared}");
         foreach (var start in report.Starts.OrderBy(item => item.Index))
         {
-            builder.AppendLine($"  #{start.Index} - piste {FormatRunwayEnd(start.Number, start.Designator)} - type {start.Type} - cap {start.HeadingDegrees:F1}°");
+            if (start.Type == 1 && start.Number is >= 1 and <= 36 && start.Designator is >= 0 and <= 7)
+            {
+                builder.AppendLine($"  #{start.Index} - seuil piste {FormatRunwayEnd(start.Number, start.Designator)} - cap {start.HeadingDegrees:F1}°");
+            }
+            else
+            {
+                builder.AppendLine($"  #{start.Index} - départ non-piste conservé en donnée brute - type {start.Type} - numéro {start.Number} - désignateur {start.Designator}");
+            }
         }
 
         builder.AppendLine();

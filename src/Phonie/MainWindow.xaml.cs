@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
@@ -18,6 +20,8 @@ public partial class MainWindow : Window
     private readonly GlobalKeyboardHook keyboardHook = new();
     private readonly JoystickService joystickService = new();
     private readonly DiagnosticsService diagnosticsService = new();
+    private readonly WhisperService whisperService = new();
+    private readonly AtisService atisService = new();
     private readonly DispatcherTimer audioMeterTimer = new() { Interval = TimeSpan.FromMilliseconds(125) };
     private readonly HashSet<string> activePttSources = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> activePttSourceLabels = new(StringComparer.Ordinal);
@@ -38,6 +42,20 @@ public partial class MainWindow : Window
     private string diagnosticsSimulator = "-";
     private string diagnosticsStation = "-";
     private double diagnosticsCom1;
+    private AirportFacilityReport? latestAirportReport;
+    private SimulatorSnapshot? latestSnapshot;
+    private AtisInformation? currentAtis;
+    private OperationalFrequency currentOperationalFrequency = new(
+        0,
+        "FRÉQUENCE NON IDENTIFIÉE",
+        OperationalRadioKind.Unknown,
+        false,
+        "PHONIE reste silencieux tant que le service n'est pas déterminé.",
+        "Initialisation");
+    private CancellationTokenSource? transcriptionCancellation;
+    private bool transcriptionInProgress;
+    private bool pseudoMaximized;
+    private Rect normalBounds;
 
     public MainWindow()
     {
@@ -63,6 +81,7 @@ public partial class MainWindow : Window
         this.joystickService.LogMessage += this.Service_OnLogMessage;
 
         this.diagnosticsService.SampleAvailable += this.DiagnosticsService_OnSampleAvailable;
+        this.whisperService.StatusChanged += this.WhisperService_OnStatusChanged;
         this.audioMeterTimer.Tick += this.AudioMeterTimer_OnTick;
 
         this.Loaded += this.MainWindow_OnLoaded;
@@ -75,11 +94,15 @@ public partial class MainWindow : Window
         this.SelectGainInUi();
         this.RefreshAudioDevices();
         this.UpdatePttLabels();
+        this.suppressSettingsEvents = true;
+        this.AutoTranscribeCheckBox.IsChecked = this.settings.AutoTranscribePtt;
+        this.suppressSettingsEvents = false;
 
         this.lastRecordingPath = File.Exists(this.audioService.LastRecordingPath)
             ? this.audioService.LastRecordingPath
             : null;
         this.PlayLastRecordingButton.IsEnabled = this.lastRecordingPath is not null;
+        this.UpdateWhisperStatus(this.whisperService.GetStatus());
         this.DiagnosticsPathText.Text = System.IO.Path.Combine("logs", System.IO.Path.GetFileName(this.diagnosticsService.SessionFilePath));
 
         this.diagnosticsService.Start(() => new DiagnosticsContext(
@@ -123,6 +146,9 @@ public partial class MainWindow : Window
         this.audioMeterTimer.Stop();
         this.keyboardHook.Dispose();
         await this.joystickService.DisposeAsync();
+        this.transcriptionCancellation?.Cancel();
+        this.transcriptionCancellation?.Dispose();
+        this.whisperService.Dispose();
         this.audioService.Dispose();
         await this.simConnectService.DisposeAsync();
         await this.diagnosticsService.DisposeAsync();
@@ -163,12 +189,71 @@ public partial class MainWindow : Window
 
     private void MainWindow_OnStateChanged(object? sender, EventArgs e)
     {
-        this.MaximizeButton.Content = this.WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
-        this.MaximizeButton.ToolTip = this.WindowState == WindowState.Maximized ? "Restaurer" : "Agrandir";
+        if (this.WindowState == WindowState.Maximized)
+        {
+            this.WindowState = WindowState.Normal;
+            this.ApplyWorkAreaMaximize();
+        }
+
+        this.MaximizeButton.Content = this.pseudoMaximized ? "\uE923" : "\uE922";
+        this.MaximizeButton.ToolTip = this.pseudoMaximized ? "Restaurer" : "Agrandir";
     }
 
-    private void ToggleMaximize() =>
-        this.WindowState = this.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void ToggleMaximize()
+    {
+        if (this.pseudoMaximized)
+        {
+            this.pseudoMaximized = false;
+            this.Left = this.normalBounds.Left;
+            this.Top = this.normalBounds.Top;
+            this.Width = this.normalBounds.Width;
+            this.Height = this.normalBounds.Height;
+        }
+        else
+        {
+            this.ApplyWorkAreaMaximize();
+        }
+
+        this.MaximizeButton.Content = this.pseudoMaximized ? "\uE923" : "\uE922";
+        this.MaximizeButton.ToolTip = this.pseudoMaximized ? "Restaurer" : "Agrandir";
+    }
+
+    private void ApplyWorkAreaMaximize()
+    {
+        if (!this.pseudoMaximized)
+        {
+            this.normalBounds = new Rect(this.Left, this.Top, this.ActualWidth, this.ActualHeight);
+        }
+
+        var workArea = this.GetCurrentMonitorWorkArea();
+        this.pseudoMaximized = true;
+        this.Left = workArea.Left;
+        this.Top = workArea.Top;
+        this.Width = workArea.Width;
+        this.Height = workArea.Height;
+    }
+
+    private Rect GetCurrentMonitorWorkArea()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+        {
+            return SystemParameters.WorkArea;
+        }
+
+        var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref info))
+        {
+            return SystemParameters.WorkArea;
+        }
+
+        var source = PresentationSource.FromVisual(this);
+        var transform = source?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+        var topLeft = transform.Transform(new Point(info.WorkArea.Left, info.WorkArea.Top));
+        var bottomRight = transform.Transform(new Point(info.WorkArea.Right, info.WorkArea.Bottom));
+        return new Rect(topLeft, bottomRight);
+    }
 
     private async void ReconnectButton_OnClick(object sender, RoutedEventArgs e)
     {
@@ -265,6 +350,74 @@ public partial class MainWindow : Window
         {
             this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Ouverture du dossier impossible : {exception.Message}");
         }
+    }
+
+
+    private void ToggleDiagnosticsButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        this.DiagnosticOverlay.Visibility = this.DiagnosticOverlay.Visibility == Visibility.Visible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private async void DownloadWhisperButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        this.DownloadWhisperButton.IsEnabled = false;
+        try
+        {
+            this.transcriptionCancellation?.Cancel();
+            this.transcriptionCancellation?.Dispose();
+            this.transcriptionCancellation = new CancellationTokenSource();
+            await this.whisperService.DownloadModelAsync(this.transcriptionCancellation.Token);
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Whisper Small q5_1 multilingue téléchargé et vérifié.");
+        }
+        catch (OperationCanceledException)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Téléchargement Whisper annulé.");
+        }
+        catch (Exception exception)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Téléchargement Whisper impossible : {CleanMessage(exception)}");
+        }
+        finally
+        {
+            this.UpdateWhisperStatus(this.whisperService.GetStatus());
+        }
+    }
+
+    private async void TranscribeLastButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(this.lastRecordingPath) || !File.Exists(this.lastRecordingPath))
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Aucun enregistrement PTT disponible pour Whisper.");
+            return;
+        }
+
+        await this.TranscribeAndProcessAsync(this.lastRecordingPath, true);
+    }
+
+    private void AnalyzeLabTextButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var text = this.LabInputTextBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            this.PilotTranscriptTextBox.Text = "Saisissez une phrase dans le mode laboratoire.";
+            return;
+        }
+
+        this.ProcessPilotText(text, false, TimeSpan.Zero);
+    }
+
+    private void AutoTranscribeCheckBox_OnChanged(object sender, RoutedEventArgs e)
+    {
+        if (this.suppressSettingsEvents)
+        {
+            return;
+        }
+
+        this.settings.AutoTranscribePtt = this.AutoTranscribeCheckBox.IsChecked == true;
+        this.SaveSettings();
+        this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Transcription automatique PTT : {(this.settings.AutoTranscribePtt ? "activée" : "désactivée")}.");
     }
 
     private void ClearLogButton_OnClick(object sender, RoutedEventArgs e) => this.LogBox.Clear();
@@ -558,7 +711,7 @@ public partial class MainWindow : Window
 
     private void AudioService_OnRecordingCompleted(object? sender, AudioRecordingResult result)
     {
-        _ = this.Dispatcher.BeginInvoke(() =>
+        _ = this.Dispatcher.BeginInvoke(async () =>
         {
             if (result.WasDiscarded)
             {
@@ -572,6 +725,7 @@ public partial class MainWindow : Window
 
             this.lastRecordingPath = result.FilePath;
             this.PlayLastRecordingButton.IsEnabled = result.FileSizeBytes > 44;
+            this.TranscribeLastButton.IsEnabled = result.FileSizeBytes > 44 && this.whisperService.IsModelReady;
             this.PttStateText.Text = $"Enregistré - +{result.GainDb} dB";
             this.SetForegroundResource(this.PttStateText, result.LimitedSampleCount > 0 ? "Warning" : "Success");
             this.SetDotResource(this.PttFooterDot, "Success");
@@ -581,6 +735,19 @@ public partial class MainWindow : Window
                 $"Fin - {result.Duration.TotalSeconds:F1} s - {result.FileSizeBytes / 1024.0:F0} Ko - gain +{result.GainDb} dB - limiteur {result.LimitedSampleCount} - pic {result.PeakPercent:F0} %");
             this.AppendLog(
                 $"[{DateTime.Now:HH:mm:ss}] PTT enregistré : {result.Duration.TotalSeconds:F1} s - +{result.GainDb} dB - pic {result.PeakPercent:F0} % - limiteur {result.LimitedSampleCount}.");
+
+            if (this.settings.AutoTranscribePtt)
+            {
+                if (this.whisperService.IsModelReady)
+                {
+                    await this.TranscribeAndProcessAsync(result.FilePath, true);
+                }
+                else
+                {
+                    this.PilotTranscriptTextBox.Text = "PTT enregistré. Téléchargez Whisper Small q5_1 pour activer la transcription locale.";
+                    this.ExchangeLatencyText.Text = "MODÈLE MANQUANT";
+                }
+            }
         });
     }
 
@@ -637,11 +804,17 @@ public partial class MainWindow : Window
     private void SimConnectService_OnSnapshotReceived(object? sender, SimulatorSnapshot snapshot)
     {
         this.diagnosticsService.ReportSnapshot();
+        this.latestSnapshot = snapshot;
+
+
+        this.currentOperationalFrequency = OperationalRadioService.Resolve(snapshot, this.latestAirportReport);
+        this.currentAtis = this.atisService.Update(snapshot, this.latestAirportReport);
+
         _ = this.Dispatcher.BeginInvoke(() =>
         {
             this.diagnosticsSimulator = snapshot.Simulator;
             this.diagnosticsCom1 = snapshot.Com1ActiveMhz;
-            this.diagnosticsStation = string.IsNullOrWhiteSpace(snapshot.Com1StationIdent) ? "-" : snapshot.Com1StationIdent;
+            this.diagnosticsStation = this.currentOperationalFrequency.ServiceName;
 
             this.SimulatorText.Text = snapshot.Simulator;
             this.AircraftText.Text = string.IsNullOrWhiteSpace(snapshot.AircraftTitle)
@@ -664,50 +837,223 @@ public partial class MainWindow : Window
             var spacing = snapshot.Com1SpacingMode == 1 ? "8,33 kHz" : "25 kHz";
             var receive = snapshot.Com1Receiving ? "réception active" : "réception coupée";
             var radioStatus = snapshot.Com1Status == 0 ? string.Empty : $" - statut {snapshot.Com1Status}";
-
-            this.StationText.Text = string.IsNullOrWhiteSpace(snapshot.Com1StationType)
-                ? stationIdent
-                : $"{stationIdent} - {stationType}";
             this.ComMetaText.Text = $"{stationIdent} - {stationType} - {spacing} - {receive}{radioStatus}";
-
-            var policy = RadioPolicyResolver.Resolve(snapshot.Com1StationType);
-            this.RadioPolicyTitleText.Text = policy.Title;
-            this.RadioPolicyText.Text = policy.Guidance;
-            var policyResource = policy.Kind switch
-            {
-                RadioPolicyKind.Controlled => "Accent",
-                RadioPolicyKind.InformationService => "Success",
-                RadioPolicyKind.AutomaticInformation => "Accent",
-                RadioPolicyKind.SelfInformation => "Warning",
-                _ => "MutedText",
-            };
-            this.SetForegroundResource(this.RadioPolicyTitleText, policyResource);
-            this.RadioPolicyCard.SetResourceReference(Border.BorderBrushProperty, policyResource);
+            this.UpdateOperationalRadioUi();
 
             this.WeatherPrimaryText.Text = $"Vent {FormatDirection(snapshot.WindDirectionTrueDegrees)} / {FormatWindSpeed(snapshot.WindVelocityKnots)} - QNH {FormatQnh(snapshot.QnhHpa)}";
             this.WeatherSecondaryText.Text = $"Température {FormatTemperature(snapshot.TemperatureCelsius)} - visibilité {FormatVisibility(snapshot.VisibilityMeters)}";
+            this.UpdateAtisUi();
 
-            var radioSignature = $"{snapshot.Com1ActiveMhz:F3}|{snapshot.Com1StationIdent}|{snapshot.Com1StationType}|{snapshot.Com1SpacingMode}|{snapshot.Com1Receiving}";
+            var radioSignature = $"{snapshot.Com1ActiveMhz:F3}|{this.currentOperationalFrequency.ServiceName}|{this.currentOperationalFrequency.Kind}|{snapshot.Com1SpacingMode}|{snapshot.Com1Receiving}";
             if (!string.Equals(radioSignature, this.lastRadioSignature, StringComparison.Ordinal))
             {
                 this.lastRadioSignature = radioSignature;
-                this.AppendLog($"[{DateTime.Now:HH:mm:ss}] COM1 : {snapshot.Com1ActiveMhz:F3} - {stationIdent} - {stationType} - {spacing} - {policy.Title}.");
+                this.AppendLog($"[{DateTime.Now:HH:mm:ss}] COM1 : {snapshot.Com1ActiveMhz:F3} - {this.currentOperationalFrequency.ServiceName} - {this.currentOperationalFrequency.Guidance}");
             }
         });
     }
 
     private void SimConnectService_OnAirportDataReceived(object? sender, AirportFacilityReport report)
     {
+        this.latestAirportReport = report;
+        if (this.latestSnapshot is not null)
+        {
+            this.currentOperationalFrequency = OperationalRadioService.Resolve(this.latestSnapshot, report);
+            this.currentAtis = this.atisService.Update(this.latestSnapshot, report);
+        }
+
         _ = this.Dispatcher.BeginInvoke(() =>
         {
             var icao = string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao;
             this.AirportDataText.Text = $"{icao} : {report.Runways.Count} piste(s), {report.Frequencies.Count} fréquence(s)";
+            this.UpdateAirportUi(report);
+            this.UpdateOperationalRadioUi();
+            this.UpdateAtisUi();
             this.AppendLog(
                 $"[{DateTime.Now:HH:mm:ss}] Airport Data {icao} terminé : " +
                 $"{report.Runways.Count} piste(s), {report.Frequencies.Count} fréquence(s), " +
-                $"{report.TaxiParkings.Count} parking(s), {report.TaxiPaths.Count} chemin(s). " +
+                $"{report.TaxiParkings.Count} parking(s), {report.TaxiPaths.Count} chemin(s), " +
+                $"{report.ParseWarnings.Count} avertissement(s). " +
                 $"Fichier : logs\\airport-data\\{System.IO.Path.GetFileName(report.TextPath)}");
         });
+    }
+
+    private void WhisperService_OnStatusChanged(object? sender, SpeechModelStatus status) =>
+        _ = this.Dispatcher.BeginInvoke(() => this.UpdateWhisperStatus(status));
+
+    private void UpdateWhisperStatus(SpeechModelStatus status)
+    {
+        this.WhisperStatusText.Text = status.Message;
+        this.WhisperProgressBar.Value = Math.Clamp(status.ProgressPercent, 0, 100);
+        this.WhisperProgressBar.Visibility = status.State == SpeechModelState.Downloading ? Visibility.Visible : Visibility.Collapsed;
+        this.DownloadWhisperButton.IsEnabled = status.State is not SpeechModelState.Downloading and not SpeechModelState.Loading and not SpeechModelState.Transcribing;
+        this.DownloadWhisperButton.Content = this.whisperService.IsModelReady ? "Small q5_1 installé" : "Télécharger Small q5_1";
+        this.TranscribeLastButton.IsEnabled = this.whisperService.IsModelReady
+            && !this.transcriptionInProgress
+            && !string.IsNullOrWhiteSpace(this.lastRecordingPath)
+            && File.Exists(this.lastRecordingPath);
+
+        var resource = status.State switch
+        {
+            SpeechModelState.Ready => "Success",
+            SpeechModelState.Downloading or SpeechModelState.Loading or SpeechModelState.Transcribing => "Accent",
+            SpeechModelState.Error => "Danger",
+            _ => "Warning",
+        };
+        this.SetForegroundResource(this.WhisperStatusText, resource);
+    }
+
+    private async Task TranscribeAndProcessAsync(string audioPath, bool fromMicrophone)
+    {
+        if (this.transcriptionInProgress)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Whisper est déjà en cours de traitement.");
+            return;
+        }
+
+        if (!this.whisperService.IsModelReady)
+        {
+            this.UpdateWhisperStatus(this.whisperService.GetStatus());
+            this.PilotTranscriptTextBox.Text = "Modèle Whisper Small q5_1 manquant.";
+            return;
+        }
+
+        this.transcriptionInProgress = true;
+        this.transcriptionCancellation?.Cancel();
+        this.transcriptionCancellation?.Dispose();
+        this.transcriptionCancellation = new CancellationTokenSource();
+        this.ExchangeLatencyText.Text = "TRANSCRIPTION...";
+        this.PilotTranscriptTextBox.Text = "Whisper Small q5_1 analyse le dernier PTT en français...";
+        this.TranscribeLastButton.IsEnabled = false;
+
+        try
+        {
+            var result = await this.whisperService.TranscribeAsync(audioPath, this.transcriptionCancellation.Token);
+            this.ProcessPilotText(result.NormalizedText, fromMicrophone, result.ProcessingTime);
+            this.diagnosticsService.WriteEvent(
+                "ASR",
+                $"Whisper Small q5_1 - {result.ProcessingTime.TotalSeconds:F2} s - {result.Segments.Count} segment(s) - {result.NormalizedText}");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Whisper Small q5_1 : transcription terminée en {result.ProcessingTime.TotalSeconds:F1} s.");
+        }
+        catch (OperationCanceledException)
+        {
+            this.ExchangeLatencyText.Text = "ANNULÉ";
+        }
+        catch (Exception exception)
+        {
+            var message = CleanMessage(exception);
+            this.ExchangeLatencyText.Text = "ERREUR ASR";
+            this.PilotTranscriptTextBox.Text = $"Transcription impossible : {message}";
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Whisper : {message}");
+        }
+        finally
+        {
+            this.transcriptionInProgress = false;
+            this.UpdateWhisperStatus(this.whisperService.GetStatus());
+        }
+    }
+
+    private void ProcessPilotText(string text, bool fromMicrophone, TimeSpan processingTime)
+    {
+        var cleanText = text.Trim();
+        var analysis = PhraseologyService.Analyze(cleanText);
+        var response = PhraseologyService.BuildFirstContactResponse(
+            analysis,
+            this.currentOperationalFrequency,
+            this.currentAtis,
+            this.latestSnapshot);
+
+        this.PilotTranscriptTextBox.Text = cleanText;
+        this.AnalysisText.Text = FormatAnalysis(analysis);
+        this.ControllerResponseTextBox.Text = $"PHONIE : {response}";
+        this.ExchangeLatencyText.Text = processingTime > TimeSpan.Zero
+            ? $"{processingTime.TotalSeconds:F1} S - {analysis.Confidence:P0}"
+            : $"LAB - {analysis.Confidence:P0}";
+
+        var exchange = new RadioExchange(DateTimeOffset.Now, analysis, response, processingTime, fromMicrophone);
+        this.SaveRadioExchange(exchange);
+        this.diagnosticsService.WriteEvent(
+            "RADIO",
+            $"{(fromMicrophone ? "PTT" : "LAB")} - {FormatAnalysis(analysis)} - Réponse : {response}");
+    }
+
+    private void SaveRadioExchange(RadioExchange exchange)
+    {
+        try
+        {
+            Directory.CreateDirectory(AppPaths.SessionsDirectory);
+            var line = System.Text.Json.JsonSerializer.Serialize(exchange);
+            var path = System.IO.Path.Combine(AppPaths.SessionsDirectory, $"radio-{DateTime.Now:yyyyMMdd}.jsonl");
+            File.AppendAllText(path, line + Environment.NewLine);
+        }
+        catch (Exception exception)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Export échange radio impossible : {CleanMessage(exception)}");
+        }
+    }
+
+    private void UpdateAirportUi(AirportFacilityReport report)
+    {
+        var icao = string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao;
+        var name = string.IsNullOrWhiteSpace(report.Name) ? "Aérodrome" : report.Name;
+        this.AirportNameText.Text = $"{icao} - {name}";
+        var runwayStarts = report.Starts.Count(item => item.Type == 1 && item.Number is >= 1 and <= 36);
+        this.AirportSummaryText.Text =
+            $"{report.Runways.Count} piste(s) - {runwayStarts} seuil(s) exploitables - {report.TaxiParkings.Count} parking(s) - {report.TaxiPaths.Count} segment(s) taxi" +
+            (report.ParseWarnings.Count > 0 ? $" - {report.ParseWarnings.Count} avertissement(s)" : string.Empty);
+        this.FrequencySummaryText.Text = "Fréquences : " + string.Join(" | ", report.Frequencies
+            .OrderBy(item => item.FrequencyMhz)
+            .Select(item => $"{item.FrequencyMhz:F3}"));
+        this.SetForegroundResource(this.FrequencySummaryText, report.ParseWarnings.Count > 0 ? "Warning" : "Accent");
+    }
+
+    private void UpdateAtisUi()
+    {
+        if (this.currentAtis is null)
+        {
+            this.AtisStateText.Text = "EN ATTENTE";
+            this.AtisTextBox.Text = "L'ATIS sera généré après lecture de LFBI et réception de la météo locale.";
+            return;
+        }
+
+        this.AtisStateText.Text = $"INFO {this.currentAtis.Letter.ToUpperInvariant()} - PISTE {this.currentAtis.Runway}";
+        this.AtisTextBox.Text = this.currentAtis.Text;
+    }
+
+    private void UpdateOperationalRadioUi()
+    {
+        this.StationText.Text = this.currentOperationalFrequency.ServiceName;
+        this.RadioPolicyTitleText.Text = this.currentOperationalFrequency.Kind switch
+        {
+            OperationalRadioKind.Controlled => "SERVICE CONTRÔLÉ",
+            OperationalRadioKind.InformationService => "SERVICE D'INFORMATION",
+            OperationalRadioKind.AutomaticBroadcast => "DIFFUSION AUTOMATIQUE",
+            OperationalRadioKind.RecordedMessage => "MESSAGE ENREGISTRÉ",
+            OperationalRadioKind.SelfInformation => "AUTO-INFORMATION",
+            _ => "FRÉQUENCE NON IDENTIFIÉE",
+        };
+        this.RadioPolicyText.Text = this.currentOperationalFrequency.Guidance;
+        var resource = this.currentOperationalFrequency.Kind switch
+        {
+            OperationalRadioKind.Controlled => "Accent",
+            OperationalRadioKind.InformationService => "Success",
+            OperationalRadioKind.AutomaticBroadcast => "Accent",
+            OperationalRadioKind.RecordedMessage => "Warning",
+            OperationalRadioKind.SelfInformation => "Warning",
+            _ => "MutedText",
+        };
+        this.SetForegroundResource(this.RadioPolicyTitleText, resource);
+        this.RadioPolicyCard.SetResourceReference(Border.BorderBrushProperty, resource);
+    }
+
+    private static string FormatAnalysis(PilotMessageAnalysis analysis) =>
+        $"Station {analysis.CalledStation ?? "-"} | Indicatif {analysis.Callsign ?? "-"} | Position {analysis.Position ?? "-"} | Intention {analysis.Intention ?? "-"} | ATIS {analysis.AtisLetter ?? "-"}" +
+        (analysis.MissingCriticalFields.Count > 0 ? $" | Manque : {string.Join(", ", analysis.MissingCriticalFields)}" : string.Empty);
+
+    private static string CleanMessage(Exception exception)
+    {
+        var message = exception.GetBaseException().Message.ReplaceLineEndings(" ").Trim();
+        return string.IsNullOrWhiteSpace(message) ? exception.GetType().Name : message;
     }
 
     private void DiagnosticsService_OnSampleAvailable(object? sender, DiagnosticsSample sample)
@@ -914,6 +1260,33 @@ public partial class MainWindow : Window
             0x08 => "Retour arrière",
             _ => KeyInterop.KeyFromVirtualKey(virtualKey).ToString(),
         };
+    }
+
+    private const uint MonitorDefaultToNearest = 2;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr windowHandle, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitorHandle, ref MonitorInfo monitorInfo);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect MonitorArea;
+        public NativeRect WorkArea;
+        public uint Flags;
     }
 
     private static T? FindVisualParent<T>(DependencyObject child)

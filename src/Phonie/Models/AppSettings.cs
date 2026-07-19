@@ -17,4 +17,10 @@ public sealed class AppSettings
     public string? JoystickPttDeviceName { get; set; }
 
     public int? JoystickPttButton { get; set; }
+
+    public string WhisperModel { get; set; } = "small-q5_1";
+
+    public bool AutoTranscribePtt { get; set; } = true;
+
+    public string PreferredAirportIcao { get; set; } = "LFBI";
 }

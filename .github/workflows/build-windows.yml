@@ -1,4 +1,4 @@
-name: Build PHONIE DEV0.2.5
+name: Build PHONIE DEV0.3.0
 
 on:
   workflow_dispatch:
@@ -41,7 +41,7 @@ jobs:
           --runtime win-x64
           --self-contained true
           --no-restore
-          --output dist/PHONIE-DEV0.2.5-win-x64
+          --output dist/PHONIE-DEV0.3.0-win-x64
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
@@ -53,30 +53,40 @@ jobs:
         run: |
           $commit = "${{ github.sha }}".Substring(0, 7)
           @"
-          PHONIE DEV0.2.5
+          PHONIE DEV0.3.0
           Commit: $commit
           Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
           Runtime: Windows x64 autonome
-          Modules: Airport Data SimConnect - pistes - fréquences - parkings - taxiways - UI portable - gain micro - PTT clavier/HOTAS - logs performance
-          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.2.5-win-x64/BUILD-INFO.txt
+          Modules: First Contact - Whisper Small q5_1 local - ATIS texte - classification radio LFBI - Airport Data corrigé - PTT clavier/HOTAS - logs performance
+          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.3.0-win-x64/BUILD-INFO.txt
 
       - name: Create portable folders
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.2.5-win-x64/config | Out-Null
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.2.5-win-x64/logs | Out-Null
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.2.5-win-x64/logs/airport-data | Out-Null
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.2.5-win-x64/recordings | Out-Null
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.2.5-win-x64/cache | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0-win-x64/config | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0-win-x64/logs | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0-win-x64/logs/airport-data | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0-win-x64/logs/sessions | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0-win-x64/models/whisper | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0-win-x64/recordings | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0-win-x64/cache | Out-Null
+          @"
+          WHISPER SMALL Q5_1
+
+          Le modèle n'est pas inclus dans l'archive PHONIE.
+          Dans l'application, utiliser le bouton "Télécharger Small q5_1".
+          Le fichier est enregistré dans models\whisper et vérifié par empreinte SHA-1.
+          Après ce téléchargement unique, la transcription fonctionne entièrement en local.
+          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.3.0-win-x64/models/whisper/LISEZ-MOI.txt
 
       - name: Create zip
         shell: pwsh
-        run: Compress-Archive -Path dist/PHONIE-DEV0.2.5-win-x64/* -DestinationPath dist/PHONIE-DEV0.2.5-win-x64.zip -Force
+        run: Compress-Archive -Path dist/PHONIE-DEV0.3.0-win-x64/* -DestinationPath dist/PHONIE-DEV0.3.0-win-x64.zip -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PHONIE-DEV0.2.5-win-x64
-          path: dist/PHONIE-DEV0.2.5-win-x64.zip
+          name: PHONIE-DEV0.3.0-win-x64
+          path: dist/PHONIE-DEV0.3.0-win-x64.zip
           if-no-files-found: error
           retention-days: 14

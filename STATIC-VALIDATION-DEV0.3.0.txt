@@ -1,0 +1,25 @@
+PHONIE DEV0.3.0 - VALIDATION STATIQUE
+Date UTC : 2026-07-19T12:27:35.475173+00:00
+
+[OK] XML src/Phonie/App.xaml - OK
+[OK] XML src/Phonie/MainWindow.xaml - OK
+[OK] XML src/Phonie/Themes/Dark.xaml - OK
+[OK] XML src/Phonie/Themes/Light.xaml - OK
+[OK] XML src/Phonie/Phonie.csproj - OK
+[OK] XML src/Phonie/app.manifest - OK
+[OK] Gestionnaires XAML - 24 trouvés, manquants: []
+[OK] Ressources XAML - 21 références, manquantes: []
+[OK] Délimiteurs C# - mismatches: []
+[OK] Échappements chaînes C# - suspects: []
+[OK] Versions actives - anciennes références actives: []
+[OK] Tirets longs - fichiers: []
+[OK] Ambiguïté Path WPF - occurrences non qualifiées: 0
+[OK] Projet contient Whisper.net" Version="1.7.4 - présent
+[OK] Projet contient Whisper.net.Runtime" Version="1.7.4 - présent
+[OK] Projet contient <Version>0.3.0</Version> - présent
+[OK] Whisper contient ggml-small-q5_1.bin - présent
+[OK] Whisper contient 6fe57ddcfdd1c6b07cdcc73aaf620810ce5fc771 - présent
+[OK] Whisper contient .WithLanguage("fr") - présent
+
+Résultat : 19/19 contrôles réussis.
+La compilation GitHub Actions Windows x64 reste la validation finale.

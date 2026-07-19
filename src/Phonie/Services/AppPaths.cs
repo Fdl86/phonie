@@ -14,9 +14,15 @@ public static class AppPaths
 
     public static string CacheDirectory { get; } = Path.Combine(BaseDirectory, "cache");
 
+    public static string ModelsDirectory { get; } = Path.Combine(BaseDirectory, "models");
+
+    public static string WhisperModelsDirectory { get; } = Path.Combine(ModelsDirectory, "whisper");
+
+    public static string SessionsDirectory { get; } = Path.Combine(LogsDirectory, "sessions");
+
     public static void EnsurePortableStorage()
     {
-        foreach (var directory in new[] { ConfigDirectory, LogsDirectory, AirportDataDirectory, RecordingsDirectory, CacheDirectory })
+        foreach (var directory in new[] { ConfigDirectory, LogsDirectory, AirportDataDirectory, RecordingsDirectory, CacheDirectory, ModelsDirectory, WhisperModelsDirectory, SessionsDirectory })
         {
             Directory.CreateDirectory(directory);
             VerifyWritable(directory);
