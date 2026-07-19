@@ -15,9 +15,21 @@ public sealed class SpeechRecognitionService : IDisposable
     {
         this.selectedProfile = startupProfile;
         this.startupWhisperUsesVulkan = startupProfile == SpeechRecognitionProfile.WhisperSmallVulkan;
-        RuntimeOptions.RuntimeLibraryOrder = this.startupWhisperUsesVulkan
-            ? new[] { RuntimeLibrary.Vulkan, RuntimeLibrary.Cpu }
-            : new[] { RuntimeLibrary.Cpu };
+        if (this.startupWhisperUsesVulkan)
+        {
+            RuntimeOptions.RuntimeLibraryOrder =
+            [
+                RuntimeLibrary.Vulkan,
+                RuntimeLibrary.Cpu,
+            ];
+        }
+        else
+        {
+            RuntimeOptions.RuntimeLibraryOrder =
+            [
+                RuntimeLibrary.Cpu,
+            ];
+        }
         this.whisperService.StatusChanged += this.ForwardStatus;
         this.voskService.StatusChanged += this.ForwardStatus;
     }

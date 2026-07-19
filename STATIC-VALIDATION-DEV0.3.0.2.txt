@@ -50,3 +50,11 @@ LIMITES DE LA VALIDATION
 - le premier workflow GitHub Actions reste la validation réelle des API NuGet, du runtime Vulkan, de Vosk et du binaire Windows ;
 - les performances et la précision doivent être mesurées en situation réelle avec le HyperX, MSFS 2024 et la RX 7800 XT ;
 - les avertissements TaxiPath liés au scenery LFBI custom restent hors du périmètre ASR de cette version.
+
+
+CORRECTIF COMPILATION APPLIQUÉ
+
+- correction de CS0029 dans SpeechRecognitionService.cs ;
+- RuntimeOptions.RuntimeLibraryOrder reçoit désormais directement une List<RuntimeLibrary> via une expression de collection C# 12 ;
+- suppression des tableaux RuntimeLibrary[] incompatibles avec le type attendu par Whisper.net 1.7.4 ;
+- contrôle croisé avec la syntaxe officielle documentée par Whisper.net pour RuntimeLibraryOrder.
