@@ -33,3 +33,10 @@
 ## Limite maintenue
 
 - le parser TaxiPath détaillé de la scène LFBI reste à corriger dans une version dédiée aux opérations au sol.
+
+
+## Correctif CI des tests de phraséologie
+
+- Les smoke tests ne référencent plus l’exécutable WPF autonome.
+- Le moteur de phraséologie et ses modèles sont compilés comme sources liées dans un projet de test net8.0 indépendant.
+- Le workflow compile les tests avant leur exécution et impose le SDK .NET 8 via global.json.

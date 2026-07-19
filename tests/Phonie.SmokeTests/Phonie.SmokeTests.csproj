@@ -1,15 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <PlatformTarget>x64</PlatformTarget>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Deterministic>true</Deterministic>
   </PropertyGroup>
 
+  <!--
+    The smoke tests deliberately compile the phraseology engine and its plain
+    data models as linked sources. They must not reference the self-contained
+    WPF executable, otherwise .NET raises NETSDK1151.
+  -->
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Phonie\Phonie.csproj" />
+    <Compile Include="..\..\src\Phonie\Services\PhraseologyService.cs" Link="Source\PhraseologyService.cs" />
+    <Compile Include="..\..\src\Phonie\Models\SpeechRecognitionModels.cs" Link="Source\SpeechRecognitionModels.cs" />
+    <Compile Include="..\..\src\Phonie\Models\OperationalModels.cs" Link="Source\OperationalModels.cs" />
+    <Compile Include="..\..\src\Phonie\Models\SimulatorSnapshot.cs" Link="Source\SimulatorSnapshot.cs" />
   </ItemGroup>
 </Project>

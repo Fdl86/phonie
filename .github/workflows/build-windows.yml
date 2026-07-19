@@ -37,8 +37,11 @@ jobs:
       - name: Build
         run: dotnet build src/Phonie/Phonie.csproj --configuration Release --no-restore
 
+      - name: Build phraseology smoke tests
+        run: dotnet build tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-restore
+
       - name: Run phraseology smoke tests
-        run: dotnet run --project tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-restore
+        run: dotnet run --project tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-build --no-restore
 
       - name: Publish autonomous Windows x64
         run: >-
