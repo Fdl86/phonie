@@ -9,30 +9,83 @@ public static partial class PhraseologyService
 {
     private static readonly Dictionary<string, char> NatoLetters = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["alpha"] = 'A', ["alfa"] = 'A', ["bravo"] = 'B', ["charlie"] = 'C', ["charly"] = 'C',
-        ["delta"] = 'D', ["echo"] = 'E', ["foxtrot"] = 'F', ["fox"] = 'F', ["effe"] = 'F',
-        ["golf"] = 'G', ["golfe"] = 'G', ["hotel"] = 'H', ["india"] = 'I', ["juliett"] = 'J',
-        ["juliet"] = 'J', ["kilo"] = 'K', ["lima"] = 'L', ["mike"] = 'M', ["november"] = 'N',
-        ["oscar"] = 'O', ["papa"] = 'P', ["quebec"] = 'Q', ["romeo"] = 'R', ["sierra"] = 'S',
-        ["tango"] = 'T', ["uniform"] = 'U', ["victor"] = 'V', ["whiskey"] = 'W', ["xray"] = 'X',
-        ["x-ray"] = 'X', ["yankee"] = 'Y', ["zulu"] = 'Z',
+        ["alpha"] = 'A', ["alfa"] = 'A', ["fabre"] = 'A', ["va"] = 'A',
+        ["bravo"] = 'B', ["marvo"] = 'B', ["beauchardie"] = 'B',
+        ["charlie"] = 'C', ["charly"] = 'C',
+        ["delta"] = 'D',
+        ["echo"] = 'E',
+        ["foxtrot"] = 'F', ["fox"] = 'F', ["effe"] = 'F',
+        ["golf"] = 'G', ["golfe"] = 'G', ["gold"] = 'G', ["colf"] = 'G',
+        ["hotel"] = 'H',
+        ["india"] = 'I',
+        ["juliett"] = 'J', ["juliet"] = 'J',
+        ["kilo"] = 'K',
+        ["lima"] = 'L',
+        ["mike"] = 'M',
+        ["november"] = 'N', ["novembre"] = 'N', ["novembres"] = 'N',
+        ["oscar"] = 'O',
+        ["papa"] = 'P',
+        ["quebec"] = 'Q',
+        ["romeo"] = 'R',
+        ["sierra"] = 'S',
+        ["tango"] = 'T',
+        ["uniform"] = 'U',
+        ["victor"] = 'V',
+        ["whiskey"] = 'W',
+        ["xray"] = 'X', ["x-ray"] = 'X',
+        ["yankee"] = 'Y', ["yankees"] = 'Y', ["yanki"] = 'Y', ["yankis"] = 'Y', ["onki"] = 'Y', ["onqui"] = 'Y',
+        ["zulu"] = 'Z',
     };
 
-    private static readonly IReadOnlyDictionary<char, string> CanonicalNato = new Dictionary<char, string>
+    private static readonly IReadOnlyDictionary<char, string[]> NatoAliases = new Dictionary<char, string[]>
     {
-        ['A'] = "alpha", ['B'] = "bravo", ['C'] = "charlie", ['D'] = "delta", ['E'] = "echo",
-        ['F'] = "fox", ['G'] = "golf", ['H'] = "hotel", ['I'] = "india", ['J'] = "juliett",
-        ['K'] = "kilo", ['L'] = "lima", ['M'] = "mike", ['N'] = "november", ['O'] = "oscar",
-        ['P'] = "papa", ['Q'] = "quebec", ['R'] = "romeo", ['S'] = "sierra", ['T'] = "tango",
-        ['U'] = "uniform", ['V'] = "victor", ['W'] = "whiskey", ['X'] = "xray", ['Y'] = "yankee",
-        ['Z'] = "zulu",
+        ['A'] = ["alpha", "alfa", "fabre", "va"],
+        ['B'] = ["bravo", "marvo", "beauchardie"],
+        ['C'] = ["charlie", "charly"],
+        ['D'] = ["delta"],
+        ['E'] = ["echo"],
+        ['F'] = ["fox", "foxtrot", "effe"],
+        ['G'] = ["golf", "golfe", "gold", "colf"],
+        ['H'] = ["hotel"],
+        ['I'] = ["india"],
+        ['J'] = ["juliett", "juliet"],
+        ['K'] = ["kilo"],
+        ['L'] = ["lima"],
+        ['M'] = ["mike"],
+        ['N'] = ["november", "novembre", "novembres"],
+        ['O'] = ["oscar"],
+        ['P'] = ["papa"],
+        ['Q'] = ["quebec"],
+        ['R'] = ["romeo"],
+        ['S'] = ["sierra"],
+        ['T'] = ["tango"],
+        ['U'] = ["uniform"],
+        ['V'] = ["victor"],
+        ['W'] = ["whiskey"],
+        ['X'] = ["xray"],
+        ['Y'] = ["yankee", "yankees", "yanki", "yankis", "onki", "onqui"],
+        ['Z'] = ["zulu"],
+    };
+
+    private static readonly HashSet<string> CallsignNoiseWords = new(StringComparer.Ordinal)
+    {
+        "a", "au", "aux", "avec", "bonjour", "de", "des", "du", "en", "et", "la", "le", "les", "un", "une",
+    };
+
+    private static readonly IReadOnlyDictionary<string, string[]> FusedCallsignTokens = new Dictionary<string, string[]>(StringComparer.Ordinal)
+    {
+        ["foxgolf"] = ["fox", "golf"],
+        ["foxgolfe"] = ["fox", "golfe"],
+        ["foxgold"] = ["fox", "gold"],
+        ["foxcolf"] = ["fox", "colf"],
+        ["foxtrotgolf"] = ["foxtrot", "golf"],
     };
 
     public static PilotMessageAnalysis Analyze(string rawText, string? expectedCallsign = null)
     {
         var normalized = Normalize(rawText);
         var station = DetectStation(normalized);
-        var callsignResult = DetectCallsign(rawText, normalized, expectedCallsign);
+        var callsignResult = DetectCallsign(rawText, normalized, expectedCallsign, station);
         var position = DetectPosition(normalized);
         var intention = DetectIntention(normalized);
         var atis = DetectAtis(normalized);
@@ -148,7 +201,11 @@ public static partial class PhraseologyService
         return null;
     }
 
-    private static CallsignDetection DetectCallsign(string raw, string normalized, string? expectedCallsign)
+    private static CallsignDetection DetectCallsign(
+        string raw,
+        string normalized,
+        string? expectedCallsign,
+        string? detectedStation)
     {
         var normalizedExpected = NormalizeExpectedCallsign(expectedCallsign);
         var expectedCompact = CompactCallsign(normalizedExpected);
@@ -157,7 +214,7 @@ public static partial class PhraseologyService
 
         if (!string.IsNullOrWhiteSpace(expectedCompact) && rawCompact.Contains(expectedCompact, StringComparison.Ordinal))
         {
-            return new CallsignDetection(normalizedExpected, "SimConnect direct", 1.0);
+            return new CallsignDetection(normalizedExpected, "ATC ID SimConnect transcrit directement", 1.0);
         }
 
         var direct = DirectCallsignRegex().Match(rawUpper);
@@ -165,91 +222,226 @@ public static partial class PhraseologyService
         {
             var compact = direct.Groups[1].Value + direct.Groups[2].Value;
             var formatted = FormatCallsign(compact);
-            var confidence = string.IsNullOrWhiteSpace(expectedCompact)
-                ? 1.0
-                : Similarity(compact, expectedCompact);
-            return new CallsignDetection(formatted, "immatriculation transcrite", confidence);
+            if (string.IsNullOrWhiteSpace(expectedCompact))
+            {
+                return new CallsignDetection(formatted, "immatriculation transcrite avec tiret", 1.0);
+            }
+
+            var confidence = Similarity(compact, expectedCompact);
+            if (confidence >= 0.80)
+            {
+                return new CallsignDetection(normalizedExpected, "immatriculation rapprochée de l'ATC ID", confidence);
+            }
         }
 
-        var tokens = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        for (var index = 0; index < tokens.Length; index++)
+        var callsignText = RemoveStationContext(normalized, detectedStation);
+        var tokens = TokenizeCallsignText(callsignText);
+
+        if (!string.IsNullOrWhiteSpace(expectedCompact))
         {
-            if (!NatoLetters.TryGetValue(tokens[index], out var first))
+            var expectedScore = DetectExpectedCallsignPhonetically(tokens, expectedCompact);
+            if (expectedScore >= 0.68)
+            {
+                return new CallsignDetection(normalizedExpected, "alphabet rapproché de l'ATC ID SimConnect", expectedScore);
+            }
+
+            // Quand un ATC ID fiable existe, PHONIE ne fabrique jamais un autre indicatif à partir d'un mot ordinaire.
+            return new CallsignDetection(null, "ATC ID non confirmé par la transcription", expectedScore);
+        }
+
+        var spoken = DetectSpokenFrenchRegistration(tokens);
+        return spoken is null
+            ? new CallsignDetection(null, "non détecté", 0)
+            : new CallsignDetection(FormatCallsign(spoken), "alphabet aéronautique", 1.0);
+    }
+
+    private static string RemoveStationContext(string normalized, string? detectedStation)
+    {
+        var text = normalized;
+        if (!string.IsNullOrWhiteSpace(detectedStation))
+        {
+            text = detectedStation switch
+            {
+                "Poitiers Tour" => text.Replace("poitiers tour", " ", StringComparison.Ordinal),
+                "Poitiers Approche / SIV" => text
+                    .Replace("poitiers approche", " ", StringComparison.Ordinal)
+                    .Replace("poitiers siv", " ", StringComparison.Ordinal),
+                "Poitiers" => text.Replace("poitiers", " ", StringComparison.Ordinal),
+                _ => text,
+            };
+        }
+
+        return Regex.Replace(text, "\\s+", " ").Trim();
+    }
+
+    private static IReadOnlyList<string> TokenizeCallsignText(string text)
+    {
+        var tokens = new List<string>();
+        foreach (var token in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            foreach (var part in token.Split('-', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var cleaned = part.Trim();
+                if (cleaned.Length == 0)
+                {
+                    continue;
+                }
+
+                if (TrySplitFusedCallsignToken(cleaned, out var fusedParts))
+                {
+                    tokens.AddRange(fusedParts);
+                }
+                else
+                {
+                    tokens.Add(cleaned);
+                }
+            }
+        }
+
+        return tokens;
+    }
+
+    private static bool TrySplitFusedCallsignToken(string token, out string[] parts)
+    {
+        var normalizedToken = token.Replace("-", string.Empty, StringComparison.Ordinal);
+        if (FusedCallsignTokens.TryGetValue(normalizedToken, out var knownParts))
+        {
+            parts = knownParts;
+            return true;
+        }
+
+        parts = Array.Empty<string>();
+        return false;
+    }
+
+    private static double DetectExpectedCallsignPhonetically(IReadOnlyList<string> tokens, string expectedCompact)
+    {
+        if (expectedCompact.Length < 4 || tokens.Count == 0)
+        {
+            return 0;
+        }
+
+        var best = 0.0;
+        for (var start = 0; start < tokens.Count; start++)
+        {
+            var firstScore = ScoreTokenForLetter(tokens[start], expectedCompact[0]);
+            if (firstScore < 0.65)
+            {
+                continue;
+            }
+
+            var matched = 1;
+            var totalScore = firstScore;
+            var cursor = start + 1;
+
+            for (var expectedIndex = 1; expectedIndex < expectedCompact.Length; expectedIndex++)
+            {
+                var bestTokenScore = 0.0;
+                var bestTokenIndex = -1;
+                var searchEnd = Math.Min(tokens.Count, cursor + 4);
+                for (var tokenIndex = cursor; tokenIndex < searchEnd; tokenIndex++)
+                {
+                    if (CallsignNoiseWords.Contains(tokens[tokenIndex]))
+                    {
+                        continue;
+                    }
+
+                    var score = ScoreTokenForLetter(tokens[tokenIndex], expectedCompact[expectedIndex]);
+                    if (score > bestTokenScore)
+                    {
+                        bestTokenScore = score;
+                        bestTokenIndex = tokenIndex;
+                    }
+                }
+
+                if (bestTokenIndex >= 0 && bestTokenScore >= 0.45)
+                {
+                    matched++;
+                    totalScore += bestTokenScore;
+                    cursor = bestTokenIndex + 1;
+                }
+            }
+
+            var coverage = (double)matched / expectedCompact.Length;
+            var averageQuality = totalScore / matched;
+            var scoreForStart = (coverage * 0.75) + (averageQuality * 0.25);
+            if (scoreForStart > best)
+            {
+                best = scoreForStart;
+            }
+        }
+
+        return Math.Clamp(best, 0, 1);
+    }
+
+    private static double ScoreTokenForLetter(string token, char expectedLetter)
+    {
+        if (!NatoAliases.TryGetValue(expectedLetter, out var aliases))
+        {
+            return 0;
+        }
+
+        var normalizedToken = Normalize(token).Replace(" ", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal);
+        if (normalizedToken.Length == 0)
+        {
+            return 0;
+        }
+
+        var best = 0.0;
+        foreach (var alias in aliases)
+        {
+            if (normalizedToken.Equals(alias, StringComparison.Ordinal))
+            {
+                return 1.0;
+            }
+
+            if (normalizedToken.Contains(alias, StringComparison.Ordinal) || alias.Contains(normalizedToken, StringComparison.Ordinal))
+            {
+                best = Math.Max(best, 0.85);
+            }
+
+            best = Math.Max(best, Similarity(normalizedToken, alias));
+        }
+
+        return best;
+    }
+
+    private static string? DetectSpokenFrenchRegistration(IReadOnlyList<string> tokens)
+    {
+        for (var index = 0; index < tokens.Count; index++)
+        {
+            if (!NatoLetters.TryGetValue(tokens[index], out var first) || first != 'F')
             {
                 continue;
             }
 
             var letters = new List<char> { first };
-            for (var next = index + 1; next < tokens.Length && letters.Count < 6; next++)
+            for (var next = index + 1; next < tokens.Count && letters.Count < 5; next++)
             {
+                if (CallsignNoiseWords.Contains(tokens[next]))
+                {
+                    continue;
+                }
+
                 if (NatoLetters.TryGetValue(tokens[next], out var letter))
                 {
                     letters.Add(letter);
+                    continue;
                 }
-                else if (letters.Count > 1)
+
+                if (letters.Count > 1)
                 {
                     break;
                 }
             }
 
-            if (letters.Count >= 4)
+            if (letters.Count == 5)
             {
-                var compact = new string(letters.ToArray());
-                if (string.IsNullOrWhiteSpace(expectedCompact) || compact.Equals(expectedCompact, StringComparison.Ordinal))
-                {
-                    return new CallsignDetection(FormatCallsign(compact), "alphabet aéronautique", 1.0);
-                }
-
-                var confidence = Similarity(compact, expectedCompact);
-                if (confidence >= 0.80)
-                {
-                    return new CallsignDetection(normalizedExpected, "alphabet rapproché de l'ATC ID", confidence);
-                }
+                return new string(letters.ToArray());
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(expectedCompact))
-        {
-            var fuzzy = DetectExpectedCallsignFuzzy(tokens, expectedCompact);
-            if (fuzzy >= 0.68)
-            {
-                return new CallsignDetection(normalizedExpected, "rapproché de l'ATC ID SimConnect", fuzzy);
-            }
-        }
-
-        return new CallsignDetection(null, "non détecté", 0);
-    }
-
-    private static double DetectExpectedCallsignFuzzy(IReadOnlyList<string> tokens, string expectedCompact)
-    {
-        var expectedSpoken = string.Concat(expectedCompact.Select(character =>
-            CanonicalNato.TryGetValue(character, out var word) ? word : character.ToString().ToLowerInvariant()));
-        var best = 0.0;
-
-        for (var start = 0; start < tokens.Count; start++)
-        {
-            var trigger = tokens[start].Replace("-", string.Empty, StringComparison.Ordinal);
-            if (!trigger.Contains("fox", StringComparison.Ordinal)
-                && !trigger.Contains("foxt", StringComparison.Ordinal)
-                && !trigger.Equals("effe", StringComparison.Ordinal)
-                && !trigger.Equals("f", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            for (var length = 1; length <= 8 && start + length <= tokens.Count; length++)
-            {
-                var candidate = string.Concat(tokens.Skip(start).Take(length))
-                    .Replace("-", string.Empty, StringComparison.Ordinal);
-                var score = Similarity(candidate, expectedSpoken);
-                if (score > best)
-                {
-                    best = score;
-                }
-            }
-        }
-
-        return best;
+        return null;
     }
 
     private static string? NormalizeExpectedCallsign(string? value)
@@ -320,8 +512,22 @@ public static partial class PhraseologyService
 
     private static string? DetectIntention(string text)
     {
-        if (text.Contains("tour de piste", StringComparison.Ordinal) || text.Contains("tours de piste", StringComparison.Ordinal)) return "tours de piste";
-        if (text.Contains("demande roulage", StringComparison.Ordinal) || text.Contains("devente de roulage", StringComparison.Ordinal) || text.Contains("pret a rouler", StringComparison.Ordinal) || text.Contains("roulage", StringComparison.Ordinal)) return "roulage";
+        if (ToursDePisteRegex().IsMatch(text)
+            || text.Contains("tourne piste", StringComparison.Ordinal)
+            || text.Contains("tourne-piste", StringComparison.Ordinal))
+        {
+            return "tours de piste";
+        }
+
+        if (text.Contains("demande roulage", StringComparison.Ordinal)
+            || text.Contains("devente de roulage", StringComparison.Ordinal)
+            || text.Contains("consignes de rouleau", StringComparison.Ordinal)
+            || text.Contains("pret a rouler", StringComparison.Ordinal)
+            || text.Contains("roulage", StringComparison.Ordinal))
+        {
+            return "roulage";
+        }
+
         if (text.Contains("vol local", StringComparison.Ordinal) || text.Contains("local", StringComparison.Ordinal)) return "vol local";
         if (text.Contains("depart", StringComparison.Ordinal)) return "départ";
         if (text.Contains("atterrissage", StringComparison.Ordinal) || text.Contains("atterrir", StringComparison.Ordinal)) return "atterrissage";
@@ -338,11 +544,15 @@ public static partial class PhraseologyService
             }
         }
 
+        if (text.Contains("information alpes", StringComparison.Ordinal)) return "A";
         return null;
     }
 
-    [GeneratedRegex(@"\b([A-Z])-?([A-Z0-9]{3,5})\b", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\b([A-Z])\s*-\s*([A-Z0-9]{3,5})\b", RegexOptions.CultureInvariant)]
     private static partial Regex DirectCallsignRegex();
+
+    [GeneratedRegex(@"\btours?\s+de\s+(?:piste|pistes|pisse|pisses)\b", RegexOptions.CultureInvariant)]
+    private static partial Regex ToursDePisteRegex();
 
     private sealed record CallsignDetection(string? Callsign, string Source, double Confidence);
 }

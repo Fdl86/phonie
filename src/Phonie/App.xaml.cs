@@ -79,7 +79,7 @@ public partial class App : Application
         {
             Directory.CreateDirectory(AppPaths.LogsDirectory);
             var builder = new StringBuilder();
-            builder.AppendLine($"PHONIE DEV0.3.0.2 - {stage}");
+            builder.AppendLine($"PHONIE DEV0.3.0.3 - {stage}");
             builder.AppendLine($"Date : {DateTimeOffset.Now:O}");
             builder.AppendLine($"Dossier : {AppPaths.BaseDirectory}");
             builder.AppendLine($"Type : {exception.GetType().FullName}");

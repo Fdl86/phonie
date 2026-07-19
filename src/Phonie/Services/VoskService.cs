@@ -220,6 +220,17 @@ public sealed class VoskService : IDisposable
             segments);
     }
 
+    public void ReleaseModel()
+    {
+        if (this.disposed)
+        {
+            return;
+        }
+
+        this.model?.Dispose();
+        this.model = null;
+    }
+
     private static string ParseText(string json)
     {
         using var document = JsonDocument.Parse(json);

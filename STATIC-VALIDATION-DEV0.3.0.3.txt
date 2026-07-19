@@ -1,0 +1,11 @@
+PHONIE DEV0.3.0.3 - VALIDATION STATIQUE
+
+- version 0.3.0.3 cohérente dans le projet, l'application et le workflow
+- workflow GitHub Actions avec compilation puis smoke tests
+- test anti T-OUR, V-OICI et F-AUT
+- test F-HNNY sur transcriptions Whisper et Vosk réelles
+- test de rejet d'un autre indicatif
+- modèle ATC ID transmis au moteur de phraséologie
+- libération explicite des modèles ASR après comparaison
+- XML et XAML à contrôler avant archivage
+- compilation Windows réelle assurée uniquement par GitHub Actions

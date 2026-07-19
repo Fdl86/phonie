@@ -1,6 +1,6 @@
 # Third-party notices
 
-PHONIE DEV0.3.0.2 utilise :
+PHONIE DEV0.3.0.3 utilise :
 
 - `SimConnect.NET` 0.2.1 - licence MIT ;
 - `NAudio` 2.3.0 - licence MIT ;

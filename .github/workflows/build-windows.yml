@@ -1,4 +1,4 @@
-name: Build PHONIE DEV0.3.0.2
+name: Build PHONIE DEV0.3.0.3 - Callsign Context Hotfix
 
 on:
   workflow_dispatch:
@@ -28,11 +28,17 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Restore
+      - name: Restore application
         run: dotnet restore src/Phonie/Phonie.csproj
+
+      - name: Restore phraseology smoke tests
+        run: dotnet restore tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj
 
       - name: Build
         run: dotnet build src/Phonie/Phonie.csproj --configuration Release --no-restore
+
+      - name: Run phraseology smoke tests
+        run: dotnet run --project tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-restore
 
       - name: Publish autonomous Windows x64
         run: >-
@@ -41,7 +47,7 @@ jobs:
           --runtime win-x64
           --self-contained true
           --no-restore
-          --output dist/PHONIE-DEV0.3.0.2-win-x64
+          --output dist/PHONIE-DEV0.3.0.3-win-x64
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
@@ -53,24 +59,24 @@ jobs:
         run: |
           $commit = "${{ github.sha }}".Substring(0, 7)
           @"
-          PHONIE DEV0.3.0.2
+          PHONIE DEV0.3.0.3
           Commit: $commit
           Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
           Runtime: Windows x64 autonome
-          Modules: First Contact - profils Whisper CPU/Vulkan - Vosk FR expérimental - ATC ID SimConnect - indicatif fuzzy - ATIS texte - classification radio LFBI - PTT clavier/HOTAS
-          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.3.0.2-win-x64/BUILD-INFO.txt
+          Modules: First Contact - contexte indicatif ATC ID - anti faux T-OUR/V-OICI - profils Whisper CPU/Vulkan - Vosk FR expérimental - libération mémoire comparaison - ATIS texte - classification radio LFBI - PTT clavier/HOTAS
+          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.3.0.3-win-x64/BUILD-INFO.txt
 
       - name: Create portable folders
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.2-win-x64/config | Out-Null
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.2-win-x64/logs | Out-Null
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.2-win-x64/logs/airport-data | Out-Null
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.2-win-x64/logs/sessions | Out-Null
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.2-win-x64/models/whisper | Out-Null
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.2-win-x64/models/vosk | Out-Null
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.2-win-x64/recordings | Out-Null
-          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.2-win-x64/cache | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.3-win-x64/config | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.3-win-x64/logs | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.3-win-x64/logs/airport-data | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.3-win-x64/logs/sessions | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.3-win-x64/models/whisper | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.3-win-x64/models/vosk | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.3-win-x64/recordings | Out-Null
+          New-Item -ItemType Directory -Force dist/PHONIE-DEV0.3.0.3-win-x64/cache | Out-Null
           @"
           MODÈLES WHISPER
 
@@ -78,27 +84,28 @@ jobs:
           Choisir un profil dans l'application puis utiliser "Installer profil".
           Les fichiers sont enregistrés dans models\whisper et vérifiés par SHA-256.
           Le passage CPU vers Vulkan ou Vulkan vers CPU demande un redémarrage de PHONIE.
-          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.3.0.2-win-x64/models/whisper/LISEZ-MOI.txt
+          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.3.0.3-win-x64/models/whisper/LISEZ-MOI.txt
           @"
           VOSK FR EXPÉRIMENTAL
 
           Le modèle n'est pas inclus dans l'archive PHONIE.
           Sélectionner "Vosk FR - expérimental" puis utiliser "Installer profil".
           Le modèle est enregistré dans models\vosk et vérifié par SHA-256 avant extraction.
-          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.3.0.2-win-x64/models/vosk/LISEZ-MOI.txt
-          Copy-Item README.md dist/PHONIE-DEV0.3.0.2-win-x64/README.md
-          Copy-Item TEST-DEV0.3.0.2.md dist/PHONIE-DEV0.3.0.2-win-x64/TEST-DEV0.3.0.2.md
-          Copy-Item ASR-PROFILES-DEV0.3.0.2.md dist/PHONIE-DEV0.3.0.2-win-x64/ASR-PROFILES-DEV0.3.0.2.md
-          Copy-Item THIRD-PARTY-NOTICES.md dist/PHONIE-DEV0.3.0.2-win-x64/THIRD-PARTY-NOTICES.md
+          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.3.0.3-win-x64/models/vosk/LISEZ-MOI.txt
+          Copy-Item README.md dist/PHONIE-DEV0.3.0.3-win-x64/README.md
+          Copy-Item TEST-DEV0.3.0.3.md dist/PHONIE-DEV0.3.0.3-win-x64/TEST-DEV0.3.0.3.md
+          Copy-Item ASR-PROFILES-DEV0.3.0.3.md dist/PHONIE-DEV0.3.0.3-win-x64/ASR-PROFILES-DEV0.3.0.3.md
+          Copy-Item CALLSIGN-CONTEXT-DEV0.3.0.3.md dist/PHONIE-DEV0.3.0.3-win-x64/CALLSIGN-CONTEXT-DEV0.3.0.3.md
+          Copy-Item THIRD-PARTY-NOTICES.md dist/PHONIE-DEV0.3.0.3-win-x64/THIRD-PARTY-NOTICES.md
 
       - name: Create zip
         shell: pwsh
-        run: Compress-Archive -Path dist/PHONIE-DEV0.3.0.2-win-x64/* -DestinationPath dist/PHONIE-DEV0.3.0.2-win-x64.zip -Force
+        run: Compress-Archive -Path dist/PHONIE-DEV0.3.0.3-win-x64/* -DestinationPath dist/PHONIE-DEV0.3.0.3-win-x64.zip -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PHONIE-DEV0.3.0.2-win-x64
-          path: dist/PHONIE-DEV0.3.0.2-win-x64.zip
+          name: PHONIE-DEV0.3.0.3-win-x64
+          path: dist/PHONIE-DEV0.3.0.3-win-x64.zip
           if-no-files-found: error
           retention-days: 14

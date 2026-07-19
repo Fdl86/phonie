@@ -52,7 +52,22 @@ public sealed class SpeechRecognitionService : IDisposable
             return false;
         }
 
+        var previousBackend = SpeechRecognitionProfiles.Get(this.selectedProfile).Backend;
+        var nextBackend = SpeechRecognitionProfiles.Get(profile).Backend;
         this.selectedProfile = profile;
+
+        if (previousBackend != nextBackend)
+        {
+            if (previousBackend == SpeechRecognitionBackend.Whisper)
+            {
+                this.whisperService.ReleaseModel();
+            }
+            else if (previousBackend == SpeechRecognitionBackend.Vosk)
+            {
+                this.voskService.ReleaseModel();
+            }
+        }
+
         this.StatusChanged?.Invoke(this, this.GetStatus(profile));
         return true;
     }
@@ -159,6 +174,10 @@ public sealed class SpeechRecognitionService : IDisposable
             }
         }
 
+        // Le laboratoire charge plusieurs moteurs successivement. Ils sont libérés après la comparaison
+        // pour éviter de conserver simultanément Whisper et Vosk en mémoire pendant le vol.
+        this.whisperService.ReleaseModel();
+        this.voskService.ReleaseModel();
         this.StatusChanged?.Invoke(this, this.GetSelectedStatus());
         return results;
     }

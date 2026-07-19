@@ -251,6 +251,18 @@ public sealed class WhisperService : IDisposable
         return builder.ToString();
     }
 
+    public void ReleaseModel()
+    {
+        if (this.disposed)
+        {
+            return;
+        }
+
+        this.factory?.Dispose();
+        this.factory = null;
+        this.loadedModelPath = null;
+    }
+
     private static string CleanMessage(Exception exception)
     {
         var message = exception.GetBaseException().Message.ReplaceLineEndings(" ").Trim();
