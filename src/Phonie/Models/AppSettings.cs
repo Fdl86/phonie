@@ -8,6 +8,8 @@ public sealed class AppSettings
 
     public string? OutputDeviceId { get; set; }
 
+    public int MicrophoneGainDb { get; set; } = 6;
+
     public int PttVirtualKey { get; set; } = 0xA3; // Right Control
 
     public string? JoystickPttDeviceKey { get; set; }

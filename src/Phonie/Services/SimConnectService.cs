@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Phonie.Models;
 using Phonie.Utilities;
 using SimConnect.NET;
@@ -9,9 +10,11 @@ public sealed class SimConnectService : IAsyncDisposable
     // LFBI ARP: 46°35'16"N 000°18'24"E.
     private const double LfbiLatitude = 46.587778;
     private const double LfbiLongitude = 0.306667;
+    private static readonly TimeSpan OptionalRetryDelay = TimeSpan.FromSeconds(30);
 
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
-    private readonly HashSet<string> optionalReadWarnings = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> optionalReadWarnings = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> optionalRetryAfter = new(StringComparer.Ordinal);
     private CancellationTokenSource? cancellation;
     private Task? worker;
     private SimConnectClient? client;
@@ -49,13 +52,13 @@ public sealed class SimConnectService : IAsyncDisposable
         }
 
         await this.ResetClientAsync().ConfigureAwait(false);
-        this.PublishStatus(ConnectionState.Waiting, "Reconnexion demandée — nouvelle tentative automatique");
+        this.PublishStatus(ConnectionState.Waiting, "Reconnexion demandée - nouvelle tentative automatique");
     }
 
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         this.PublishStatus(ConnectionState.Waiting, "En attente de Microsoft Flight Simulator");
-        this.PublishLog("PHONIE DEV0.2.3 démarrée. Recherche locale de SimConnect.");
+        this.PublishLog("PHONIE DEV0.2.4 démarrée. Recherche locale de SimConnect.");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -84,8 +87,8 @@ public sealed class SimConnectService : IAsyncDisposable
                 this.PublishStatus(
                     this.connectedAtLeastOnce ? ConnectionState.Disconnected : ConnectionState.Waiting,
                     this.connectedAtLeastOnce
-                        ? "Connexion perdue — reconnexion automatique"
-                        : "En attente du simulateur — nouvelle tentative automatique");
+                        ? "Connexion perdue - reconnexion automatique"
+                        : "En attente du simulateur - nouvelle tentative automatique");
 
                 await this.ResetClientAsync().ConfigureAwait(false);
 
@@ -106,9 +109,9 @@ public sealed class SimConnectService : IAsyncDisposable
 
     private async Task ConnectAsync(CancellationToken cancellationToken)
     {
-        this.PublishStatus(ConnectionState.Connecting, "Connexion à SimConnect…");
+        this.PublishStatus(ConnectionState.Connecting, "Connexion à SimConnect...");
 
-        var newClient = new SimConnectClient("PHONIE DEV0.2.3")
+        var newClient = new SimConnectClient("PHONIE DEV0.2.4")
         {
             AutoReconnectEnabled = false,
         };
@@ -116,13 +119,18 @@ public sealed class SimConnectService : IAsyncDisposable
         try
         {
             await newClient.ConnectAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-            await Task.Delay(350, cancellationToken).ConfigureAwait(false);
+
+            // The pipe can report connected slightly before the simulator data service is ready.
+            // A single warm-up read prevents a burst of parallel 10-second timeouts.
+            await Task.Delay(TimeSpan.FromMilliseconds(1200), cancellationToken).ConfigureAwait(false);
+            _ = await newClient.SimVars.GetAsync<string>("TITLE", string.Empty, cancellationToken: cancellationToken).ConfigureAwait(false);
 
             await this.lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 this.client = newClient;
                 this.optionalReadWarnings.Clear();
+                this.optionalRetryAfter.Clear();
                 this.lastWeatherRefresh = DateTimeOffset.MinValue;
                 this.cachedWeather = WeatherSnapshot.Empty;
             }
@@ -134,7 +142,7 @@ public sealed class SimConnectService : IAsyncDisposable
             var simulator = newClient.IsMSFS2024 ? "MSFS 2024" : "MSFS 2020";
             this.connectedAtLeastOnce = true;
             this.lastErrorMessage = null;
-            this.PublishStatus(ConnectionState.Connected, $"Connecté — {simulator}");
+            this.PublishStatus(ConnectionState.Connected, $"Connecté - {simulator}");
             this.PublishLog($"Connexion SimConnect établie avec {simulator}.");
             this.PublishLog("Scanner radio actif : station, type de service, espacement et météo locale.");
         }
@@ -149,7 +157,7 @@ public sealed class SimConnectService : IAsyncDisposable
         SimConnectClient connectedClient,
         CancellationToken cancellationToken)
     {
-        // Variables indispensables : une erreur sur l'une d'elles déclenche une reconnexion propre.
+        // Core variables are read first. Optional enrichment starts only after the core succeeds.
         var titleTask = connectedClient.SimVars.GetAsync<string>("TITLE", string.Empty, cancellationToken: cancellationToken);
         var latitudeTask = connectedClient.SimVars.GetAsync<double>("PLANE LATITUDE", "degrees", cancellationToken: cancellationToken);
         var longitudeTask = connectedClient.SimVars.GetAsync<double>("PLANE LONGITUDE", "degrees", cancellationToken: cancellationToken);
@@ -162,14 +170,6 @@ public sealed class SimConnectService : IAsyncDisposable
         var comStandbyTask = connectedClient.SimVars.GetAsync<double>("COM STANDBY FREQUENCY:1", "MHz", cancellationToken: cancellationToken);
         var transponderTask = connectedClient.SimVars.GetAsync<int>("TRANSPONDER CODE:1", "BCO16", cancellationToken: cancellationToken);
 
-        // Variables enrichies : elles sont optionnelles pour préserver la compatibilité entre avions et versions du simulateur.
-        var stationIdentTask = this.GetOptionalAsync(connectedClient, "COM ACTIVE FREQ IDENT:1", string.Empty, string.Empty, cancellationToken);
-        var stationTypeTask = this.GetOptionalAsync(connectedClient, "COM ACTIVE FREQ TYPE:1", string.Empty, string.Empty, cancellationToken);
-        var spacingTask = this.GetOptionalAsync(connectedClient, "COM SPACING MODE:1", "enum", 0, cancellationToken);
-        var receiveTask = this.GetOptionalAsync(connectedClient, "COM RECEIVE:1", "bool", 1, cancellationToken);
-        var comStatusTask = this.GetOptionalAsync(connectedClient, "COM STATUS:1", "enum", 0, cancellationToken);
-        var weatherTask = this.ReadWeatherWhenDueAsync(connectedClient, cancellationToken);
-
         await Task.WhenAll(
             titleTask,
             latitudeTask,
@@ -181,17 +181,27 @@ public sealed class SimConnectService : IAsyncDisposable
             onGroundTask,
             comActiveTask,
             comStandbyTask,
-            transponderTask,
+            transponderTask).ConfigureAwait(false);
+
+        var latitude = await latitudeTask.ConfigureAwait(false);
+        var longitude = await longitudeTask.ConfigureAwait(false);
+        var distance = GeoMath.DistanceNm(latitude, longitude, LfbiLatitude, LfbiLongitude);
+
+        // Enriched variables are optional and independently cooled down after a failure.
+        var stationIdentTask = this.GetOptionalAsync(connectedClient, "COM ACTIVE FREQ IDENT:1", string.Empty, string.Empty, cancellationToken);
+        var stationTypeTask = this.GetOptionalAsync(connectedClient, "COM ACTIVE FREQ TYPE:1", string.Empty, string.Empty, cancellationToken);
+        var spacingTask = this.GetOptionalAsync(connectedClient, "COM SPACING MODE:1", "enum", 0, cancellationToken);
+        var receiveTask = this.GetOptionalAsync(connectedClient, "COM RECEIVE:1", "bool", 1, cancellationToken);
+        var comStatusTask = this.GetOptionalAsync(connectedClient, "COM STATUS:1", "enum", 0, cancellationToken);
+        var weatherTask = this.ReadWeatherWhenDueAsync(connectedClient, cancellationToken);
+
+        await Task.WhenAll(
             stationIdentTask,
             stationTypeTask,
             spacingTask,
             receiveTask,
             comStatusTask,
             weatherTask).ConfigureAwait(false);
-
-        var latitude = await latitudeTask.ConfigureAwait(false);
-        var longitude = await longitudeTask.ConfigureAwait(false);
-        var distance = GeoMath.DistanceNm(latitude, longitude, LfbiLatitude, LfbiLongitude);
 
         var weather = await weatherTask.ConfigureAwait(false);
 
@@ -262,9 +272,17 @@ public sealed class SimConnectService : IAsyncDisposable
         T fallback,
         CancellationToken cancellationToken)
     {
+        if (this.optionalRetryAfter.TryGetValue(name, out var retryAfter) && retryAfter > DateTimeOffset.UtcNow)
+        {
+            return fallback;
+        }
+
         try
         {
-            return await connectedClient.SimVars.GetAsync<T>(name, unit, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var value = await connectedClient.SimVars.GetAsync<T>(name, unit, cancellationToken: cancellationToken).ConfigureAwait(false);
+            this.optionalRetryAfter.TryRemove(name, out _);
+            this.optionalReadWarnings.TryRemove(name, out _);
+            return value;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -272,7 +290,8 @@ public sealed class SimConnectService : IAsyncDisposable
         }
         catch (Exception exception)
         {
-            if (this.optionalReadWarnings.Add(name))
+            this.optionalRetryAfter[name] = DateTimeOffset.UtcNow + OptionalRetryDelay;
+            if (this.optionalReadWarnings.TryAdd(name, 0))
             {
                 this.PublishLog($"Donnée optionnelle indisponible ({name}) : {CleanMessage(exception)}");
             }
@@ -325,6 +344,11 @@ public sealed class SimConnectService : IAsyncDisposable
 
     private static double NormalizeHeading(double heading)
     {
+        if (!double.IsFinite(heading))
+        {
+            return double.NaN;
+        }
+
         var normalized = heading % 360.0;
         return normalized < 0 ? normalized + 360.0 : normalized;
     }

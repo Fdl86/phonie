@@ -35,8 +35,8 @@ public partial class MainWindow : Window
     private string? lastRecordingPath;
     private string? lastRadioSignature;
     private string diagnosticsPttSource = "Aucun";
-    private string diagnosticsSimulator = "—";
-    private string diagnosticsStation = "—";
+    private string diagnosticsSimulator = "-";
+    private string diagnosticsStation = "-";
     private double diagnosticsCom1;
 
     public MainWindow()
@@ -71,16 +71,23 @@ public partial class MainWindow : Window
     private void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
     {
         this.SelectThemeInUi();
+        this.SelectGainInUi();
         this.RefreshAudioDevices();
         this.UpdatePttLabels();
-        this.DiagnosticsPathText.Text = $"Log : {this.diagnosticsService.SessionFilePath}";
+
+        this.lastRecordingPath = File.Exists(this.audioService.LastRecordingPath)
+            ? this.audioService.LastRecordingPath
+            : null;
+        this.PlayLastRecordingButton.IsEnabled = this.lastRecordingPath is not null;
+        this.DiagnosticsPathText.Text = Path.Combine("logs", Path.GetFileName(this.diagnosticsService.SessionFilePath));
 
         this.diagnosticsService.Start(() => new DiagnosticsContext(
             this.pttHeld,
             this.diagnosticsPttSource,
             this.diagnosticsSimulator,
             this.diagnosticsCom1,
-            this.diagnosticsStation));
+            this.diagnosticsStation,
+            this.settings.MicrophoneGainDb));
 
         try
         {
@@ -100,7 +107,7 @@ public partial class MainWindow : Window
         this.RefreshFooterState();
         this.audioMeterTimer.Start();
         this.simConnectService.Start();
-        this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Log de légèreté : {this.diagnosticsService.SessionFilePath}");
+        this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Log portable : {this.diagnosticsService.SessionFilePath}");
     }
 
     private async void MainWindow_OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -221,9 +228,15 @@ public partial class MainWindow : Window
 
     private void MarkDiagnosticsButton_OnClick(object sender, RoutedEventArgs e)
     {
-        var marker = $"Test manuel · {this.diagnosticsSimulator} · COM1 {this.diagnosticsCom1:F3} · {this.diagnosticsStation} · PTT {this.diagnosticsPttSource}";
+        var markerName = (this.MarkerComboBox.SelectedItem as ComboBoxItem)?.Content?.ToString()?.Trim();
+        if (string.IsNullOrWhiteSpace(markerName))
+        {
+            markerName = "TEST MANUEL";
+        }
+
+        var marker = $"{markerName} - {this.diagnosticsSimulator} - COM1 {this.diagnosticsCom1:F3} - {this.diagnosticsStation} - PTT {this.diagnosticsPttSource} - gain +{this.settings.MicrophoneGainDb} dB";
         this.diagnosticsService.Mark(marker);
-        this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Marque ajoutée au log de légèreté.");
+        this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Marque ajoutée : {markerName}.");
     }
 
     private void OpenDiagnosticsFolderButton_OnClick(object sender, RoutedEventArgs e)
@@ -280,6 +293,21 @@ public partial class MainWindow : Window
         this.settings.OutputDeviceId = selectedDevice.Id;
         this.SaveSettings();
         this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Sortie radio : {selectedDevice.Name}");
+    }
+
+    private void GainComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (this.suppressSettingsEvents
+            || this.GainComboBox.SelectedItem is not ComboBoxItem item
+            || item.Tag is not string gainText
+            || !int.TryParse(gainText, out var gainDb))
+        {
+            return;
+        }
+
+        this.settings.MicrophoneGainDb = Math.Clamp(gainDb, 0, 18);
+        this.SaveSettings();
+        this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Gain micro PHONIE : +{this.settings.MicrophoneGainDb} dB.");
     }
 
     private void RefreshAudioDevices()
@@ -392,7 +420,7 @@ public partial class MainWindow : Window
                 this.CancelJoystickAssignment();
                 this.SaveSettings();
                 this.UpdatePttLabels();
-                this.AppendLog($"[{DateTime.Now:HH:mm:ss}] PTT HOTAS défini : {buttonEvent.Device.Name} · bouton {buttonEvent.ButtonNumber}.");
+                this.AppendLog($"[{DateTime.Now:HH:mm:ss}] PTT HOTAS défini : {buttonEvent.Device.Name} - bouton {buttonEvent.ButtonNumber}.");
                 return;
             }
 
@@ -459,9 +487,9 @@ public partial class MainWindow : Window
 
         this.pttHeld = true;
         var input = this.InputDeviceComboBox.SelectedItem as AudioDeviceInfo;
-        if (this.audioService.StartRecording(input?.Id))
+        if (this.audioService.StartRecording(input?.Id, this.settings.MicrophoneGainDb))
         {
-            this.diagnosticsService.WriteEvent("PTT", $"Début · {sourceLabel}");
+            this.diagnosticsService.WriteEvent("PTT", $"Début - {sourceLabel}");
             return;
         }
 
@@ -511,7 +539,7 @@ public partial class MainWindow : Window
         _ = this.Dispatcher.BeginInvoke(() =>
         {
             this.SetBackgroundResource(this.PttPanel, recording ? "PttActiveBackground" : "PttIdleBackground");
-            this.PttStateText.Text = recording ? "ÉMISSION — parlez" : "Relâché";
+            this.PttStateText.Text = recording ? "ÉMISSION - parlez" : "Relâché";
             this.SetForegroundResource(this.PttStateText, recording ? "Success" : "SecondaryText");
             this.SetDotResource(this.PttFooterDot, recording ? "Accent" : this.pttReady ? "Success" : "Danger");
         });
@@ -521,26 +549,57 @@ public partial class MainWindow : Window
     {
         _ = this.Dispatcher.BeginInvoke(() =>
         {
+            if (result.WasDiscarded)
+            {
+                this.PttStateText.Text = "Appui trop court - ignoré";
+                this.SetForegroundResource(this.PttStateText, "Warning");
+                this.SetDotResource(this.PttFooterDot, this.pttReady ? "Success" : "Warning");
+                this.diagnosticsService.WriteEvent("PTT", $"Ignoré - {result.Duration.TotalSeconds:F2} s - seuil 0,25 s");
+                this.AppendLog($"[{DateTime.Now:HH:mm:ss}] PTT ignoré : appui de {result.Duration.TotalSeconds:F2} s.");
+                return;
+            }
+
             this.lastRecordingPath = result.FilePath;
             this.PlayLastRecordingButton.IsEnabled = result.FileSizeBytes > 44;
-            this.PttStateText.Text = result.FileSizeBytes > 44 ? "Enregistré" : "Enregistrement vide";
-            this.SetForegroundResource(this.PttStateText, result.FileSizeBytes > 44 ? "Success" : "Warning");
-            this.SetDotResource(this.PttFooterDot, result.FileSizeBytes > 44 ? "Success" : "Warning");
+            this.PttStateText.Text = $"Enregistré - +{result.GainDb} dB";
+            this.SetForegroundResource(this.PttStateText, result.LimitedSampleCount > 0 ? "Warning" : "Success");
+            this.SetDotResource(this.PttFooterDot, "Success");
             this.diagnosticsService.ReportPttCompleted(result.Duration);
-            this.diagnosticsService.WriteEvent("PTT", $"Fin · {result.Duration.TotalSeconds:F1} s · {result.FileSizeBytes / 1024.0:F0} Ko");
-            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] PTT enregistré : {result.Duration.TotalSeconds:F1} s · {result.FileSizeBytes / 1024.0:F0} Ko.");
+            this.diagnosticsService.WriteEvent(
+                "PTT",
+                $"Fin - {result.Duration.TotalSeconds:F1} s - {result.FileSizeBytes / 1024.0:F0} Ko - gain +{result.GainDb} dB - limiteur {result.LimitedSampleCount} - pic {result.PeakPercent:F0} %");
+            this.AppendLog(
+                $"[{DateTime.Now:HH:mm:ss}] PTT enregistré : {result.Duration.TotalSeconds:F1} s - +{result.GainDb} dB - pic {result.PeakPercent:F0} % - limiteur {result.LimitedSampleCount}.");
         });
     }
 
     private void AudioMeterTimer_OnTick(object? sender, EventArgs e)
     {
         var selectedInput = this.InputDeviceComboBox.SelectedItem as AudioDeviceInfo;
-        var level = Math.Clamp(this.audioService.GetInputPeak(selectedInput?.Id) * 100.0, 0.0, 100.0);
+        var rawPeak = Math.Clamp(this.audioService.GetInputPeak(selectedInput?.Id), 0.0f, 1.0f);
+        var gainLinear = Math.Pow(10.0, this.settings.MicrophoneGainDb / 20.0);
+        var amplifiedPeak = rawPeak * gainLinear;
+        var level = Math.Clamp(amplifiedPeak * 100.0, 0.0, 100.0);
         this.MicrophoneLevelBar.Value = level;
-        this.MicrophoneLevelText.Text = $"Niveau d'entrée : {level:F0} %";
 
-        var meterResource = level >= 82 ? "MeterHigh" : level >= 58 ? "MeterMedium" : "MeterLow";
+        var meterResource = amplifiedPeak >= 1.0 ? "MeterHigh" : amplifiedPeak >= 0.75 ? "MeterMedium" : "MeterLow";
         this.MicrophoneLevelBar.SetResourceReference(ProgressBar.ForegroundProperty, meterResource);
+
+        if (amplifiedPeak >= 1.0)
+        {
+            this.MicrophoneSaturationText.Text = $"Gain PHONIE : +{this.settings.MicrophoneGainDb} dB - saturation, réduire le gain";
+            this.SetForegroundResource(this.MicrophoneSaturationText, "Danger");
+        }
+        else if (amplifiedPeak >= 0.75)
+        {
+            this.MicrophoneSaturationText.Text = $"Gain PHONIE : +{this.settings.MicrophoneGainDb} dB - niveau élevé";
+            this.SetForegroundResource(this.MicrophoneSaturationText, "Warning");
+        }
+        else
+        {
+            this.MicrophoneSaturationText.Text = $"Gain PHONIE : +{this.settings.MicrophoneGainDb} dB - niveau {level:F0} %";
+            this.SetForegroundResource(this.MicrophoneSaturationText, "SecondaryText");
+        }
     }
 
     private void SimConnectService_OnStatusChanged(object? sender, ConnectionStatus status)
@@ -571,7 +630,7 @@ public partial class MainWindow : Window
         {
             this.diagnosticsSimulator = snapshot.Simulator;
             this.diagnosticsCom1 = snapshot.Com1ActiveMhz;
-            this.diagnosticsStation = string.IsNullOrWhiteSpace(snapshot.Com1StationIdent) ? "—" : snapshot.Com1StationIdent;
+            this.diagnosticsStation = string.IsNullOrWhiteSpace(snapshot.Com1StationIdent) ? "-" : snapshot.Com1StationIdent;
 
             this.SimulatorText.Text = snapshot.Simulator;
             this.AircraftText.Text = string.IsNullOrWhiteSpace(snapshot.AircraftTitle)
@@ -583,7 +642,7 @@ public partial class MainWindow : Window
             this.GroundText.Text = snapshot.IsOnGround ? "AU SOL" : "EN VOL";
             this.AltitudeText.Text = $"Altitude : {snapshot.AltitudeFeet:F0} ft";
             this.HeadingText.Text = $"Cap : {snapshot.HeadingMagneticDegrees:000}° M";
-            this.SpeedText.Text = $"IAS {snapshot.IndicatedAirspeedKnots:F0} kt · GS {snapshot.GroundSpeedKnots:F0} kt";
+            this.SpeedText.Text = $"IAS {snapshot.IndicatedAirspeedKnots:F0} kt - GS {snapshot.GroundSpeedKnots:F0} kt";
             this.ComActiveText.Text = $"Active : {snapshot.Com1ActiveMhz:F3}";
             this.ComStandbyText.Text = $"Standby : {snapshot.Com1StandbyMhz:F3}";
             this.XpdrText.Text = snapshot.TransponderCode;
@@ -593,12 +652,12 @@ public partial class MainWindow : Window
             var stationType = FriendlyStationType(snapshot.Com1StationType);
             var spacing = snapshot.Com1SpacingMode == 1 ? "8,33 kHz" : "25 kHz";
             var receive = snapshot.Com1Receiving ? "réception active" : "réception coupée";
-            var radioStatus = snapshot.Com1Status == 0 ? string.Empty : $" · statut {snapshot.Com1Status}";
+            var radioStatus = snapshot.Com1Status == 0 ? string.Empty : $" - statut {snapshot.Com1Status}";
 
             this.StationText.Text = string.IsNullOrWhiteSpace(snapshot.Com1StationType)
                 ? stationIdent
-                : $"{stationIdent} · {stationType}";
-            this.ComMetaText.Text = $"{stationIdent} · {stationType} · {spacing} · {receive}{radioStatus}";
+                : $"{stationIdent} - {stationType}";
+            this.ComMetaText.Text = $"{stationIdent} - {stationType} - {spacing} - {receive}{radioStatus}";
 
             var policy = RadioPolicyResolver.Resolve(snapshot.Com1StationType);
             this.RadioPolicyTitleText.Text = policy.Title;
@@ -614,14 +673,14 @@ public partial class MainWindow : Window
             this.SetForegroundResource(this.RadioPolicyTitleText, policyResource);
             this.RadioPolicyCard.SetResourceReference(Border.BorderBrushProperty, policyResource);
 
-            this.WeatherPrimaryText.Text = $"Vent {FormatDirection(snapshot.WindDirectionTrueDegrees)} / {FormatWindSpeed(snapshot.WindVelocityKnots)} · QNH {FormatQnh(snapshot.QnhHpa)}";
-            this.WeatherSecondaryText.Text = $"Température {FormatTemperature(snapshot.TemperatureCelsius)} · visibilité {FormatVisibility(snapshot.VisibilityMeters)}";
+            this.WeatherPrimaryText.Text = $"Vent {FormatDirection(snapshot.WindDirectionTrueDegrees)} / {FormatWindSpeed(snapshot.WindVelocityKnots)} - QNH {FormatQnh(snapshot.QnhHpa)}";
+            this.WeatherSecondaryText.Text = $"Température {FormatTemperature(snapshot.TemperatureCelsius)} - visibilité {FormatVisibility(snapshot.VisibilityMeters)}";
 
             var radioSignature = $"{snapshot.Com1ActiveMhz:F3}|{snapshot.Com1StationIdent}|{snapshot.Com1StationType}|{snapshot.Com1SpacingMode}|{snapshot.Com1Receiving}";
             if (!string.Equals(radioSignature, this.lastRadioSignature, StringComparison.Ordinal))
             {
                 this.lastRadioSignature = radioSignature;
-                this.AppendLog($"[{DateTime.Now:HH:mm:ss}] COM1 : {snapshot.Com1ActiveMhz:F3} · {stationIdent} · {stationType} · {spacing} · {policy.Title}.");
+                this.AppendLog($"[{DateTime.Now:HH:mm:ss}] COM1 : {snapshot.Com1ActiveMhz:F3} - {stationIdent} - {stationType} - {spacing} - {policy.Title}.");
             }
         });
     }
@@ -630,11 +689,11 @@ public partial class MainWindow : Window
     {
         _ = this.Dispatcher.BeginInvoke(() =>
         {
-            this.CpuDiagnosticText.Text = $"CPU : {sample.CpuPercent:F2} %";
-            this.CpuAverageDiagnosticText.Text = $"Moyenne : {sample.AverageCpuPercent:F2} % · maximum : {sample.MaximumCpuPercent:F2} %";
-            this.MemoryDiagnosticText.Text = $"Mémoire : {sample.WorkingSetMb:F0} Mo";
-            this.ProcessDiagnosticText.Text = $"Max {sample.MaximumWorkingSetMb:F0} Mo · threads {sample.ThreadCount} · handles {sample.HandleCount}";
-            this.TelemetryDiagnosticText.Text = $"SimConnect : {sample.SnapshotsPerSecond:F2} Hz";
+            this.CpuDiagnosticText.Text = $"{sample.CpuPercent:F2} %";
+            this.CpuAverageDiagnosticText.Text = $"Moy. {sample.AverageCpuPercent:F2} % / max {sample.MaximumCpuPercent:F2} %";
+            this.MemoryDiagnosticText.Text = $"{sample.WorkingSetMb:F0} Mo";
+            this.ProcessDiagnosticText.Text = $"Max {sample.MaximumWorkingSetMb:F0} Mo / T {sample.ThreadCount} / H {sample.HandleCount}";
+            this.TelemetryDiagnosticText.Text = $"{sample.SnapshotsPerSecond:F2} Hz";
         });
     }
 
@@ -669,13 +728,34 @@ public partial class MainWindow : Window
         }
     }
 
+    private void SelectGainInUi()
+    {
+        var allowedGains = new[] { 0, 3, 6, 9, 12, 15, 18 };
+        var clampedGain = Math.Clamp(this.settings.MicrophoneGainDb, 0, 18);
+        this.settings.MicrophoneGainDb = allowedGains
+            .OrderBy(gain => Math.Abs(gain - clampedGain))
+            .First();
+
+        this.suppressSettingsEvents = true;
+        try
+        {
+            this.GainComboBox.SelectedItem = this.GainComboBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), this.settings.MicrophoneGainDb.ToString(), StringComparison.Ordinal));
+        }
+        finally
+        {
+            this.suppressSettingsEvents = false;
+        }
+    }
+
     private void UpdatePttLabels()
     {
         this.PttKeyText.Text = $"CLAVIER : {KeyName(this.settings.PttVirtualKey).ToUpperInvariant()}";
         if (this.settings.JoystickPttButton is int button && !string.IsNullOrWhiteSpace(this.settings.JoystickPttDeviceName))
         {
             var status = this.joystickMappingAvailable ? "prêt" : "déconnecté";
-            this.PttJoystickText.Text = $"HOTAS : {this.settings.JoystickPttDeviceName} · B{button} · {status}";
+            this.PttJoystickText.Text = $"HOTAS : {this.settings.JoystickPttDeviceName} - B{button} - {status}";
             this.SetForegroundResource(this.PttJoystickText, this.joystickMappingAvailable ? "Success" : "Warning");
             this.ClearJoystickPttButton.IsEnabled = true;
         }
@@ -769,26 +849,26 @@ public partial class MainWindow : Window
     {
         var latHemisphere = latitude >= 0 ? "N" : "S";
         var lonHemisphere = longitude >= 0 ? "E" : "W";
-        return $"{Math.Abs(latitude):F5}° {latHemisphere} · {Math.Abs(longitude):F5}° {lonHemisphere}";
+        return $"{Math.Abs(latitude):F5}° {latHemisphere} - {Math.Abs(longitude):F5}° {lonHemisphere}";
     }
 
     private static string FormatDirection(double degrees) =>
-        double.IsFinite(degrees) ? $"{degrees:000}°" : "—";
+        double.IsFinite(degrees) ? $"{degrees:000}°" : "-";
 
     private static string FormatWindSpeed(double knots) =>
-        double.IsFinite(knots) ? $"{knots:F0} kt" : "—";
+        double.IsFinite(knots) ? $"{knots:F0} kt" : "-";
 
     private static string FormatQnh(double hpa) =>
-        double.IsFinite(hpa) ? Math.Round(hpa, MidpointRounding.AwayFromZero).ToString("F0") : "—";
+        double.IsFinite(hpa) ? Math.Round(hpa, MidpointRounding.AwayFromZero).ToString("F0") : "-";
 
     private static string FormatTemperature(double celsius) =>
-        double.IsFinite(celsius) ? $"{celsius:F0} °C" : "—";
+        double.IsFinite(celsius) ? $"{celsius:F0} °C" : "-";
 
     private static string FormatVisibility(double meters)
     {
         if (!double.IsFinite(meters) || meters <= 0)
         {
-            return "—";
+            return "-";
         }
 
         return meters >= 1000 ? $"{meters / 1000.0:F1} km" : $"{meters:F0} m";

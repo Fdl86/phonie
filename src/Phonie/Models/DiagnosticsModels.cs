@@ -5,7 +5,8 @@ public sealed record DiagnosticsContext(
     string PttSource,
     string Simulator,
     double Com1Mhz,
-    string Station);
+    string Station,
+    int MicrophoneGainDb);
 
 public sealed record DiagnosticsSample(
     DateTimeOffset Timestamp,
@@ -24,4 +25,5 @@ public sealed record DiagnosticsSample(
     string PttSource,
     string Simulator,
     double Com1Mhz,
-    string Station);
+    string Station,
+    int MicrophoneGainDb);

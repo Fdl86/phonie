@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
 using System.Text;
 using Phonie.Models;
 
@@ -12,6 +11,7 @@ namespace Phonie.Services;
 /// </summary>
 public sealed class DiagnosticsService : IAsyncDisposable
 {
+    private const int MaximumLogFiles = 10;
     private static readonly TimeSpan SampleInterval = TimeSpan.FromSeconds(5);
 
     private readonly object syncRoot = new();
@@ -35,13 +35,11 @@ public sealed class DiagnosticsService : IAsyncDisposable
 
     public DiagnosticsService()
     {
-        this.DirectoryPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PHONIE",
-            "Diagnostics");
-
+        this.DirectoryPath = AppPaths.LogsDirectory;
         Directory.CreateDirectory(this.DirectoryPath);
-        this.SessionFilePath = Path.Combine(this.DirectoryPath, $"PHONIE-DEV0.2.3-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+        RotateLogs(this.DirectoryPath, MaximumLogFiles - 1);
+
+        this.SessionFilePath = Path.Combine(this.DirectoryPath, $"PHONIE-DEV0.2.4-{DateTime.Now:yyyyMMdd-HHmmss}.log");
         this.writer = new StreamWriter(this.SessionFilePath, false, new UTF8Encoding(false))
         {
             AutoFlush = true,
@@ -71,7 +69,7 @@ public sealed class DiagnosticsService : IAsyncDisposable
         this.contextProvider = contextProvider;
         this.cancellation = new CancellationTokenSource();
         this.worker = Task.Run(() => this.RunAsync(this.cancellation.Token));
-        this.WriteEvent("SESSION", "Démarrage du suivi de légèreté (échantillon toutes les 5 secondes).");
+        this.WriteEvent("SESSION", "Démarrage du suivi de légèreté - échantillon toutes les 5 secondes.");
     }
 
     public void ReportSnapshot() => Interlocked.Increment(ref this.totalSnapshots);
@@ -145,11 +143,11 @@ public sealed class DiagnosticsService : IAsyncDisposable
         DiagnosticsContext context;
         try
         {
-            context = this.contextProvider?.Invoke() ?? new DiagnosticsContext(false, "Aucun", "—", 0, "—");
+            context = this.contextProvider?.Invoke() ?? new DiagnosticsContext(false, "Aucun", "-", 0, "-", 0);
         }
         catch
         {
-            context = new DiagnosticsContext(false, "Indisponible", "—", 0, "—");
+            context = new DiagnosticsContext(false, "Indisponible", "-", 0, "-", 0);
         }
 
         double averageCpu;
@@ -179,20 +177,22 @@ public sealed class DiagnosticsService : IAsyncDisposable
             context.PttSource,
             context.Simulator,
             context.Com1Mhz,
-            context.Station);
+            context.Station,
+            context.MicrophoneGainDb);
     }
 
     private void WriteHeader()
     {
         lock (this.syncRoot)
         {
-            this.writer.WriteLine("# PHONIE DEV0.2.3 — LOG DIAGNOSTIC DE LÉGÈRETÉ");
+            this.writer.WriteLine("# PHONIE DEV0.2.4 - LOG DIAGNOSTIC DE LÉGÈRETÉ");
             this.writer.WriteLine($"# Session locale : {DateTimeOffset.Now:O}");
+            this.writer.WriteLine($"# Dossier portable : {AppPaths.BaseDirectory}");
             this.writer.WriteLine($"# OS : {Environment.OSVersion}");
             this.writer.WriteLine($"# Processeurs logiques : {Environment.ProcessorCount}");
             this.writer.WriteLine($"# Runtime : {Environment.Version}");
             this.writer.WriteLine("# Les lignes PERF sont séparées par des tabulations.");
-            this.writer.WriteLine("# timestamp\ttype\tuptime_s\tcpu_pct\tcpu_avg_pct\tcpu_max_pct\tworking_set_mb\tworking_set_max_mb\tmanaged_mb\tthreads\thandles\tsnapshots_s\tsnapshots_total\trecording\tptt_source\tsimulator\tcom1_mhz\tstation");
+            this.writer.WriteLine("# timestamp\ttype\tuptime_s\tcpu_pct\tcpu_avg_pct\tcpu_max_pct\tworking_set_mb\tworking_set_max_mb\tmanaged_mb\tthreads\thandles\tsnapshots_s\tsnapshots_total\trecording\tptt_source\tsimulator\tcom1_mhz\tstation\tmic_gain_db");
         }
     }
 
@@ -219,7 +219,8 @@ public sealed class DiagnosticsService : IAsyncDisposable
                 CleanField(sample.PttSource),
                 CleanField(sample.Simulator),
                 sample.Com1Mhz.ToString("F3", culture),
-                CleanField(sample.Station)));
+                CleanField(sample.Station),
+                sample.MicrophoneGainDb.ToString(culture)));
         }
     }
 
@@ -234,14 +235,41 @@ public sealed class DiagnosticsService : IAsyncDisposable
             this.writer.WriteLine($"# CPU maximum PHONIE : {this.maximumCpu:F3} %");
             this.writer.WriteLine($"# Mémoire maximum : {this.maximumWorkingSetMb:F1} Mo");
             this.writer.WriteLine($"# Snapshots SimConnect : {Interlocked.Read(ref this.totalSnapshots)}");
-            this.writer.WriteLine($"# PTT enregistrés : {this.pttCount} · durée totale {this.totalPttSeconds:F1} s");
+            this.writer.WriteLine($"# PTT conservés : {this.pttCount} - durée totale {this.totalPttSeconds:F1} s");
             this.writer.WriteLine($"# Fin : {DateTimeOffset.Now:O}");
+        }
+    }
+
+    private static void RotateLogs(string directory, int filesToKeepBeforeCurrent)
+    {
+        try
+        {
+            var files = Directory.EnumerateFiles(directory, "PHONIE-DEV*.log", SearchOption.TopDirectoryOnly)
+                .Select(path => new FileInfo(path))
+                .OrderByDescending(file => file.LastWriteTimeUtc)
+                .ToArray();
+
+            foreach (var file in files.Skip(Math.Max(0, filesToKeepBeforeCurrent)))
+            {
+                try
+                {
+                    file.Delete();
+                }
+                catch
+                {
+                    // A locked old log is harmless and can be retried next launch.
+                }
+            }
+        }
+        catch
+        {
+            // Log rotation must never prevent PHONIE from starting.
         }
     }
 
     private static string CleanField(string? value) =>
         string.IsNullOrWhiteSpace(value)
-            ? "—"
+            ? "-"
             : value.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ').Trim();
 
     public async ValueTask DisposeAsync()
