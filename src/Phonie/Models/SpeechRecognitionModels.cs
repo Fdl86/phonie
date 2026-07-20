@@ -81,6 +81,7 @@ public enum SpeechModelState
     Downloading,
     Ready,
     Loading,
+    WarmingUp,
     Transcribing,
     RestartRequired,
     Error,
@@ -101,7 +102,14 @@ public sealed record SpeechTranscriptionResult(
     TimeSpan ProcessingTime,
     string ModelName,
     string Language,
-    IReadOnlyList<string> Segments);
+    IReadOnlyList<string> Segments)
+{
+    public TimeSpan ModelLoadTime { get; init; }
+
+    public TimeSpan EndToEndTime { get; init; }
+
+    public bool ColdModelLoad { get; init; }
+}
 
 public sealed record SpeechComparisonResult(
     SpeechRecognitionProfile Profile,

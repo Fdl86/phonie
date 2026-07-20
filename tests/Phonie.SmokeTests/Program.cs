@@ -11,6 +11,21 @@ if (!turboProfile.UsesVulkan
     failures.Add("Profil Whisper Large-v3 Turbo Vulkan absent ou mal configuré.");
 }
 
+if (!Enum.IsDefined(typeof(Phonie.Models.SpeechModelState), Phonie.Models.SpeechModelState.WarmingUp))
+{
+    failures.Add("État de préchauffage Turbo absent.");
+}
+
+var vulkanProfiles = Phonie.Models.SpeechRecognitionProfiles.All
+    .Where(profile => profile.UsesVulkan)
+    .Select(profile => profile.Profile)
+    .ToArray();
+if (!vulkanProfiles.Contains(Phonie.Models.SpeechRecognitionProfile.WhisperSmallVulkan)
+    || !vulkanProfiles.Contains(Phonie.Models.SpeechRecognitionProfile.WhisperLargeV3TurboVulkan))
+{
+    failures.Add("Profils Vulkan nécessaires au benchmark GPU absents.");
+}
+
 Check(
     "Phrase laboratoire exacte",
     "Poitiers Tour, Fox Hôtel Novembre Novembre Yankee, au parking pour tours de piste.",

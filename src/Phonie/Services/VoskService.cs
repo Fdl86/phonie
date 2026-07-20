@@ -148,6 +148,7 @@ public sealed class VoskService : IDisposable
             throw new DirectoryNotFoundException($"Le modèle {ModelDisplayName} doit être téléchargé avant la transcription.");
         }
 
+        var totalWatch = Stopwatch.StartNew();
         await this.operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         var preparedPath = Path.Combine(AppPaths.CacheDirectory, $"vosk-{Guid.NewGuid():N}.wav");
         try
@@ -156,17 +157,29 @@ public sealed class VoskService : IDisposable
             AudioPreparation.CreateMono16KhzPcmWav(inputWavPath, preparedPath);
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (this.model is null)
+            var coldModelLoad = this.model is null;
+            var modelLoadTime = TimeSpan.Zero;
+            if (coldModelLoad)
             {
                 this.PublishStatus(new SpeechModelStatus(SpeechRecognitionProfile.VoskFrench, SpeechModelState.Loading, $"Chargement de {ModelDisplayName}..."));
                 global::Vosk.Vosk.SetLogLevel(-1);
+                var loadWatch = Stopwatch.StartNew();
                 this.model = new global::Vosk.Model(this.ModelDirectory);
+                loadWatch.Stop();
+                modelLoadTime = loadWatch.Elapsed;
             }
 
             this.PublishStatus(new SpeechModelStatus(SpeechRecognitionProfile.VoskFrench, SpeechModelState.Transcribing, "Transcription Vosk locale en français..."));
             var result = await Task.Run(
                 () => this.TranscribeCore(preparedPath, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
+            totalWatch.Stop();
+            result = result with
+            {
+                ModelLoadTime = modelLoadTime,
+                EndToEndTime = totalWatch.Elapsed,
+                ColdModelLoad = coldModelLoad,
+            };
             this.PublishStatus(new SpeechModelStatus(SpeechRecognitionProfile.VoskFrench, SpeechModelState.Ready, $"{ModelDisplayName} - {result.ProcessingTime.TotalSeconds:F1} s"));
             return result;
         }
@@ -184,14 +197,11 @@ public sealed class VoskService : IDisposable
 
     private SpeechTranscriptionResult TranscribeCore(string preparedPath, CancellationToken cancellationToken)
     {
-        if (this.model is null)
-        {
-            throw new InvalidOperationException("Le modèle Vosk n'est pas chargé.");
-        }
+        var model = this.model ?? throw new InvalidOperationException("Le modèle Vosk n'est pas chargé.");
 
         var watch = Stopwatch.StartNew();
         using var reader = new WaveFileReader(preparedPath);
-        using var recognizer = new global::Vosk.VoskRecognizer(this.model, 16_000.0f);
+        using var recognizer = new global::Vosk.VoskRecognizer(model, 16_000.0f);
         recognizer.SetWords(true);
         var buffer = new byte[8192];
         while (true)

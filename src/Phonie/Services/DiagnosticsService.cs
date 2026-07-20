@@ -39,7 +39,7 @@ public sealed class DiagnosticsService : IAsyncDisposable
         Directory.CreateDirectory(this.DirectoryPath);
         RotateLogs(this.DirectoryPath, MaximumLogFiles - 1);
 
-        this.SessionFilePath = Path.Combine(this.DirectoryPath, $"PHONIE-DEV0.3.0.4-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+        this.SessionFilePath = Path.Combine(this.DirectoryPath, $"PHONIE-DEV0.3.0.5-{DateTime.Now:yyyyMMdd-HHmmss}.log");
         this.writer = new StreamWriter(this.SessionFilePath, false, new UTF8Encoding(false))
         {
             AutoFlush = true,
@@ -185,7 +185,7 @@ public sealed class DiagnosticsService : IAsyncDisposable
     {
         lock (this.syncRoot)
         {
-            this.writer.WriteLine("# PHONIE DEV0.3.0.4 - LOG DIAGNOSTIC DE LÉGÈRETÉ");
+            this.writer.WriteLine("# PHONIE DEV0.3.0.5 - LOG DIAGNOSTIC DE LÉGÈRETÉ");
             this.writer.WriteLine($"# Session locale : {DateTimeOffset.Now:O}");
             this.writer.WriteLine($"# Dossier portable : {AppPaths.BaseDirectory}");
             this.writer.WriteLine($"# OS : {Environment.OSVersion}");

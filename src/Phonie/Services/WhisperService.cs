@@ -166,6 +166,7 @@ public sealed class WhisperService : IDisposable
             throw new FileNotFoundException($"Le modèle {model.DisplayName} doit être téléchargé avant la transcription.", modelPath);
         }
 
+        var totalWatch = Stopwatch.StartNew();
         await this.operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         var preparedPath = Path.Combine(AppPaths.CacheDirectory, $"whisper-{Guid.NewGuid():N}.wav");
         try
@@ -174,20 +175,27 @@ public sealed class WhisperService : IDisposable
             AudioPreparation.CreateMono16KhzPcmWav(inputWavPath, preparedPath);
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (this.factory is null || !string.Equals(this.loadedModelPath, modelPath, StringComparison.OrdinalIgnoreCase))
+            var coldModelLoad = this.factory is null
+                || !string.Equals(this.loadedModelPath, modelPath, StringComparison.OrdinalIgnoreCase);
+            var modelLoadTime = TimeSpan.Zero;
+            if (coldModelLoad)
             {
                 this.factory?.Dispose();
                 this.factory = null;
                 this.loadedModelPath = null;
                 this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Loading, $"Chargement de {model.DisplayName}..."));
+                var loadWatch = Stopwatch.StartNew();
                 this.factory = WhisperFactory.FromPath(modelPath);
+                loadWatch.Stop();
+                modelLoadTime = loadWatch.Elapsed;
                 this.loadedModelPath = modelPath;
             }
 
             this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Transcribing, "Transcription locale en français..."));
+            var factory = this.factory ?? throw new InvalidOperationException("Le moteur Whisper n'est pas chargé.");
             var watch = Stopwatch.StartNew();
             var segments = new List<string>();
-            using var processor = this.factory.CreateBuilder()
+            using var processor = factory.CreateBuilder()
                 .WithLanguage("fr")
                 .Build();
             await using var stream = File.OpenRead(preparedPath);
@@ -202,10 +210,21 @@ public sealed class WhisperService : IDisposable
             }
 
             watch.Stop();
+            totalWatch.Stop();
             var raw = string.Join(" ", segments).Trim();
             var normalized = NormalizeWhitespace(raw);
             this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Ready, $"{model.DisplayName} - {watch.Elapsed.TotalSeconds:F1} s"));
-            return new SpeechTranscriptionResult(profile, raw, normalized, watch.Elapsed, model.DisplayName, "fr", segments);
+            return new SpeechTranscriptionResult(profile, raw, normalized, watch.Elapsed, model.DisplayName, "fr", segments)
+            {
+                ModelLoadTime = modelLoadTime,
+                EndToEndTime = totalWatch.Elapsed,
+                ColdModelLoad = coldModelLoad,
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Ready, $"{model.DisplayName} - opération annulée"));
+            throw;
         }
         catch (Exception exception)
         {
@@ -217,6 +236,70 @@ public sealed class WhisperService : IDisposable
             TryDelete(preparedPath);
             this.operationLock.Release();
         }
+    }
+
+    public async Task<SpeechTranscriptionResult> WarmUpAsync(
+        SpeechRecognitionProfile profile,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(this.disposed, this);
+        if (!SpeechRecognitionProfiles.Get(profile).UsesVulkan)
+        {
+            throw new InvalidOperationException("Le préchauffage est réservé aux profils Whisper Vulkan.");
+        }
+
+        var warmupPath = Path.Combine(AppPaths.CacheDirectory, $"whisper-warmup-{Guid.NewGuid():N}.wav");
+        try
+        {
+            this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.WarmingUp, "Initialisation du moteur qualité Vulkan..."));
+            WriteSilenceWave(warmupPath, TimeSpan.FromMilliseconds(800));
+            var result = await this.TranscribeAsync(profile, warmupPath, cancellationToken).ConfigureAwait(false);
+            this.PublishStatus(new SpeechModelStatus(
+                profile,
+                SpeechModelState.Ready,
+                $"Moteur qualité prêt - initialisation {result.EndToEndTime.TotalSeconds:F1} s"));
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Ready, "Initialisation Vulkan annulée"));
+            throw;
+        }
+        catch (Exception exception)
+        {
+            this.PublishStatus(new SpeechModelStatus(profile, SpeechModelState.Error, $"Préchauffage Vulkan : {CleanMessage(exception)}"));
+            throw;
+        }
+        finally
+        {
+            TryDelete(warmupPath);
+        }
+    }
+
+    private static void WriteSilenceWave(string path, TimeSpan duration)
+    {
+        const int sampleRate = 16_000;
+        const short channels = 1;
+        const short bitsPerSample = 16;
+        var sampleCount = Math.Max(1, (int)Math.Round(sampleRate * duration.TotalSeconds));
+        var dataLength = sampleCount * channels * bitsPerSample / 8;
+        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? AppPaths.CacheDirectory);
+        using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: false);
+        writer.Write(Encoding.ASCII.GetBytes("RIFF"));
+        writer.Write(36 + dataLength);
+        writer.Write(Encoding.ASCII.GetBytes("WAVE"));
+        writer.Write(Encoding.ASCII.GetBytes("fmt "));
+        writer.Write(16);
+        writer.Write((short)1);
+        writer.Write(channels);
+        writer.Write(sampleRate);
+        writer.Write(sampleRate * channels * bitsPerSample / 8);
+        writer.Write((short)(channels * bitsPerSample / 8));
+        writer.Write(bitsPerSample);
+        writer.Write(Encoding.ASCII.GetBytes("data"));
+        writer.Write(dataLength);
+        writer.Write(new byte[dataLength]);
     }
 
     private static WhisperModelSpec GetModel(SpeechRecognitionProfile profile)

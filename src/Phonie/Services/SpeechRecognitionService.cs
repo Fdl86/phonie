@@ -86,6 +86,50 @@ public sealed class SpeechRecognitionService : IDisposable
 
     public bool IsSelectedModelReady => this.IsModelReady(this.selectedProfile);
 
+    public bool IsRuntimeCompatible(SpeechRecognitionProfile profile) => !this.RequiresRestart(profile);
+
+    public async Task<SpeechTranscriptionResult> TranscribeProfileAsync(
+        SpeechRecognitionProfile profile,
+        string audioPath,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(this.disposed, this);
+        if (this.RequiresRestart(profile))
+        {
+            throw new InvalidOperationException("Le profil demandé n'est pas compatible avec le runtime Whisper de cette session.");
+        }
+
+        return SpeechRecognitionProfiles.Get(profile).Backend switch
+        {
+            SpeechRecognitionBackend.Whisper => await this.whisperService.TranscribeAsync(profile, audioPath, cancellationToken).ConfigureAwait(false),
+            SpeechRecognitionBackend.Vosk => await this.voskService.TranscribeAsync(audioPath, cancellationToken).ConfigureAwait(false),
+            _ => throw new InvalidOperationException("Profil ASR inconnu."),
+        };
+    }
+
+    public async Task<SpeechTranscriptionResult> WarmUpTurboAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(this.disposed, this);
+        const SpeechRecognitionProfile turbo = SpeechRecognitionProfile.WhisperLargeV3TurboVulkan;
+        if (this.RequiresRestart(turbo))
+        {
+            throw new InvalidOperationException("Démarrez PHONIE avec un profil Vulkan pour initialiser Whisper Turbo.");
+        }
+
+        return await this.whisperService.WarmUpAsync(turbo, cancellationToken).ConfigureAwait(false);
+    }
+
+    public void ReleaseAllModels()
+    {
+        if (this.disposed)
+        {
+            return;
+        }
+
+        this.whisperService.ReleaseModel();
+        this.voskService.ReleaseModel();
+    }
+
     public SpeechModelStatus GetStatus(SpeechRecognitionProfile profile)
     {
         if (this.RequiresRestart(profile))

@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private readonly JoystickService joystickService = new();
     private readonly DiagnosticsService diagnosticsService = new();
     private readonly SpeechRecognitionService speechRecognitionService;
+    private readonly GpuBenchmarkService gpuBenchmarkService = new();
     private readonly AtisService atisService = new();
     private readonly DispatcherTimer audioMeterTimer = new() { Interval = TimeSpan.FromMilliseconds(125) };
     private readonly HashSet<string> activePttSources = new(StringComparer.Ordinal);
@@ -56,7 +57,12 @@ public partial class MainWindow : Window
         "PHONIE reste silencieux tant que le service n'est pas déterminé.",
         "Initialisation");
     private CancellationTokenSource? transcriptionCancellation;
+    private CancellationTokenSource? turboWarmupCancellation;
+    private CancellationTokenSource? benchmarkCancellation;
+    private Task? turboWarmupTask;
+    private Task? benchmarkTask;
     private bool transcriptionInProgress;
+    private bool benchmarkInProgress;
     private bool pseudoMaximized;
     private Rect normalBounds;
 
@@ -143,6 +149,7 @@ public partial class MainWindow : Window
         var startupDefinition = SpeechRecognitionProfiles.Get(this.startupSpeechProfile);
         var runtimeOrder = this.speechRecognitionService.StartupWhisperUsesVulkan ? "Vulkan puis CPU" : "CPU";
         this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Profil ASR au démarrage : {startupDefinition.ShortName} - runtime Whisper {runtimeOrder}.");
+        this.ScheduleTurboWarmup("démarrage");
     }
 
     private async void MainWindow_OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -158,7 +165,13 @@ public partial class MainWindow : Window
         this.keyboardHook.Dispose();
         await this.joystickService.DisposeAsync();
         this.transcriptionCancellation?.Cancel();
+        this.turboWarmupCancellation?.Cancel();
+        this.benchmarkCancellation?.Cancel();
+        await AwaitQuietlyAsync(this.turboWarmupTask);
+        await AwaitQuietlyAsync(this.benchmarkTask);
         this.transcriptionCancellation?.Dispose();
+        this.turboWarmupCancellation?.Dispose();
+        this.benchmarkCancellation?.Dispose();
         this.speechRecognitionService.Dispose();
         this.audioService.Dispose();
         await this.simConnectService.DisposeAsync();
@@ -401,6 +414,149 @@ public partial class MainWindow : Window
         finally
         {
             this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(this.selectedSpeechProfile));
+            this.ScheduleTurboWarmup("installation du modèle");
+        }
+    }
+
+    private void ScheduleTurboWarmup(string reason)
+    {
+        if (this.closing
+            || this.benchmarkInProgress
+            || this.selectedSpeechProfile != SpeechRecognitionProfile.WhisperLargeV3TurboVulkan
+            || this.speechProfileRestartRequired
+            || !this.speechRecognitionService.IsModelReady(SpeechRecognitionProfile.WhisperLargeV3TurboVulkan)
+            || this.turboWarmupTask is { IsCompleted: false })
+        {
+            return;
+        }
+
+        this.turboWarmupCancellation?.Cancel();
+        this.turboWarmupCancellation?.Dispose();
+        var warmupCancellation = new CancellationTokenSource();
+        this.turboWarmupCancellation = warmupCancellation;
+        this.turboWarmupTask = this.RunTurboWarmupAsync(reason, warmupCancellation.Token);
+    }
+
+    private async Task RunTurboWarmupAsync(string reason, CancellationToken cancellationToken)
+    {
+        var completed = false;
+        try
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Initialisation du moteur qualité Turbo Vulkan ({reason}).");
+            var result = await Task.Run(
+                () => this.speechRecognitionService.WarmUpTurboAsync(cancellationToken),
+                cancellationToken);
+            completed = true;
+            this.diagnosticsService.WriteEvent(
+                "ASR_WARMUP",
+                $"Whisper Large-v3 Turbo Vulkan - chargement {result.ModelLoadTime.TotalSeconds:F2} s - total {result.EndToEndTime.TotalSeconds:F2} s");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Moteur qualité Turbo prêt en {result.EndToEndTime.TotalSeconds:F1} s.");
+        }
+        catch (OperationCanceledException)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Initialisation Turbo annulée.");
+        }
+        catch (Exception exception)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Initialisation Turbo impossible : {CleanMessage(exception)}");
+        }
+        finally
+        {
+            if (!this.closing && !completed)
+            {
+                this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(this.selectedSpeechProfile));
+            }
+        }
+    }
+
+    private async void GpuBenchmarkButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (this.benchmarkInProgress || this.transcriptionInProgress)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Une opération ASR est déjà en cours.");
+            return;
+        }
+
+        var benchmarkAudioPath = this.lastRecordingPath;
+        if (string.IsNullOrWhiteSpace(benchmarkAudioPath) || !File.Exists(benchmarkAudioPath))
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Enregistrez d'abord un PTT de référence pour le benchmark GPU.");
+            return;
+        }
+
+        if (!this.speechRecognitionService.StartupWhisperUsesVulkan)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Benchmark GPU : redémarrez PHONIE avec un profil Whisper Vulkan.");
+            return;
+        }
+
+        this.turboWarmupCancellation?.Cancel();
+        await AwaitQuietlyAsync(this.turboWarmupTask);
+        this.benchmarkInProgress = true;
+        this.benchmarkCancellation?.Cancel();
+        this.benchmarkCancellation?.Dispose();
+        var benchmarkCancellation = new CancellationTokenSource();
+        this.benchmarkCancellation = benchmarkCancellation;
+        this.GpuBenchmarkButton.IsEnabled = false;
+        this.CompareAsrButton.IsEnabled = false;
+        this.TranscribeLastButton.IsEnabled = false;
+        this.DownloadWhisperButton.IsEnabled = false;
+        this.ExchangeLatencyText.Text = "BENCH GPU...";
+        this.PilotTranscriptTextBox.Text = "Benchmark GPU/VRAM en cours : trois passages par moteur puis mesure de libération pendant 30 secondes.";
+
+        var progress = new Progress<string>(message =>
+        {
+            this.WhisperStatusText.Text = message;
+            this.PilotTranscriptTextBox.Text = message;
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] BENCH GPU : {message}");
+        });
+
+        try
+        {
+            var benchmark = Task.Run(
+                () => this.gpuBenchmarkService.RunAsync(
+                    benchmarkAudioPath,
+                    this.speechRecognitionService,
+                    progress,
+                    benchmarkCancellation.Token),
+                benchmarkCancellation.Token);
+            this.benchmarkTask = benchmark;
+            var report = await benchmark;
+            var successful = report.Runs.Where(run => run.Success).ToArray();
+            var turboHot = successful
+                .Where(run => run.Profile == SpeechRecognitionProfile.WhisperLargeV3TurboVulkan && !run.ColdStart)
+                .OrderBy(run => run.EndToEndMilliseconds)
+                .FirstOrDefault();
+            var maxVram = successful.Length == 0 ? 0 : successful.Max(run => run.PeakDedicatedBytes);
+            this.ExchangeLatencyText.Text = "BENCH TERMINÉ";
+            this.PilotTranscriptTextBox.Text = string.Join(
+                Environment.NewLine,
+                "Benchmark terminé.",
+                $"Backend : {report.BackendEvidence}",
+                $"Turbo à chaud : {(turboHot is null ? "non mesuré" : $"{turboHot.EndToEndMilliseconds / 1000.0:F2} s")}.",
+                $"VRAM PHONIE maximale observée : {FormatMemory(maxVram)}.",
+                $"Rapports : logs\\benchmarks\\{System.IO.Path.GetFileName(report.TextPath)} et {System.IO.Path.GetFileName(report.JsonPath)}");
+            this.diagnosticsService.WriteEvent(
+                "GPU_BENCH",
+                $"{report.BackendEvidence} - VRAM max {FormatMemory(maxVram)} - rapport {System.IO.Path.GetFileName(report.TextPath)}");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Benchmark GPU terminé : {report.TextPath}");
+        }
+        catch (OperationCanceledException)
+        {
+            this.ExchangeLatencyText.Text = "BENCH ANNULÉ";
+            this.PilotTranscriptTextBox.Text = "Benchmark GPU annulé.";
+        }
+        catch (Exception exception)
+        {
+            this.ExchangeLatencyText.Text = "ERREUR BENCH";
+            this.PilotTranscriptTextBox.Text = $"Benchmark GPU impossible : {CleanMessage(exception)}";
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Benchmark GPU impossible : {CleanMessage(exception)}");
+        }
+        finally
+        {
+            this.benchmarkInProgress = false;
+            this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(this.selectedSpeechProfile));
+            this.ScheduleTurboWarmup("fin du benchmark");
         }
     }
 
@@ -417,9 +573,9 @@ public partial class MainWindow : Window
 
     private async void CompareAsrButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (this.transcriptionInProgress)
+        if (this.transcriptionInProgress || this.benchmarkInProgress)
         {
-            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Une reconnaissance est déjà en cours.");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Une reconnaissance ou un benchmark est déjà en cours.");
             return;
         }
 
@@ -481,6 +637,7 @@ public partial class MainWindow : Window
         {
             this.transcriptionInProgress = false;
             this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(this.selectedSpeechProfile));
+            this.ScheduleTurboWarmup("fin de la comparaison");
         }
     }
 
@@ -518,6 +675,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (profile != SpeechRecognitionProfile.WhisperLargeV3TurboVulkan)
+        {
+            this.turboWarmupCancellation?.Cancel();
+        }
+
         this.selectedSpeechProfile = profile;
         this.settings.SpeechRecognitionProfile = profile.ToString();
         this.speechProfileRestartRequired = !this.speechRecognitionService.SelectProfile(profile);
@@ -533,6 +695,7 @@ public partial class MainWindow : Window
         }
 
         this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(profile));
+        this.ScheduleTurboWarmup("sélection du profil");
     }
 
     private void ClearLogButton_OnClick(object sender, RoutedEventArgs e) => this.LogBox.Clear();
@@ -840,7 +1003,7 @@ public partial class MainWindow : Window
 
             this.lastRecordingPath = result.FilePath;
             this.PlayLastRecordingButton.IsEnabled = result.FileSizeBytes > 44;
-            this.TranscribeLastButton.IsEnabled = result.FileSizeBytes > 44 && this.speechRecognitionService.IsSelectedModelReady && !this.speechProfileRestartRequired;
+            this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(this.selectedSpeechProfile));
             this.PttStateText.Text = $"Enregistré - +{result.GainDb} dB";
             this.SetForegroundResource(this.PttStateText, result.LimitedSampleCount > 0 ? "Warning" : "Success");
             this.SetDotResource(this.PttFooterDot, "Success");
@@ -1009,41 +1172,57 @@ public partial class MainWindow : Window
         var definition = SpeechRecognitionProfiles.Get(this.selectedSpeechProfile);
         this.WhisperStatusText.Text = status.Message;
         this.WhisperProgressBar.Value = Math.Clamp(status.ProgressPercent, 0, 100);
-        this.WhisperProgressBar.Visibility = status.State == SpeechModelState.Downloading ? Visibility.Visible : Visibility.Collapsed;
-        var busy = status.State is SpeechModelState.Downloading or SpeechModelState.Loading or SpeechModelState.Transcribing;
+        this.WhisperProgressBar.IsIndeterminate = status.State == SpeechModelState.WarmingUp;
+        this.WhisperProgressBar.Visibility = status.State is SpeechModelState.Downloading or SpeechModelState.WarmingUp
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        var busy = this.benchmarkInProgress
+            || status.State is SpeechModelState.Downloading
+                or SpeechModelState.Loading
+                or SpeechModelState.WarmingUp
+                or SpeechModelState.Transcribing;
         var modelReady = this.speechRecognitionService.IsModelReady(this.selectedSpeechProfile);
+        this.SpeechProfileComboBox.IsEnabled = !busy && !this.transcriptionInProgress;
         this.DownloadWhisperButton.IsEnabled = !busy && !this.speechProfileRestartRequired;
         this.DownloadWhisperButton.Content = this.speechProfileRestartRequired
             ? "Redémarrer"
             : modelReady
-                ? "Profil installé"
-                : "Installer profil";
+                ? "Installé"
+                : "Installer";
         this.TranscribeLastButton.IsEnabled = modelReady
             && !this.speechProfileRestartRequired
+            && !busy
             && !this.transcriptionInProgress
             && !string.IsNullOrWhiteSpace(this.lastRecordingPath)
             && File.Exists(this.lastRecordingPath);
-        this.CompareAsrButton.IsEnabled = !this.transcriptionInProgress
+        this.CompareAsrButton.IsEnabled = !busy
+            && !this.transcriptionInProgress
+            && !string.IsNullOrWhiteSpace(this.lastRecordingPath)
+            && File.Exists(this.lastRecordingPath);
+        this.GpuBenchmarkButton.IsEnabled = this.speechRecognitionService.StartupWhisperUsesVulkan
+            && !busy
+            && !this.transcriptionInProgress
             && !string.IsNullOrWhiteSpace(this.lastRecordingPath)
             && File.Exists(this.lastRecordingPath);
 
         var resource = status.State switch
         {
             SpeechModelState.Ready => "Success",
-            SpeechModelState.Downloading or SpeechModelState.Loading or SpeechModelState.Transcribing => "Accent",
+            SpeechModelState.Downloading or SpeechModelState.Loading or SpeechModelState.WarmingUp or SpeechModelState.Transcribing => "Accent",
             SpeechModelState.RestartRequired => "Warning",
             SpeechModelState.Error => "Danger",
             _ => "Warning",
         };
         this.SetForegroundResource(this.WhisperStatusText, resource);
         this.DownloadWhisperButton.ToolTip = definition.Description;
+        this.GpuBenchmarkButton.ToolTip = "Mesure Small Vulkan, Turbo Vulkan et Vosk sur le dernier WAV : GPU, VRAM, RAM, CPU, froid et chaud.";
     }
 
     private async Task TranscribeAndProcessAsync(string audioPath, bool fromMicrophone)
     {
-        if (this.transcriptionInProgress)
+        if (this.transcriptionInProgress || this.benchmarkInProgress)
         {
-            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Une reconnaissance est déjà en cours.");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Une reconnaissance ou un benchmark est déjà en cours.");
             return;
         }
 
@@ -1077,8 +1256,9 @@ public partial class MainWindow : Window
             this.ProcessPilotText(result.NormalizedText, fromMicrophone, result.ProcessingTime);
             this.diagnosticsService.WriteEvent(
                 "ASR",
-                $"{result.ModelName} - {result.ProcessingTime.TotalSeconds:F2} s - {result.Segments.Count} segment(s) - {result.NormalizedText}");
-            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] {result.ModelName} : transcription terminée en {result.ProcessingTime.TotalSeconds:F1} s.");
+                $"{result.ModelName} - inférence {result.ProcessingTime.TotalSeconds:F2} s - chargement {result.ModelLoadTime.TotalSeconds:F2} s - total {result.EndToEndTime.TotalSeconds:F2} s - {result.Segments.Count} segment(s) - {result.NormalizedText}");
+            this.AppendLog(
+                $"[{DateTime.Now:HH:mm:ss}] {result.ModelName} : inférence {result.ProcessingTime.TotalSeconds:F1} s - total {result.EndToEndTime.TotalSeconds:F1} s.");
         }
         catch (OperationCanceledException)
         {
@@ -1096,6 +1276,39 @@ public partial class MainWindow : Window
             this.transcriptionInProgress = false;
             this.UpdateWhisperStatus(this.speechRecognitionService.GetStatus(this.selectedSpeechProfile));
         }
+    }
+
+    private static async Task AwaitQuietlyAsync(Task? task)
+    {
+        if (task is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await task;
+        }
+        catch (OperationCanceledException)
+        {
+            // Annulation normale lors d'un changement de profil ou de la fermeture.
+        }
+        catch
+        {
+            // L'erreur a déjà été journalisée par l'opération concernée.
+        }
+    }
+
+    private static string FormatMemory(long bytes)
+    {
+        if (bytes <= 0)
+        {
+            return "0 Mio";
+        }
+
+        return bytes >= 1024L * 1024 * 1024
+            ? $"{bytes / 1024.0 / 1024 / 1024:F2} Gio"
+            : $"{bytes / 1024.0 / 1024:F1} Mio";
     }
 
     private void ProcessPilotText(string text, bool fromMicrophone, TimeSpan processingTime)
