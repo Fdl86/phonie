@@ -212,6 +212,110 @@ public static class TaxiRouter
         }
     }
 
+    public static string BuildDiagnostic(
+        AirportGroundModel model,
+        GroundLocation start,
+        RunwayEnd runway,
+        GroundOccupancySnapshot occupancy)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(start);
+        ArgumentNullException.ThrowIfNull(runway);
+        ArgumentNullException.ThrowIfNull(occupancy);
+
+        var startNodeId = ResolveStartNode(model, start);
+        if (startNodeId is null)
+        {
+            return "Départ : aucun nœud taxi raccordé à la position avion.";
+        }
+
+        var lines = new List<string>
+        {
+            $"Départ : {startNodeId} - {start.Description}",
+            $"Piste analysée : {runway.Designator}",
+            $"Occupation appliquée : {occupancy.OccupiedNodeIds.Count} nœud(s), {occupancy.OccupiedEdgeIds.Count} segment(s).",
+        };
+
+        var emptyOccupancy = new GroundOccupancySnapshot(
+            occupancy.Timestamp,
+            OccupancyKnowledge.Available,
+            new HashSet<string>(StringComparer.Ordinal),
+            new HashSet<uint>(),
+            "Diagnostic sans occupation.");
+        var candidates = model.HoldShortPoints
+            .Where(item => item.AssociatedRunwayIndex == runway.RunwayIndex)
+            .OrderBy(item => item.Label, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (candidates.Length == 0)
+        {
+            lines.Add("Candidats : aucun point d'attente associé à cette piste.");
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate.Label))
+            {
+                lines.Add($"Candidat {candidate.NodeId} : rejeté, nom radio absent.");
+                continue;
+            }
+
+            if (occupancy.OccupiedNodeIds.Contains(candidate.NodeId))
+            {
+                lines.Add($"Candidat {candidate.Label} ({candidate.NodeId}) : rejeté, point d'attente occupé.");
+                continue;
+            }
+
+            var route = FindRoute(model, startNodeId, candidate.NodeId, runway, candidate, occupancy);
+            if (route.Success)
+            {
+                var via = route.TaxiwayNames.Count == 0
+                    ? "sans nom de voie"
+                    : string.Join(" - ", route.TaxiwayNames);
+                lines.Add($"Candidat {candidate.Label} ({candidate.NodeId}) : ACCESSIBLE, {route.TotalDistanceMeters:F0} m, via {via}.");
+                continue;
+            }
+
+            var baseline = FindRoute(model, startNodeId, candidate.NodeId, runway, candidate, emptyOccupancy);
+            if (!baseline.Success)
+            {
+                lines.Add($"Candidat {candidate.Label} ({candidate.NodeId}) : réseau de base déconnecté.");
+                continue;
+            }
+
+            var blockedEdges = baseline.Edges
+                .Where(edge => occupancy.OccupiedEdgeIds.Contains(edge.SourceIndex))
+                .Select(edge => edge.SourceIndex)
+                .Distinct()
+                .OrderBy(item => item)
+                .ToArray();
+            var baselineNodes = baseline.Edges
+                .SelectMany(edge => new[] { edge.FromNodeId, edge.ToNodeId })
+                .Distinct(StringComparer.Ordinal)
+                .Where(nodeId => occupancy.OccupiedNodeIds.Contains(nodeId))
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+            var blockers = new List<string>();
+            if (blockedEdges.Length > 0)
+            {
+                blockers.Add($"segments {string.Join(",", blockedEdges)}");
+            }
+
+            if (baselineNodes.Length > 0)
+            {
+                blockers.Add($"nœuds {string.Join(",", baselineNodes)}");
+            }
+
+            lines.Add(
+                blockers.Count == 0
+                    ? $"Candidat {candidate.Label} ({candidate.NodeId}) : inaccessible malgré un chemin de base ; diagnostic approfondi requis."
+                    : $"Candidat {candidate.Label} ({candidate.NodeId}) : chemin de base {baseline.TotalDistanceMeters:F0} m bloqué par {string.Join(" et ", blockers)}.");
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
     private static string? ResolveStartNode(AirportGroundModel model, GroundLocation location)
     {
         if (!string.IsNullOrWhiteSpace(location.NodeId) && model.Nodes.ContainsKey(location.NodeId))

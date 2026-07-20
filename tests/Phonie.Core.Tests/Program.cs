@@ -12,6 +12,9 @@ var tests = new List<(string Name, Action Test)>
     ("attente occupée exclue", TestOccupiedHoldExcluded),
     ("absence itinéraire signalée", TestNoRoute),
     ("avion utilisateur exclu de l'occupation", TestUserAircraftExcludedFromOccupancy),
+    ("avions stationnés voisins ne bloquent pas la sortie LFBI", TestParkedNeighboursDoNotBlockLfbiRoute),
+    ("trafic sur axe bloque seulement le segment proche", TestTrafficOnTaxiwayBlocksNearestEdge),
+    ("trafic immobile sur taxiway reste bloquant", TestStationaryTrafficOnTaxiwayRemainsBlocking),
     ("demande roulage reconnue", () => Assert(PilotIntentParser.Parse("demande roulage") == PilotIntent.TaxiRequest)),
     ("prêt au départ reconnu au point d'attente", () => Assert(PilotIntentParser.Parse("Fox Novembre Yankee prêt au départ") == PilotIntent.ReadyAtHoldShort)),
     ("alignement et décollage distinct", () => Assert(PilotIntentParser.Parse("demande alignement et décollage") == PilotIntent.LineUpAndTakeoffRequest)),
@@ -206,6 +209,128 @@ static void TestUserAircraftExcludedFromOccupancy()
     Assert(occupancy.Knowledge == OccupancyKnowledge.Available);
     Assert(occupancy.OccupiedNodeIds.Count == 0, $"nœuds occupés={occupancy.OccupiedNodeIds.Count}");
     Assert(occupancy.OccupiedEdgeIds.Count == 0, $"segments occupés={occupancy.OccupiedEdgeIds.Count}");
+}
+
+static void TestParkedNeighboursDoNotBlockLfbiRoute()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var now = DateTimeOffset.UtcNow;
+    var contacts = new[]
+    {
+        ContactAtNode(model, "P:9", 109, 0, now),
+        ContactAtNode(model, "P:10", 110, 0, now),
+        ContactAtNode(model, "P:11", 111, 0, now),
+    };
+    var result = GroundOccupancy.BuildWithDiagnostics(model, contacts, now, true);
+
+    Assert(result.Snapshot.OccupiedNodeIds
+            .OrderBy(item => item, StringComparer.Ordinal)
+            .SequenceEqual(new[] { "P:10", "P:11", "P:9" }),
+        $"nœuds={string.Join(",", result.Snapshot.OccupiedNodeIds)}");
+    Assert(result.Contacts.All(item => item.Classification == "PARKED_AT_STAND"));
+
+    var route = TaxiRouter.RouteToNearestAvailableHoldShort(
+        model,
+        new GroundLocation(GroundPositionKind.Parking, "P:12", null, 0, 1, "PARKING 6"),
+        model.RunwayEnds.Single(item => item.Designator == "03"),
+        result.Snapshot);
+    Assert(route.Success, route.FailureReason);
+}
+
+static void TestTrafficOnTaxiwayBlocksNearestEdge()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var runway = model.RunwayEnds.Single(item => item.Designator == "03");
+    var baseline = TaxiRouter.RouteToNearestAvailableHoldShort(
+        model,
+        new GroundLocation(GroundPositionKind.Parking, "P:12", null, 0, 1, "PARKING 6"),
+        runway,
+        AvailableOccupancy());
+    Assert(baseline.Success, baseline.FailureReason);
+    var edge = baseline.Edges.First(item => item.Kind != TaxiPathKind.Parking);
+    var from = model.Nodes[edge.FromNodeId];
+    var to = model.Nodes[edge.ToNodeId];
+    var contact = ContactAtLocal(
+        model,
+        (from.X + to.X) / 2.0,
+        (from.Z + to.Z) / 2.0,
+        501,
+        8,
+        DateTimeOffset.UtcNow);
+    var result = GroundOccupancy.BuildWithDiagnostics(
+        model,
+        new[] { contact },
+        contact.Timestamp,
+        true);
+
+    Assert(result.Snapshot.OccupiedEdgeIds.Count == 1,
+        $"segments={string.Join(",", result.Snapshot.OccupiedEdgeIds)}");
+    Assert(result.Snapshot.OccupiedEdgeIds.Contains(edge.SourceIndex));
+    Assert(result.Contacts.Single().Classification == "MOVING_ON_NETWORK");
+}
+
+
+static void TestStationaryTrafficOnTaxiwayRemainsBlocking()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var runway = model.RunwayEnds.Single(item => item.Designator == "03");
+    var baseline = TaxiRouter.RouteToNearestAvailableHoldShort(
+        model,
+        new GroundLocation(GroundPositionKind.Parking, "P:12", null, 0, 1, "PARKING 6"),
+        runway,
+        AvailableOccupancy());
+    Assert(baseline.Success, baseline.FailureReason);
+    var edge = baseline.Edges.Last(item => item.Kind != TaxiPathKind.Parking);
+    var from = model.Nodes[edge.FromNodeId];
+    var to = model.Nodes[edge.ToNodeId];
+    var contact = ContactAtLocal(
+        model,
+        (from.X + to.X) / 2.0,
+        (from.Z + to.Z) / 2.0,
+        502,
+        0,
+        DateTimeOffset.UtcNow);
+    var result = GroundOccupancy.BuildWithDiagnostics(
+        model,
+        new[] { contact },
+        contact.Timestamp,
+        true);
+
+    Assert(result.Snapshot.OccupiedEdgeIds.Contains(edge.SourceIndex));
+    Assert(result.Contacts.Single().Classification == "STATIONARY_ON_NETWORK");
+}
+
+static GroundTrafficContact ContactAtNode(
+    AirportGroundModel model,
+    string nodeId,
+    uint objectId,
+    double speedKnots,
+    DateTimeOffset timestamp)
+{
+    var node = model.Nodes[nodeId];
+    return ContactAtLocal(model, node.X, node.Z, objectId, speedKnots, timestamp);
+}
+
+static GroundTrafficContact ContactAtLocal(
+    AirportGroundModel model,
+    double eastMeters,
+    double northMeters,
+    uint objectId,
+    double speedKnots,
+    DateTimeOffset timestamp)
+{
+    const double earthRadius = 6_371_000.0;
+    var latitude = model.Latitude + (northMeters / earthRadius * 180.0 / Math.PI);
+    var meanLatitude = (model.Latitude + latitude) / 2.0 * Math.PI / 180.0;
+    var longitude = model.Longitude + (eastMeters / (earthRadius * Math.Cos(meanLatitude)) * 180.0 / Math.PI);
+    return new GroundTrafficContact(
+        objectId,
+        $"AI-{objectId}",
+        latitude,
+        longitude,
+        speedKnots,
+        true,
+        timestamp);
 }
 
 static void TestTakeoffFromParkingRefused()

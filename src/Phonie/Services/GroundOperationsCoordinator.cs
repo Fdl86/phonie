@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Phonie.Core;
 using Phonie.Models;
@@ -19,6 +20,8 @@ public sealed class GroundOperationsCoordinator
     private GroundOccupancySnapshot occupancy = GroundOccupancySnapshot.Unknown(
         DateTimeOffset.UtcNow,
         "Trafic SimConnect en attente.");
+    private IReadOnlyList<GroundTrafficOccupancyDiagnostic> occupancyDiagnostics =
+        Array.Empty<GroundTrafficOccupancyDiagnostic>();
     private GroundLocation? location;
     private RunwaySelection runway = new(false, null, "Piste en attente.", 0);
     private ControllerDecision? lastDecision;
@@ -211,7 +214,8 @@ public sealed class GroundOperationsCoordinator
                 this.lastDecision?.Confidence ?? this.location?.Confidence ?? 0,
                 this.lastDecision is null
                     ? "Aucune décision"
-                    : $"{this.lastDecision.ReasonCode} - {this.lastDecision.SystemMessage}".TrimEnd(' ', '-'));
+                    : $"{this.lastDecision.ReasonCode} - {this.lastDecision.SystemMessage}".TrimEnd(' ', '-'),
+                this.BuildGroundDiagnosticLocked());
         }
     }
 
@@ -239,6 +243,7 @@ public sealed class GroundOperationsCoordinator
         if (this.airport is null)
         {
             this.occupancy = GroundOccupancySnapshot.Unknown(snapshot.Timestamp, "Graphe aérodrome en attente.");
+            this.occupancyDiagnostics = Array.Empty<GroundTrafficOccupancyDiagnostic>();
             return;
         }
 
@@ -260,12 +265,14 @@ public sealed class GroundOperationsCoordinator
                 item.Timestamp))
             .ToArray();
 
-        this.occupancy = GroundOccupancy.Build(
+        var result = GroundOccupancy.BuildWithDiagnostics(
             this.airport,
             contacts,
             snapshot.Timestamp,
             snapshot.ProviderAvailable,
             userObjectId: 0);
+        this.occupancy = result.Snapshot;
+        this.occupancyDiagnostics = result.Contacts;
     }
 
     private bool IsOwnAircraft(GroundTrafficContactData contact, string normalizedOwn)
@@ -325,16 +332,76 @@ public sealed class GroundOperationsCoordinator
         }
     }
 
+    private string BuildGroundDiagnosticLocked()
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine($"Aérodrome : {this.airport?.Icao ?? "-"}");
+        builder.AppendLine($"Avion : {this.location?.Description ?? "position inconnue"} - nœud {this.location?.NodeId ?? "-"} - segment {this.location?.EdgeId?.ToString() ?? "-"}");
+        builder.AppendLine($"Piste : {this.runway.RunwayEnd?.Designator ?? "-"} - {this.runway.Reason}");
+        builder.AppendLine($"Trafic brut : {this.traffic.Status}");
+        builder.AppendLine($"Occupation retenue : {this.occupancy.OccupiedNodeIds.Count} nœud(s), {this.occupancy.OccupiedEdgeIds.Count} segment(s) - {this.occupancy.Source}");
+
+        if (this.occupancyDiagnostics.Count == 0)
+        {
+            builder.AppendLine("Objets trafic : aucun contact analysé.");
+        }
+        else
+        {
+            builder.AppendLine("Objets trafic analysés :");
+            foreach (var item in this.occupancyDiagnostics.OrderBy(item => item.ObjectId))
+            {
+                var callsign = string.IsNullOrWhiteSpace(item.Callsign) ? "sans indicatif" : item.Callsign;
+                var parking = item.NearestParkingNodeId is null || !item.NearestParkingDistanceMeters.HasValue
+                    ? "parking -"
+                    : $"parking {item.NearestParkingNodeId} à {item.NearestParkingDistanceMeters.Value:F1} m";
+                var edge = item.NearestEdgeId.HasValue && item.NearestEdgeDistanceMeters.HasValue
+                    ? $"segment {item.NearestEdgeId.Value} à {item.NearestEdgeDistanceMeters.Value:F1} m"
+                    : "segment -";
+                var blockedNodes = item.OccupiedNodeIds.Count == 0
+                    ? "aucun nœud"
+                    : $"nœuds {string.Join(",", item.OccupiedNodeIds)}";
+                var blockedEdges = item.OccupiedEdgeIds.Count == 0
+                    ? "aucun segment"
+                    : $"segments {string.Join(",", item.OccupiedEdgeIds)}";
+                builder.AppendLine(
+                    $"- objet {item.ObjectId} [{callsign}] {item.GroundSpeedKnots:F1} kt : {item.Classification} - {parking} - {edge} - bloque {blockedNodes}, {blockedEdges}. {item.Reason}");
+            }
+        }
+
+        if (this.airport is not null
+            && this.location is not null
+            && this.runway.RunwayEnd is not null)
+        {
+            builder.AppendLine("Itinéraires candidats :");
+            builder.AppendLine(TaxiRouter.BuildDiagnostic(this.airport, this.location, this.runway.RunwayEnd, this.occupancy));
+        }
+        else
+        {
+            builder.AppendLine("Itinéraires candidats : diagnostic en attente du graphe, de la position ou de la piste.");
+        }
+
+        if (this.lastDecision is not null)
+        {
+            builder.AppendLine($"Dernière décision : {this.lastDecision.ReasonCode} - {this.lastDecision.SystemMessage}");
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
     private void SaveDecision(ControllerDecision decision)
     {
         try
         {
             GroundLocation? location;
             GroundOccupancySnapshot occupancy;
+            IReadOnlyList<GroundTrafficOccupancyDiagnostic> trafficDiagnostics;
+            string routingDiagnostic;
             lock (this.sync)
             {
                 location = this.location;
                 occupancy = this.occupancy;
+                trafficDiagnostics = this.occupancyDiagnostics.ToArray();
+                routingDiagnostic = this.BuildGroundDiagnosticLocked();
             }
 
             Directory.CreateDirectory(AppPaths.GroundOperationsDirectory);
@@ -367,6 +434,8 @@ public sealed class GroundOperationsCoordinator
                 OccupiedNodes = occupancy.OccupiedNodeIds.OrderBy(item => item, StringComparer.Ordinal).ToArray(),
                 OccupiedEdges = occupancy.OccupiedEdgeIds.OrderBy(item => item).ToArray(),
                 OccupancySource = occupancy.Source,
+                TrafficDiagnostics = trafficDiagnostics,
+                RoutingDiagnostic = routingDiagnostic,
             });
             File.AppendAllText(path, line + Environment.NewLine);
         }

@@ -227,6 +227,24 @@ public sealed record GroundOccupancySnapshot(
         new(timestamp, OccupancyKnowledge.Unknown, new HashSet<string>(), new HashSet<uint>(), source);
 }
 
+public sealed record GroundTrafficOccupancyDiagnostic(
+    uint ObjectId,
+    string Callsign,
+    double GroundSpeedKnots,
+    bool IsOnGround,
+    string Classification,
+    string? NearestParkingNodeId,
+    double? NearestParkingDistanceMeters,
+    uint? NearestEdgeId,
+    double? NearestEdgeDistanceMeters,
+    IReadOnlyList<string> OccupiedNodeIds,
+    IReadOnlyList<uint> OccupiedEdgeIds,
+    string Reason);
+
+public sealed record GroundOccupancyBuildResult(
+    GroundOccupancySnapshot Snapshot,
+    IReadOnlyList<GroundTrafficOccupancyDiagnostic> Contacts);
+
 public sealed record GroundLocation(
     GroundPositionKind Kind,
     string? NodeId,

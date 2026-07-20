@@ -25,4 +25,5 @@ public sealed record GroundOperationsUiState(
     string Route,
     string Occupancy,
     double Confidence,
-    string LastDecision);
+    string LastDecision,
+    string Diagnostic);

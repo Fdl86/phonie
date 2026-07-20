@@ -1,10 +1,10 @@
-# PHONIE DEV0.4.0.3 - GROUND OPERATIONS RC
+# PHONIE DEV0.4.0.4 - GROUND OPERATIONS RC
 
 PHONIE est une application Windows x64 portable en C# / .NET 8 / WPF destinée aux communications ATC VFR locales avec Microsoft Flight Simulator 2020 et 2024.
 
-DEV0.4.0.3 est la version candidate fonctionnelle du chantier `GROUND OPERATIONS`. Elle conserve les fonctions validées de DEV0.3.0.5 et ajoute un premier moteur ATC au sol fondé sur les données réelles SimConnect Facilities.
+DEV0.4.0.4 est la version candidate fonctionnelle du chantier `GROUND OPERATIONS`. Elle conserve les fonctions validées de DEV0.3.0.5 et ajoute un premier moteur ATC au sol fondé sur les données réelles SimConnect Facilities.
 
-Cette révision corrige le faux blocage du réseau observé lorsque l'avion utilisateur était interprété comme une occupation du segment de départ. Elle resserre également les zones d'occupation et enrichit les journaux de routage.
+Cette révision corrige le faux blocage du réseau observé lorsque des objets SimConnect immobiles proches des parkings condamnaient aussi les nœuds du taxiway commun. L'occupation devient géométrique et ciblée, avec un diagnostic détaillé visible dans l'application.
 
 ## Fonction prioritaire
 
@@ -94,12 +94,12 @@ PHONIE n'écrit volontairement ni dans AppData ni dans le registre pour ses donn
 
 Le workflow GitHub Actions :
 
-1. restaure `PHONIE.sln` ;
-2. compile toute la solution en Release ;
+1. vérifie les fichiers source requis ;
+2. restaure et compile explicitement les quatre projets en Release ;
 3. exécute les tests de régression DEV0.3 ;
 4. exécute les tests du noyau Ground Operations ;
 5. publie l'application autonome Windows x64 uniquement après réussite ;
 6. vérifie la structure portable ;
-7. crée l'artefact `PHONIE-DEV0.4.0.3-win-x64.zip`.
+7. crée l'artefact `PHONIE-DEV0.4.0.4-win-x64.zip`.
 
-Commencer les essais réels avec `TEST-DEV0.4.0.3.md`.
+Commencer les essais réels avec `TEST-DEV0.4.0.4.md`.

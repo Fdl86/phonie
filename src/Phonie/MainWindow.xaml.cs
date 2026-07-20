@@ -1453,6 +1453,7 @@ public partial class MainWindow : Window
         this.GroundOperationsText.Text =
             $"SOL {state.SessionState.ToUpperInvariant()} - {state.Position} - piste {state.Runway} - " +
             $"attente {state.HoldShort} - route {state.Route} - occupation {state.Occupancy}";
+        this.GroundRoutingDiagnosticTextBox.Text = state.Diagnostic;
         this.SetForegroundResource(
             this.GroundOperationsText,
             state.Occupancy.StartsWith("INCONNUE", StringComparison.OrdinalIgnoreCase)
