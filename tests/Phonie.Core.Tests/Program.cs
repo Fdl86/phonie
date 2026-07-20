@@ -76,7 +76,7 @@ static void TestLfbiMsfs2024Fixture()
         AvailableOccupancy());
     Assert(route.Success, route.FailureReason);
     Assert(route.HoldShort is not null);
-    Assert(route.HoldShort.AssociatedRunwayIndex == runway03.RunwayIndex);
+    Assert(route.HoldShort!.AssociatedRunwayIndex == runway03.RunwayIndex);
     Assert(route.TaxiwayNames.Count > 0);
 }
 
@@ -155,7 +155,7 @@ static void TestLfbiConciseTaxiPhraseology()
         1015);
 
     Assert(decision.Action == ControllerAction.Speak, decision.SystemMessage);
-    Assert(decision.SpokenText.Contains("point d'attente Alpha 2", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.SpokenText.Contains("point d'attente Alpha deux", StringComparison.Ordinal), decision.SpokenText);
     Assert(!decision.SpokenText.Contains("via ", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
     Assert(!decision.SpokenText.Contains("Delta", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
     Assert(decision.RequiresAcknowledgement);
@@ -226,7 +226,7 @@ static void TestAfisInformationOnly()
     Assert(decision.ReasonCode == "AFIS_TAXI_INFORMATION");
     Assert(!decision.SpokenText.Contains("roulez", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
     Assert(!decision.SpokenText.Contains("autorisé", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
-    Assert(decision.SpokenText.Contains("point d'attente Alpha 2", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.SpokenText.Contains("point d'attente Alpha deux", StringComparison.Ordinal), decision.SpokenText);
     Assert(decision.RequiresAcknowledgement);
 }
 
@@ -250,7 +250,7 @@ static void TestAcknowledgementLifecycle()
     Assert(engine.PollAcknowledgement(now + TimeSpan.FromMilliseconds(500)) is null);
     var reminder = engine.PollAcknowledgement(now + TimeSpan.FromSeconds(2));
     Assert(reminder is not null);
-    Assert(reminder.ReasonCode == "ACKNOWLEDGEMENT_REMINDER");
+    Assert(reminder!.ReasonCode == "ACKNOWLEDGEMENT_REMINDER");
     Assert(!reminder.RequiresAcknowledgement, "La relance ne doit pas réarmer et remettre le compteur à zéro.");
     Assert(engine.AcknowledgePilotPtt());
     Assert(!engine.Session.AwaitingPilotAcknowledgement);
@@ -297,7 +297,7 @@ static void TestParkingToHoldRoute()
     Assert(route.Success, route.FailureReason);
     Assert(route.Edges.Count >= 3);
     Assert(route.HoldShort is not null);
-    Assert(route.HoldShort.Label == "D1", $"attente={route.HoldShort.Label}");
+    Assert(route.HoldShort!.Label == "D1", $"attente={route.HoldShort.Label}");
     Assert(route.TaxiwayNames.SequenceEqual(new[] { "D" }),
         $"via={string.Join(",", route.TaxiwayNames)}");
 }
