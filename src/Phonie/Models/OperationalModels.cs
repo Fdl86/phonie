@@ -28,7 +28,9 @@ public sealed record AtisInformation(
     double WindSpeedKnots,
     double QnhHpa,
     double TemperatureCelsius,
+    double DewPointCelsius,
     double VisibilityMeters,
+    double CeilingFeet,
     string Text,
     DateTimeOffset GeneratedAt,
     string Signature);

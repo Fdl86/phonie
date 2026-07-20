@@ -26,6 +26,12 @@ public static class AppPaths
 
     public static string SessionsDirectory { get; } = Path.Combine(LogsDirectory, "sessions");
 
+    public static string GroundOperationsDirectory { get; } = Path.Combine(LogsDirectory, "ground-operations");
+
+    public static string AtisCacheDirectory { get; } = Path.Combine(CacheDirectory, "atis");
+
+    public static string ControllerVoiceCacheDirectory { get; } = Path.Combine(CacheDirectory, "controller-voice");
+
     public static void EnsurePortableStorage()
     {
         foreach (var directory in new[]
@@ -41,6 +47,9 @@ public static class AppPaths
                      WhisperModelsDirectory,
                      VoskModelsDirectory,
                      SessionsDirectory,
+                     GroundOperationsDirectory,
+                     AtisCacheDirectory,
+                     ControllerVoiceCacheDirectory,
                  })
         {
             Directory.CreateDirectory(directory);

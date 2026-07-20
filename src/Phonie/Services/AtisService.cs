@@ -18,23 +18,39 @@ public sealed class AtisService
 
     public AtisInformation? Current => this.current;
 
-    public AtisInformation? Update(SimulatorSnapshot snapshot, AirportFacilityReport? report)
+    public AtisInformation? Update(
+        SimulatorSnapshot snapshot,
+        AirportFacilityReport? report,
+        string? operationalRunway = null)
     {
         if (report is null || report.Runways.Count == 0 || !HasUsableWeather(snapshot))
         {
-            return this.current;
+            this.current = null;
+            return null;
         }
 
-        var runway = SelectMainRunway(report);
-        if (runway is null)
+        var selectedEnd = !string.IsNullOrWhiteSpace(operationalRunway) && operationalRunway != "-"
+            ? operationalRunway
+            : SelectFallbackRunway(report, snapshot);
+        if (string.IsNullOrWhiteSpace(selectedEnd) || selectedEnd == "-")
         {
-            return this.current;
+            this.current = null;
+            return null;
         }
 
-        var selectedEnd = SelectRunwayEnd(runway, snapshot.WindDirectionTrueDegrees, snapshot.WindVelocityKnots);
-        var visibilityBucket = snapshot.VisibilityMeters >= 10_000 ? 10_000 : Math.Round(snapshot.VisibilityMeters / 500.0) * 500.0;
-        var signature = string.Create(CultureInfo.InvariantCulture,
-            $"{selectedEnd}|{Math.Round(snapshot.WindDirectionTrueDegrees / 10.0) * 10:000}|{Math.Round(snapshot.WindVelocityKnots / 2.0) * 2:F0}|{Math.Round(snapshot.QnhHpa):F0}|{Math.Round(snapshot.TemperatureCelsius):F0}|{visibilityBucket:F0}");
+        var visibilityBucket = snapshot.VisibilityMeters >= 10_000
+            ? 10_000
+            : Math.Round(snapshot.VisibilityMeters / 500.0) * 500.0;
+        var ceilingBucket = double.IsFinite(snapshot.CeilingFeet) && snapshot.CeilingFeet > 0
+            ? Math.Round(snapshot.CeilingFeet / 100.0) * 100.0
+            : -1;
+        var dewPointBucket = double.IsFinite(snapshot.DewPointCelsius)
+            ? Math.Round(snapshot.DewPointCelsius)
+            : -999;
+
+        var signature = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{selectedEnd}|{Math.Round(snapshot.WindDirectionTrueDegrees / 10.0) * 10:000}|{Math.Round(snapshot.WindVelocityKnots / 2.0) * 2:F0}|{Math.Round(snapshot.QnhHpa):F0}|{Math.Round(snapshot.TemperatureCelsius):F0}|{dewPointBucket:F0}|{visibilityBucket:F0}|{ceilingBucket:F0}");
 
         if (this.lastSignature is not null && !string.Equals(this.lastSignature, signature, StringComparison.Ordinal))
         {
@@ -43,22 +59,38 @@ public sealed class AtisService
 
         this.lastSignature = signature;
         var letter = Letters[this.letterIndex];
-        var airportName = string.IsNullOrWhiteSpace(report.Name) ? report.Icao : report.Name;
-        var visibilityText = snapshot.VisibilityMeters >= 10_000
-            ? "Visibilité supérieure à dix kilomètres."
-            : $"Visibilité {Math.Max(0.1, snapshot.VisibilityMeters / 1000.0):F1} kilomètres.";
+        var airportIcao = string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao;
+        var airportName = string.IsNullOrWhiteSpace(report.Name) ? airportIcao : report.Name.Trim();
 
-        var text =
-            $"Poitiers-Biard, information {letter}.\n\n" +
-            $"Vent {snapshot.WindDirectionTrueDegrees:000} degrés, {snapshot.WindVelocityKnots:F0} noeuds.\n" +
-            visibilityText + "\n" +
-            $"Température {snapshot.TemperatureCelsius:F0} degrés.\n" +
-            $"QNH {Math.Round(snapshot.QnhHpa):F0}.\n" +
-            $"Piste proposée {selectedEnd}.\n\n" +
-            $"Accusez réception de l'information {letter}.";
+        var lines = new List<string>
+        {
+            $"{airportName}, information {letter}.",
+            string.Empty,
+            $"Vent {snapshot.WindDirectionTrueDegrees:000} degrés, {snapshot.WindVelocityKnots:F0} nœuds.",
+            snapshot.VisibilityMeters >= 10_000
+                ? "Visibilité supérieure à dix kilomètres."
+                : $"Visibilité {Math.Max(0.1, snapshot.VisibilityMeters / 1000.0):F1} kilomètres.",
+        };
 
+        if (double.IsFinite(snapshot.CeilingFeet) && snapshot.CeilingFeet > 0)
+        {
+            lines.Add($"Plafond {Math.Round(snapshot.CeilingFeet / 100.0) * 100:F0} pieds.");
+        }
+
+        lines.Add($"Température {snapshot.TemperatureCelsius:F0} degrés.");
+        if (double.IsFinite(snapshot.DewPointCelsius))
+        {
+            lines.Add($"Point de rosée {snapshot.DewPointCelsius:F0} degrés.");
+        }
+
+        lines.Add($"QNH {Math.Round(snapshot.QnhHpa):F0}.");
+        lines.Add($"Piste en service {selectedEnd}.");
+        lines.Add(string.Empty);
+        lines.Add($"Accusez réception de l'information {letter}.");
+
+        var text = string.Join(Environment.NewLine, lines);
         this.current = new AtisInformation(
-            string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao,
+            airportIcao,
             airportName,
             letter,
             selectedEnd,
@@ -66,7 +98,9 @@ public sealed class AtisService
             snapshot.WindVelocityKnots,
             snapshot.QnhHpa,
             snapshot.TemperatureCelsius,
+            snapshot.DewPointCelsius,
             snapshot.VisibilityMeters,
+            snapshot.CeilingFeet,
             text,
             DateTimeOffset.Now,
             signature);
@@ -82,8 +116,9 @@ public sealed class AtisService
         && double.IsFinite(snapshot.VisibilityMeters)
         && snapshot.VisibilityMeters > 0;
 
-    private static AirportRunwayData? SelectMainRunway(AirportFacilityReport report) =>
-        report.Runways
+    private static string SelectFallbackRunway(AirportFacilityReport report, SimulatorSnapshot snapshot)
+    {
+        var runway = report.Runways
             .Where(item => item.PrimaryNumber is >= 1 and <= 36
                 && item.SecondaryNumber is >= 1 and <= 36
                 && item.Surface != 255
@@ -95,18 +130,20 @@ public sealed class AtisService
             .OrderByDescending(item => item.LengthMeters)
             .FirstOrDefault();
 
-    private static string SelectRunwayEnd(AirportRunwayData runway, double windFromDegrees, double windKnots)
-    {
-        if (windKnots < 3 || !double.IsFinite(windFromDegrees))
+        if (runway is null)
+        {
+            return "-";
+        }
+
+        if (snapshot.WindVelocityKnots < 3 || !double.IsFinite(snapshot.WindDirectionTrueDegrees))
         {
             return FormatRunwayEnd(runway.PrimaryNumber, runway.PrimaryDesignator);
         }
 
         var primaryHeading = Normalize(runway.HeadingDegrees);
         var secondaryHeading = Normalize(runway.HeadingDegrees + 180.0);
-        var primaryDifference = AngularDifference(primaryHeading, windFromDegrees);
-        var secondaryDifference = AngularDifference(secondaryHeading, windFromDegrees);
-        return primaryDifference <= secondaryDifference
+        return AngularDifference(primaryHeading, snapshot.WindDirectionTrueDegrees)
+               <= AngularDifference(secondaryHeading, snapshot.WindDirectionTrueDegrees)
             ? FormatRunwayEnd(runway.PrimaryNumber, runway.PrimaryDesignator)
             : FormatRunwayEnd(runway.SecondaryNumber, runway.SecondaryDesignator);
     }

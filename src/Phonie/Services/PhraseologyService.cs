@@ -512,6 +512,25 @@ public static partial class PhraseologyService
 
     private static string? DetectIntention(string text)
     {
+        var asksLineUp = text.Contains("alignement", StringComparison.Ordinal)
+            || text.Contains("aligner", StringComparison.Ordinal);
+        var asksTakeoff = text.Contains("decollage", StringComparison.Ordinal)
+            || text.Contains("decoller", StringComparison.Ordinal);
+        if (asksLineUp && asksTakeoff)
+        {
+            return "alignement et décollage";
+        }
+
+        if (asksLineUp)
+        {
+            return "alignement";
+        }
+
+        if (asksTakeoff)
+        {
+            return "décollage";
+        }
+
         if (ToursDePisteRegex().IsMatch(text)
             || text.Contains("tourne piste", StringComparison.Ordinal)
             || text.Contains("tourne-piste", StringComparison.Ordinal))

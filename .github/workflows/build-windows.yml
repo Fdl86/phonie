@@ -1,4 +1,4 @@
-name: Build PHONIE DEV0.4.0.1 - Facilities Diagnostic
+name: Build PHONIE DEV0.4.0.2 - Ground Operations RC
 
 on:
   workflow_dispatch:
@@ -15,9 +15,9 @@ concurrency:
 
 jobs:
   build-portable-windows:
-    name: Build and validate portable Windows x64
+    name: Build, test and publish portable Windows x64
     runs-on: windows-2022
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -34,8 +34,11 @@ jobs:
       - name: Build solution
         run: dotnet build PHONIE.sln --configuration Release --no-restore
 
-      - name: Run PHONIE smoke tests
+      - name: Run DEV0.3 regression smoke tests
         run: dotnet run --project tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-build --no-restore
+
+      - name: Run Ground Operations core tests
+        run: dotnet run --project tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj --configuration Release --no-build --no-restore
 
       - name: Publish autonomous Windows x64
         run: >-
@@ -44,7 +47,7 @@ jobs:
           --runtime win-x64
           --self-contained true
           --no-restore
-          --output dist/PHONIE-DEV0.4.0.1-win-x64
+          --output dist/PHONIE-DEV0.4.0.2-win-x64
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
@@ -56,28 +59,37 @@ jobs:
         run: |
           $commit = "${{ github.sha }}".Substring(0, 7)
           @"
-          PHONIE DEV0.4.0.1 - FACILITIES DIAGNOSTIC
+          PHONIE DEV0.4.0.2 - GROUND OPERATIONS RC
           Commit: $commit
           Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
           Runtime: Windows x64 autonome
-          Objectif: capture binaire SimConnect Facilities et diagnostic TaxiPath LFBI
-          Base conservée: DEV0.3.0.5 - ASR CPU/Vulkan/Turbo/Vosk - préchauffage Turbo - benchmark GPU - PTT clavier/HOTAS - radio - ATC ID
-          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.4.0.1-win-x64/BUILD-INFO.txt
+          Noyau: graphe taxi, piste en service, occupation, routage, machine d'état et mémoire indicatif
+          Sécurité: aucune clairance si station, position, piste, point d'attente ou occupation ne sont pas fiables
+          Base préservée: DEV0.3.0.5 - SimConnect, PTT, enregistrement, ASR CPU/Vulkan/Turbo/Vosk et télémétrie GPU
+          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.4.0.2-win-x64/BUILD-INFO.txt
 
       - name: Create portable folders and documentation
         shell: pwsh
         run: |
-          $root = "dist/PHONIE-DEV0.4.0.1-win-x64"
-          New-Item -ItemType Directory -Force "$root/config" | Out-Null
-          New-Item -ItemType Directory -Force "$root/logs" | Out-Null
-          New-Item -ItemType Directory -Force "$root/logs/airport-data" | Out-Null
-          New-Item -ItemType Directory -Force "$root/logs/airport-data/raw" | Out-Null
-          New-Item -ItemType Directory -Force "$root/logs/benchmarks" | Out-Null
-          New-Item -ItemType Directory -Force "$root/logs/sessions" | Out-Null
-          New-Item -ItemType Directory -Force "$root/models/whisper" | Out-Null
-          New-Item -ItemType Directory -Force "$root/models/vosk" | Out-Null
-          New-Item -ItemType Directory -Force "$root/recordings" | Out-Null
-          New-Item -ItemType Directory -Force "$root/cache" | Out-Null
+          $root = "dist/PHONIE-DEV0.4.0.2-win-x64"
+          $folders = @(
+            "config",
+            "logs",
+            "logs/airport-data",
+            "logs/airport-data/raw",
+            "logs/benchmarks",
+            "logs/sessions",
+            "logs/ground-operations",
+            "models/whisper",
+            "models/vosk",
+            "recordings",
+            "cache",
+            "cache/atis",
+            "cache/controller-voice"
+          )
+          foreach ($folder in $folders) {
+            New-Item -ItemType Directory -Force "$root/$folder" | Out-Null
+          }
           @"
           MODÈLES WHISPER
 
@@ -85,6 +97,7 @@ jobs:
           Choisir un profil dans l'application puis utiliser "Installer profil".
           Les fichiers sont enregistrés dans models\whisper et vérifiés par SHA-256.
           Le passage CPU vers Vulkan ou Vulkan vers CPU demande un redémarrage de PHONIE.
+          Turbo reste un profil qualité optionnel et n'est jamais sélectionné automatiquement.
           "@ | Set-Content -Encoding UTF8 "$root/models/whisper/LISEZ-MOI.txt"
           @"
           VOSK FR EXPÉRIMENTAL
@@ -94,25 +107,46 @@ jobs:
           Le modèle est enregistré dans models\vosk et vérifié par SHA-256 avant extraction.
           "@ | Set-Content -Encoding UTF8 "$root/models/vosk/LISEZ-MOI.txt"
           Copy-Item README.md "$root/README.md"
-          Copy-Item TEST-DEV0.4.0.1.md "$root/TEST-DEV0.4.0.1.md"
-          Copy-Item FACILITIES-DIAGNOSTIC-DEV0.4.0.1.md "$root/FACILITIES-DIAGNOSTIC-DEV0.4.0.1.md"
-          Copy-Item CALLSIGN-RULES-DEV0.4.0.1.md "$root/CALLSIGN-RULES-DEV0.4.0.1.md"
-          Copy-Item CHANGELOG-DEV0.4.0.1.md "$root/CHANGELOG-DEV0.4.0.1.md"
-          Copy-Item STATIC-VALIDATION-DEV0.4.0.1.txt "$root/STATIC-VALIDATION-DEV0.4.0.1.txt"
+          Copy-Item TEST-DEV0.4.0.2.md "$root/TEST-DEV0.4.0.2.md"
+          Copy-Item GROUND-OPERATIONS-DEV0.4.0.2.md "$root/GROUND-OPERATIONS-DEV0.4.0.2.md"
+          Copy-Item FACILITIES-NORMALIZATION-DEV0.4.0.2.md "$root/FACILITIES-NORMALIZATION-DEV0.4.0.2.md"
+          Copy-Item CALLSIGN-RULES-DEV0.4.0.2.md "$root/CALLSIGN-RULES-DEV0.4.0.2.md"
+          Copy-Item CHANGELOG-DEV0.4.0.2.md "$root/CHANGELOG-DEV0.4.0.2.md"
+          Copy-Item STATIC-VALIDATION-DEV0.4.0.2.txt "$root/STATIC-VALIDATION-DEV0.4.0.2.txt"
           Copy-Item ASR-PROFILES-DEV0.3.0.5.md "$root/ASR-PROFILES-DEV0.3.0.5.md"
           Copy-Item TURBO-PROFILE-DEV0.3.0.5.md "$root/TURBO-PROFILE-DEV0.3.0.5.md"
           Copy-Item GPU-BENCHMARK-DEV0.3.0.5.md "$root/GPU-BENCHMARK-DEV0.3.0.5.md"
           Copy-Item ATC-ID-CALLSIGN-DEV0.3.0.5.md "$root/ATC-ID-CALLSIGN-DEV0.3.0.5.md"
           Copy-Item THIRD-PARTY-NOTICES.md "$root/THIRD-PARTY-NOTICES.md"
 
+      - name: Verify portable storage layout
+        shell: pwsh
+        run: |
+          $root = "dist/PHONIE-DEV0.4.0.2-win-x64"
+          $required = @(
+            "$root/PHONIE.exe",
+            "$root/config",
+            "$root/logs/ground-operations",
+            "$root/recordings",
+            "$root/cache/atis",
+            "$root/cache/controller-voice",
+            "$root/models/whisper",
+            "$root/models/vosk"
+          )
+          foreach ($item in $required) {
+            if (-not (Test-Path $item)) {
+              throw "Élément portable manquant : $item"
+            }
+          }
+
       - name: Create portable zip
         shell: pwsh
-        run: Compress-Archive -Path dist/PHONIE-DEV0.4.0.1-win-x64/* -DestinationPath dist/PHONIE-DEV0.4.0.1-win-x64.zip -Force
+        run: Compress-Archive -Path dist/PHONIE-DEV0.4.0.2-win-x64/* -DestinationPath dist/PHONIE-DEV0.4.0.2-win-x64.zip -Force
 
       - name: Upload portable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PHONIE-DEV0.4.0.1-win-x64
-          path: dist/PHONIE-DEV0.4.0.1-win-x64.zip
+          name: PHONIE-DEV0.4.0.2-win-x64
+          path: dist/PHONIE-DEV0.4.0.2-win-x64.zip
           if-no-files-found: error
           retention-days: 14

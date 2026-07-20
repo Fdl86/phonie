@@ -25,4 +25,6 @@ public sealed record SimulatorSnapshot(
     double WindVelocityKnots,
     double QnhHpa,
     double TemperatureCelsius,
-    double VisibilityMeters);
+    double DewPointCelsius,
+    double VisibilityMeters,
+    double CeilingFeet);

@@ -16,6 +16,7 @@ public sealed class SimConnectService : IAsyncDisposable
     private readonly ConcurrentDictionary<string, byte> optionalReadWarnings = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> optionalRetryAfter = new(StringComparer.Ordinal);
     private readonly AirportFacilityService airportFacilityService = new();
+    private readonly GroundTrafficService groundTrafficService = new();
     private readonly ConcurrentDictionary<string, byte> automaticAirportRequests = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? cancellation;
     private Task? worker;
@@ -24,6 +25,7 @@ public sealed class SimConnectService : IAsyncDisposable
     private string? lastErrorMessage;
     private bool connectedAtLeastOnce;
     private DateTimeOffset lastWeatherRefresh = DateTimeOffset.MinValue;
+    private DateTimeOffset lastGroundTrafficRequest = DateTimeOffset.MinValue;
     private WeatherSnapshot cachedWeather = WeatherSnapshot.Empty;
     private bool disposed;
 
@@ -35,10 +37,14 @@ public sealed class SimConnectService : IAsyncDisposable
 
     public event EventHandler<AirportFacilityReport>? AirportDataReceived;
 
+    public event EventHandler<GroundTrafficSnapshot>? GroundTrafficReceived;
+
     public SimConnectService()
     {
         this.airportFacilityService.LogMessage += (_, message) => this.LogMessage?.Invoke(this, message);
         this.airportFacilityService.ReportCompleted += (_, report) => this.AirportDataReceived?.Invoke(this, report);
+        this.groundTrafficService.LogMessage += (_, message) => this.LogMessage?.Invoke(this, message);
+        this.groundTrafficService.SnapshotReceived += (_, snapshot) => this.GroundTrafficReceived?.Invoke(this, snapshot);
     }
 
     public void Start()
@@ -68,7 +74,7 @@ public sealed class SimConnectService : IAsyncDisposable
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         this.PublishStatus(ConnectionState.Waiting, "En attente de Microsoft Flight Simulator");
-        this.PublishLog("PHONIE DEV0.4.0.1 démarrée. Recherche locale de SimConnect.");
+        this.PublishLog("PHONIE DEV0.4.0.2 démarrée. Recherche locale de SimConnect.");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -83,6 +89,7 @@ public sealed class SimConnectService : IAsyncDisposable
                 {
                     var snapshot = await this.ReadSnapshotAsync(connectedClient, cancellationToken).ConfigureAwait(false);
                     this.TryRequestAirportDataAutomatically(snapshot);
+                    this.TryRequestGroundTraffic(snapshot);
                     this.SnapshotReceived?.Invoke(this, snapshot);
                     await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
                 }
@@ -122,7 +129,7 @@ public sealed class SimConnectService : IAsyncDisposable
     {
         this.PublishStatus(ConnectionState.Connecting, "Connexion à SimConnect...");
 
-        var newClient = new SimConnectClient("PHONIE DEV0.4.0.1")
+        var newClient = new SimConnectClient("PHONIE DEV0.4.0.2")
         {
             AutoReconnectEnabled = false,
         };
@@ -144,6 +151,7 @@ public sealed class SimConnectService : IAsyncDisposable
                 this.optionalRetryAfter.Clear();
                 this.lastWeatherRefresh = DateTimeOffset.MinValue;
                 this.cachedWeather = WeatherSnapshot.Empty;
+                this.lastGroundTrafficRequest = DateTimeOffset.MinValue;
                 this.automaticAirportRequests.Clear();
             }
             finally
@@ -165,6 +173,20 @@ public sealed class SimConnectService : IAsyncDisposable
             catch (Exception exception)
             {
                 this.PublishLog($"Airport Data indisponible : {CleanMessage(exception)}");
+            }
+
+            try
+            {
+                this.groundTrafficService.Attach(newClient);
+            }
+            catch (Exception exception)
+            {
+                this.PublishLog($"Trafic sol indisponible : {CleanMessage(exception)}");
+                this.GroundTrafficReceived?.Invoke(this, new GroundTrafficSnapshot(
+                    DateTimeOffset.UtcNow,
+                    false,
+                    Array.Empty<GroundTrafficContactData>(),
+                    "Trafic sol SimConnect indisponible."));
             }
         }
         catch
@@ -223,6 +245,23 @@ public sealed class SimConnectService : IAsyncDisposable
             this.PublishLog($"Airport Data automatique {candidate} : {CleanMessage(exception)}");
             this.automaticAirportRequests.TryAdd(candidate, 0);
         }
+    }
+
+    private void TryRequestGroundTraffic(SimulatorSnapshot snapshot)
+    {
+        if (!snapshot.IsOnGround || snapshot.DistanceToLfbiNm > 30.0)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (now - this.lastGroundTrafficRequest < TimeSpan.FromSeconds(2))
+        {
+            return;
+        }
+
+        this.lastGroundTrafficRequest = now;
+        _ = this.groundTrafficService.RequestSnapshot();
     }
 
     private async Task<SimulatorSnapshot> ReadSnapshotAsync(
@@ -304,7 +343,9 @@ public sealed class SimConnectService : IAsyncDisposable
             weather.WindVelocityKnots,
             weather.QnhHpa,
             weather.TemperatureCelsius,
-            weather.VisibilityMeters);
+            weather.DewPointCelsius,
+            weather.VisibilityMeters,
+            weather.CeilingFeet);
     }
 
     private async Task<WeatherSnapshot> ReadWeatherWhenDueAsync(
@@ -321,21 +362,27 @@ public sealed class SimConnectService : IAsyncDisposable
         var windVelocityTask = this.GetOptionalAsync(connectedClient, "AMBIENT WIND VELOCITY", "knots", double.NaN, cancellationToken);
         var qnhTask = this.GetOptionalAsync(connectedClient, "SEA LEVEL PRESSURE", "millibars", double.NaN, cancellationToken);
         var temperatureTask = this.GetOptionalAsync(connectedClient, "AMBIENT TEMPERATURE", "celsius", double.NaN, cancellationToken);
+        var dewPointTask = this.GetOptionalAsync(connectedClient, "AMBIENT DEW POINT", "celsius", double.NaN, cancellationToken);
         var visibilityTask = this.GetOptionalAsync(connectedClient, "AMBIENT VISIBILITY", "meters", double.NaN, cancellationToken);
+        var cloudBaseTask = this.GetOptionalAsync(connectedClient, "CLOUD BASE", "feet", double.NaN, cancellationToken);
 
         await Task.WhenAll(
             windDirectionTask,
             windVelocityTask,
             qnhTask,
             temperatureTask,
-            visibilityTask).ConfigureAwait(false);
+            dewPointTask,
+            visibilityTask,
+            cloudBaseTask).ConfigureAwait(false);
 
         this.cachedWeather = new WeatherSnapshot(
             await windDirectionTask.ConfigureAwait(false),
             await windVelocityTask.ConfigureAwait(false),
             await qnhTask.ConfigureAwait(false),
             await temperatureTask.ConfigureAwait(false),
-            await visibilityTask.ConfigureAwait(false));
+            await dewPointTask.ConfigureAwait(false),
+            await visibilityTask.ConfigureAwait(false),
+            await cloudBaseTask.ConfigureAwait(false));
         this.lastWeatherRefresh = now;
         return this.cachedWeather;
     }
@@ -388,6 +435,7 @@ public sealed class SimConnectService : IAsyncDisposable
             var oldClient = this.client;
             this.client = null;
             this.airportFacilityService.Detach();
+            this.groundTrafficService.Detach();
             this.automaticAirportRequests.Clear();
 
             try
@@ -472,9 +520,13 @@ public sealed class SimConnectService : IAsyncDisposable
         double WindVelocityKnots,
         double QnhHpa,
         double TemperatureCelsius,
-        double VisibilityMeters)
+        double DewPointCelsius,
+        double VisibilityMeters,
+        double CeilingFeet)
     {
         public static WeatherSnapshot Empty { get; } = new(
+            double.NaN,
+            double.NaN,
             double.NaN,
             double.NaN,
             double.NaN,
@@ -505,6 +557,7 @@ public sealed class SimConnectService : IAsyncDisposable
         }
 
         this.airportFacilityService.Dispose();
+        this.groundTrafficService.Dispose();
         this.cancellation?.Dispose();
         this.lifecycleGate.Dispose();
     }

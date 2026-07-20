@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using Phonie.Core;
 using Phonie.Models;
 using Phonie.Services;
 
@@ -23,6 +24,8 @@ public partial class MainWindow : Window
     private readonly SpeechRecognitionService speechRecognitionService;
     private readonly GpuBenchmarkService gpuBenchmarkService = new();
     private readonly AtisService atisService = new();
+    private readonly GroundOperationsCoordinator groundOperationsCoordinator = new();
+    private readonly ControllerSpeechService controllerSpeechService;
     private readonly DispatcherTimer audioMeterTimer = new() { Interval = TimeSpan.FromMilliseconds(125) };
     private readonly HashSet<string> activePttSources = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> activePttSourceLabels = new(StringComparer.Ordinal);
@@ -57,6 +60,8 @@ public partial class MainWindow : Window
         "PHONIE reste silencieux tant que le service n'est pas déterminé.",
         "Initialisation");
     private CancellationTokenSource? transcriptionCancellation;
+    private CancellationTokenSource? speechSynthesisCancellation;
+    private string? lastAtisAudioSignature;
     private CancellationTokenSource? turboWarmupCancellation;
     private CancellationTokenSource? benchmarkCancellation;
     private Task? turboWarmupTask;
@@ -72,6 +77,7 @@ public partial class MainWindow : Window
         this.startupSpeechProfile = SpeechRecognitionProfiles.Parse(this.settings.SpeechRecognitionProfile);
         this.selectedSpeechProfile = this.startupSpeechProfile;
         this.speechRecognitionService = new SpeechRecognitionService(this.startupSpeechProfile);
+        this.controllerSpeechService = new ControllerSpeechService(this.audioService);
         ThemeService.Apply(this.settings.Theme);
 
         this.InitializeComponent();
@@ -81,10 +87,13 @@ public partial class MainWindow : Window
         this.simConnectService.SnapshotReceived += this.SimConnectService_OnSnapshotReceived;
         this.simConnectService.LogMessage += this.Service_OnLogMessage;
         this.simConnectService.AirportDataReceived += this.SimConnectService_OnAirportDataReceived;
+        this.simConnectService.GroundTrafficReceived += this.SimConnectService_OnGroundTrafficReceived;
 
         this.audioService.LogMessage += this.Service_OnLogMessage;
         this.audioService.RecordingStateChanged += this.AudioService_OnRecordingStateChanged;
         this.audioService.RecordingCompleted += this.AudioService_OnRecordingCompleted;
+        this.groundOperationsCoordinator.LogMessage += this.Service_OnLogMessage;
+        this.controllerSpeechService.LogMessage += this.Service_OnLogMessage;
 
         this.keyboardHook.KeyPressed += this.KeyboardHook_OnKeyPressed;
         this.keyboardHook.KeyReleased += this.KeyboardHook_OnKeyReleased;
@@ -165,14 +174,17 @@ public partial class MainWindow : Window
         this.keyboardHook.Dispose();
         await this.joystickService.DisposeAsync();
         this.transcriptionCancellation?.Cancel();
+        this.speechSynthesisCancellation?.Cancel();
         this.turboWarmupCancellation?.Cancel();
         this.benchmarkCancellation?.Cancel();
         await AwaitQuietlyAsync(this.turboWarmupTask);
         await AwaitQuietlyAsync(this.benchmarkTask);
         this.transcriptionCancellation?.Dispose();
+        this.speechSynthesisCancellation?.Dispose();
         this.turboWarmupCancellation?.Dispose();
         this.benchmarkCancellation?.Dispose();
         this.speechRecognitionService.Dispose();
+        this.controllerSpeechService.Dispose();
         this.audioService.Dispose();
         await this.simConnectService.DisposeAsync();
         await this.diagnosticsService.DisposeAsync();
@@ -1091,7 +1103,11 @@ public partial class MainWindow : Window
 
 
         this.currentOperationalFrequency = OperationalRadioService.Resolve(snapshot, this.latestAirportReport);
-        this.currentAtis = this.atisService.Update(snapshot, this.latestAirportReport);
+        this.groundOperationsCoordinator.UpdateSnapshot(snapshot);
+        this.currentAtis = this.atisService.Update(
+            snapshot,
+            this.latestAirportReport,
+            this.groundOperationsCoordinator.CurrentRunwayDesignator);
 
         _ = this.Dispatcher.BeginInvoke(() =>
         {
@@ -1127,8 +1143,18 @@ public partial class MainWindow : Window
             this.UpdateOperationalRadioUi();
 
             this.WeatherPrimaryText.Text = $"Vent {FormatDirection(snapshot.WindDirectionTrueDegrees)} / {FormatWindSpeed(snapshot.WindVelocityKnots)} - QNH {FormatQnh(snapshot.QnhHpa)}";
-            this.WeatherSecondaryText.Text = $"Température {FormatTemperature(snapshot.TemperatureCelsius)} - visibilité {FormatVisibility(snapshot.VisibilityMeters)}";
+            var dewPoint = double.IsFinite(snapshot.DewPointCelsius)
+                ? $" - rosée {snapshot.DewPointCelsius:F0} °C"
+                : string.Empty;
+            var ceiling = double.IsFinite(snapshot.CeilingFeet) && snapshot.CeilingFeet > 0
+                ? $" - plafond {snapshot.CeilingFeet:F0} ft"
+                : string.Empty;
+            this.WeatherSecondaryText.Text =
+                $"Température {FormatTemperature(snapshot.TemperatureCelsius)}{dewPoint} - " +
+                $"visibilité {FormatVisibility(snapshot.VisibilityMeters)}{ceiling}";
             this.UpdateAtisUi();
+            this.UpdateGroundOperationsUi();
+            this.EnsureAtisCacheWhenNeeded();
 
             var radioSignature = $"{snapshot.Com1ActiveMhz:F3}|{this.currentOperationalFrequency.ServiceName}|{this.currentOperationalFrequency.Kind}|{snapshot.Com1SpacingMode}|{snapshot.Com1Receiving}";
             if (!string.Equals(radioSignature, this.lastRadioSignature, StringComparison.Ordinal))
@@ -1142,10 +1168,15 @@ public partial class MainWindow : Window
     private void SimConnectService_OnAirportDataReceived(object? sender, AirportFacilityReport report)
     {
         this.latestAirportReport = report;
+        this.groundOperationsCoordinator.UpdateAirport(report);
         if (this.latestSnapshot is not null)
         {
             this.currentOperationalFrequency = OperationalRadioService.Resolve(this.latestSnapshot, report);
-            this.currentAtis = this.atisService.Update(this.latestSnapshot, report);
+            this.groundOperationsCoordinator.UpdateSnapshot(this.latestSnapshot);
+            this.currentAtis = this.atisService.Update(
+                this.latestSnapshot,
+                report,
+                this.groundOperationsCoordinator.CurrentRunwayDesignator);
         }
 
         _ = this.Dispatcher.BeginInvoke(() =>
@@ -1155,6 +1186,8 @@ public partial class MainWindow : Window
             this.UpdateAirportUi(report);
             this.UpdateOperationalRadioUi();
             this.UpdateAtisUi();
+            this.UpdateGroundOperationsUi();
+            this.EnsureAtisCacheWhenNeeded();
             this.AppendLog(
                 $"[{DateTime.Now:HH:mm:ss}] Airport Data {icao} terminé : " +
                 $"{report.Runways.Count} piste(s), {report.Frequencies.Count} fréquence(s), " +
@@ -1162,6 +1195,22 @@ public partial class MainWindow : Window
                 $"{report.ParseWarnings.Count} avertissement(s). " +
                 $"TaxiPath : {report.DiagnosticSummary.ParsedTaxiPathPacketCount}/{report.DiagnosticSummary.TaxiPathPacketCount}. " +
                 $"Capture : logs\\airport-data\\raw\\{System.IO.Path.GetFileName(report.DiagnosticDirectoryPath)}");
+        });
+    }
+
+    private void SimConnectService_OnGroundTrafficReceived(object? sender, GroundTrafficSnapshot snapshot)
+    {
+        this.groundOperationsCoordinator.UpdateTraffic(
+            snapshot,
+            this.latestSnapshot?.AircraftAtcId ?? string.Empty);
+
+        _ = this.Dispatcher.BeginInvoke(() =>
+        {
+            this.UpdateGroundOperationsUi();
+            if (!snapshot.ProviderAvailable)
+            {
+                this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Trafic sol : {snapshot.Status}");
+            }
         });
     }
 
@@ -1316,24 +1365,38 @@ public partial class MainWindow : Window
     {
         var cleanText = text.Trim();
         var analysis = PhraseologyService.Analyze(cleanText, this.latestSnapshot?.AircraftAtcId);
-        var response = PhraseologyService.BuildFirstContactResponse(
-            analysis,
-            this.currentOperationalFrequency,
-            this.currentAtis,
-            this.latestSnapshot);
+        var decision = this.groundOperationsCoordinator.Process(
+            cleanText,
+            this.latestSnapshot,
+            this.currentOperationalFrequency);
+
+        var response = decision.Action == ControllerAction.Silent
+            ? $"[SILENCE] {decision.SystemMessage}"
+            : decision.SpokenText;
+        if (string.IsNullOrWhiteSpace(response))
+        {
+            response = $"[{decision.ReasonCode}] aucune réponse audio.";
+        }
 
         this.PilotTranscriptTextBox.Text = cleanText;
         this.AnalysisText.Text = FormatAnalysis(analysis);
         this.ControllerResponseTextBox.Text = $"PHONIE : {response}";
         this.ExchangeLatencyText.Text = processingTime > TimeSpan.Zero
-            ? $"{processingTime.TotalSeconds:F1} S - {analysis.Confidence:P0}"
-            : $"LAB - {analysis.Confidence:P0}";
+            ? $"{processingTime.TotalSeconds:F1} S - décision {decision.Confidence:P0}"
+            : $"LAB - décision {decision.Confidence:P0}";
+        this.UpdateGroundOperationsUi();
 
         var exchange = new RadioExchange(DateTimeOffset.Now, analysis, response, processingTime, fromMicrophone);
         this.SaveRadioExchange(exchange);
         this.diagnosticsService.WriteEvent(
             "RADIO",
-            $"{(fromMicrophone ? "PTT" : "LAB")} - {FormatAnalysis(analysis)} - Réponse : {response}");
+            $"{(fromMicrophone ? "PTT" : "LAB")} - {FormatAnalysis(analysis)} - " +
+            $"Décision {decision.ReasonCode} {decision.StateBefore}->{decision.StateAfter} - Réponse : {response}");
+
+        if (decision.Action != ControllerAction.Silent && !string.IsNullOrWhiteSpace(decision.SpokenText))
+        {
+            this.StartControllerSpeech(decision.SpokenText);
+        }
     }
 
     private void SaveRadioExchange(RadioExchange exchange)
@@ -1382,6 +1445,95 @@ public partial class MainWindow : Window
 
         this.AtisStateText.Text = $"INFO {this.currentAtis.Letter.ToUpperInvariant()} - PISTE {this.currentAtis.Runway}";
         this.AtisTextBox.Text = this.currentAtis.Text;
+    }
+
+    private void UpdateGroundOperationsUi()
+    {
+        var state = this.groundOperationsCoordinator.GetUiState();
+        this.GroundOperationsText.Text =
+            $"SOL {state.SessionState.ToUpperInvariant()} - {state.Position} - piste {state.Runway} - " +
+            $"attente {state.HoldShort} - route {state.Route} - occupation {state.Occupancy}";
+        this.SetForegroundResource(
+            this.GroundOperationsText,
+            state.Occupancy.StartsWith("INCONNUE", StringComparison.OrdinalIgnoreCase)
+                ? "Warning"
+                : state.Confidence >= 0.75
+                    ? "Success"
+                    : "MutedText");
+    }
+
+    private void StartControllerSpeech(string text)
+    {
+        this.speechSynthesisCancellation?.Cancel();
+        this.speechSynthesisCancellation?.Dispose();
+        this.speechSynthesisCancellation = new CancellationTokenSource();
+        var token = this.speechSynthesisCancellation.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await this.controllerSpeechService.SpeakControllerAsync(
+                    text,
+                    this.currentOperationalFrequency.ServiceName,
+                    this.settings.OutputDeviceId,
+                    token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Une nouvelle réponse remplace la synthèse précédente.
+            }
+            catch (Exception exception)
+            {
+                this.Service_OnLogMessage(
+                    this,
+                    $"Voix contrôleur indisponible : {CleanMessage(exception)}");
+            }
+        }, token);
+    }
+
+    private void EnsureAtisCacheWhenNeeded()
+    {
+        var information = this.currentAtis;
+        this.PlayAtisButton.IsEnabled = information is not null;
+        if (information is null
+            || string.Equals(this.lastAtisAudioSignature, information.Signature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        this.lastAtisAudioSignature = information.Signature;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                _ = await this.controllerSpeechService.EnsureAtisAsync(information).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                this.Service_OnLogMessage(
+                    this,
+                    $"Cache ATIS indisponible : {CleanMessage(exception)}");
+            }
+        });
+    }
+
+    private async void PlayAtisButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (this.currentAtis is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await this.controllerSpeechService.PlayAtisAsync(
+                this.currentAtis,
+                this.settings.OutputDeviceId);
+        }
+        catch (Exception exception)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Lecture ATIS impossible : {CleanMessage(exception)}");
+        }
     }
 
     private void UpdateOperationalRadioUi()

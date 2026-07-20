@@ -1,6 +1,6 @@
 # Third-party notices
 
-PHONIE DEV0.4.0.1 utilise :
+PHONIE DEV0.4.0.2 utilise :
 
 - `SimConnect.NET` 0.2.1 - licence MIT ;
 - `NAudio` 2.3.0 - licence MIT ;
@@ -8,6 +8,7 @@ PHONIE DEV0.4.0.1 utilise :
 - `Whisper.net.Runtime` 1.7.4 - runtime CPU natif whisper.cpp ;
 - `Whisper.net.Runtime.Vulkan` 1.7.4 - runtime Vulkan natif whisper.cpp ;
 - `Vosk` 0.3.38 - moteur de reconnaissance hors ligne ;
+- `System.Speech` 8.0.0 - synthèse vocale Windows locale ;
 - modèles `ggml-base-q5_1.bin` et `ggml-small-q5_1.bin`, téléchargés séparément depuis le dépôt de modèles whisper.cpp ;
 - modèle `vosk-model-small-fr-0.22`, téléchargé séparément depuis le site officiel Vosk.
 

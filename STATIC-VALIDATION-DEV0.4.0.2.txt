@@ -1,0 +1,19 @@
+PHONIE DEV0.4.0.2 - STATIC VALIDATION
+Generated UTC: 2026-07-20 11:21:47
+
+[OK] Syntaxe C#: 52 fichier(s), aucune erreur détectée par tree-sitter
+[OK] XML/XAML: 9 fichier(s) valides
+[OK] Gestionnaires XAML: 28 gestionnaire(s) résolus
+[OK] Fixtures LFBI: LFBI-MSFS2020-ground.json: {'Runways': 3, 'TaxiPoints': 125, 'Parkings': 23, 'TaxiPaths': 154, 'TaxiNames': 5} | LFBI-MSFS2024-ground.json: {'Runways': 3, 'TaxiPoints': 125, 'Parkings': 23, 'TaxiPaths': 154, 'TaxiNames': 5}
+[OK] Version visible: DEV0.4.0.2 cohérente dans projet, fenêtre, workflow et documentation
+[OK] Stockage portable: config, logs, recordings, cache, models, ATIS et voix contrôleur sous le dossier PHONIE
+[OK] Nettoyage source: aucun bin, obj, dist, node_modules, .vs ou .git
+[OK] Tirets typographiques: aucun tiret long dans les fichiers actifs
+[OK] Noyau Ground Operations: 8 composant(s) métier présents
+
+Result: PASS (9/9 checks)
+
+Important:
+- Le SDK .NET 8 n est pas installé dans l environnement de génération local.
+- La compilation Release et les deux exécutables de tests sont donc volontairement imposés par GitHub Actions avant publication de l artefact Windows.
+- Cette validation ne remplace pas le protocole réel TEST-DEV0.4.0.2.md.

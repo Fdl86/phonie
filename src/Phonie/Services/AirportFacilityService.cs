@@ -585,12 +585,15 @@ public sealed class AirportFacilityService : IDisposable
             warnings.Add($"RIGHT_HALF_WIDTH={path.RightHalfWidthMeters:R}");
         }
 
-        if (path.RunwayNumber is < 0 or > 45)
+        // RUNWAY_NUMBER et RUNWAY_DESIGNATOR ne sont sémantiquement définis
+        // que pour un chemin de type RUNWAY. MSFS 2020 laisse parfois des octets
+        // non initialisés dans ces champs pour TAXI/PARKING/PATH sans décaler le paquet.
+        if (path.Type == 2 && path.RunwayNumber is < 1 or > 36)
         {
             warnings.Add($"RUNWAY_NUMBER={path.RunwayNumber}");
         }
 
-        if (path.RunwayDesignator is < 0 or > 7)
+        if (path.Type == 2 && path.RunwayDesignator is < 0 or > 7)
         {
             warnings.Add($"RUNWAY_DESIGNATOR={path.RunwayDesignator}");
         }
@@ -701,7 +704,7 @@ public sealed class AirportFacilityService : IDisposable
         File.WriteAllText(Path.Combine(diagnosticDirectory, "taxipath-fields.csv"), fieldsCsv.ToString(), new UTF8Encoding(false));
 
         var readme = new StringBuilder();
-        readme.AppendLine("PHONIE DEV0.4.0.1 - FACILITIES DIAGNOSTIC");
+        readme.AppendLine("PHONIE DEV0.4.0.2 - GROUND OPERATIONS RC");
         readme.AppendLine();
         readme.AppendLine("Ce dossier contient la capture brute SimConnect Facilities de la demande aérodrome.");
         readme.AppendLine("Ne modifier aucun fichier avant transmission pour analyse.");
@@ -786,7 +789,7 @@ public sealed class AirportFacilityService : IDisposable
     private static string BuildTextReport(AirportFacilityReport report)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("PHONIE DEV0.4.0.1 - FACILITIES DIAGNOSTIC");
+        builder.AppendLine("PHONIE DEV0.4.0.2 - GROUND OPERATIONS RC");
         builder.AppendLine($"Date : {report.Timestamp:yyyy-MM-dd HH:mm:ss zzz}");
         builder.AppendLine($"Simulateur : {report.Simulator}");
         builder.AppendLine($"Source : {report.Source}");
