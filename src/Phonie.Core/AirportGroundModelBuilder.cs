@@ -45,10 +45,10 @@ public static class AirportGroundModelBuilder
 
             var from = nodes[fromNodeId];
             var to = nodes[toNodeId];
-            var runwayNumber = kind == TaxiPathKind.Runway && path.RawRunwayNumber is >= 1 and <= 36
+            int? runwayNumber = kind == TaxiPathKind.Runway && path.RawRunwayNumber is >= 1 and <= 36
                 ? path.RawRunwayNumber
                 : null;
-            var runwayDesignator = runwayNumber.HasValue && path.RawRunwayDesignator is >= 0 and <= 7
+            int? runwayDesignator = runwayNumber.HasValue && path.RawRunwayDesignator is >= 0 and <= 7
                 ? path.RawRunwayDesignator
                 : null;
 

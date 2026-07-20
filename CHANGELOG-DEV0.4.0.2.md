@@ -1,5 +1,9 @@
 # Changelog PHONIE DEV0.4.0.2
 
+## Correctif de compilation RC
+
+- typage nullable explicite des champs piste normalisés dans `AirportGroundModelBuilder` afin de corriger l'erreur `CS0173` du workflow GitHub Actions.
+
 ## GROUND OPERATIONS RC
 
 - ajout du projet métier indépendant `Phonie.Core` ;
