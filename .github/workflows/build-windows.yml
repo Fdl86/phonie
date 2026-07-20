@@ -28,11 +28,51 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Restore solution
-        run: dotnet restore PHONIE.sln
+      - name: Verify required source files
+        shell: pwsh
+        run: |
+          $required = @(
+            "src/Phonie/Phonie.csproj",
+            "src/Phonie.Core/Phonie.Core.csproj",
+            "tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj",
+            "tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj",
+            "tests/Phonie.Core.Tests/Fixtures/LFBI-MSFS2020-ground.json",
+            "tests/Phonie.Core.Tests/Fixtures/LFBI-MSFS2024-ground.json",
+            "README.md",
+            "TEST-DEV0.4.0.3.md",
+            "GROUND-OPERATIONS-DEV0.4.0.3.md",
+            "FACILITIES-NORMALIZATION-DEV0.4.0.3.md",
+            "CALLSIGN-RULES-DEV0.4.0.3.md",
+            "CHANGELOG-DEV0.4.0.3.md",
+            "STATIC-VALIDATION-DEV0.4.0.3.txt"
+          )
+          $missing = @($required | Where-Object { -not (Test-Path $_) })
+          if ($missing.Count -gt 0) {
+            Write-Host "Contenu racine du dépôt :"
+            Get-ChildItem -Force | Select-Object Name, Length | Format-Table -AutoSize
+            throw "Fichiers source manquants : $($missing -join ', ')"
+          }
+          Write-Host "Précontrôle source OK - $($required.Count) éléments requis présents."
+          dotnet --info
 
-      - name: Build solution
-        run: dotnet build PHONIE.sln --configuration Release --no-restore
+      # Le workflow ne dépend volontairement plus de PHONIE.sln. Certains
+      # environnements Git peuvent ignorer un fichier .sln globalement ; les
+      # quatre projets sont donc restaurés et compilés explicitement.
+      - name: Restore projects
+        shell: pwsh
+        run: |
+          dotnet restore src/Phonie.Core/Phonie.Core.csproj
+          dotnet restore tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj
+          dotnet restore tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj
+          dotnet restore src/Phonie/Phonie.csproj
+
+      - name: Build all projects
+        shell: pwsh
+        run: |
+          dotnet build src/Phonie.Core/Phonie.Core.csproj --configuration Release --no-restore
+          dotnet build tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-restore
+          dotnet build tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj --configuration Release --no-restore
+          dotnet build src/Phonie/Phonie.csproj --configuration Release --no-restore
 
       - name: Run DEV0.3 regression smoke tests
         run: dotnet run --project tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-build --no-restore
