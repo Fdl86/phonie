@@ -1,0 +1,24 @@
+PHONIE DEV0.4.0.3 - STATIC VALIDATION
+Generated: 2026-07-20T15:42:22.330964+00:00
+
+[OK] 79/79 contrôles statiques réussis
+[OK] 52 fichiers C# contrôlés pour équilibre lexical
+[OK] 9 fichiers XML/XAML/manifest analysés
+[OK] Workflow YAML lisible
+[OK] Références PHONIE.sln résolues
+[OK] Gestionnaires XAML présents
+[OK] Version visible DEV0.4.0.3 cohérente
+[OK] Objet utilisateur SimConnect exclu de l'occupation
+[OK] Filtre de secours indicatif/proximité/vitesse présent
+[OK] Rayons d'occupation ramenés à 30 m pour les nœuds et 20 m pour les segments
+[OK] Journal ground-decisions enrichi avec position et occupation détaillée
+[OK] Test des 23 parkings LFBI vers une attente présent
+[OK] Test d'exclusion de l'avion utilisateur présent
+[OK] Aucun bin, obj, dist, node_modules, .git ou .vs
+[OK] Fichiers de documentation référencés par le workflow présents
+
+Limites :
+- le SDK .NET n'est pas disponible dans l'environnement local ;
+- la compilation et l'exécution réelles restent obligatoirement validées par GitHub Actions ;
+- ce correctif traite le faux blocage d'occupation ;
+- remontée de piste et départ intersection restent une phase opérationnelle distincte après le point d'attente.

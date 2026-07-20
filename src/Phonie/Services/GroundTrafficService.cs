@@ -159,14 +159,24 @@ public sealed class GroundTrafficService : IDisposable
             GroundTrafficSnapshot? completed = null;
             lock (this.sync)
             {
-                request.Contacts.Add(new GroundTrafficContactData(
-                    objectId,
-                    callsign,
-                    latitude,
-                    longitude,
-                    groundSpeed,
-                    onGround,
-                    DateTimeOffset.UtcNow));
+                // SIMCONNECT_OBJECT_ID_USER vaut 0. Le propre avion ne doit jamais
+                // entrer dans l'occupation du réseau, sinon ses segments de départ
+                // sont déclarés occupés et aucun roulage ne peut être calculé.
+                if (objectId == 0)
+                {
+                    request.ExcludedUserAircraftCount++;
+                }
+                else
+                {
+                    request.Contacts.Add(new GroundTrafficContactData(
+                        objectId,
+                        callsign,
+                        latitude,
+                        longitude,
+                        groundSpeed,
+                        onGround,
+                        DateTimeOffset.UtcNow));
+                }
 
                 if (outOf > 0 && entryNumber + 1 >= outOf)
                 {
@@ -175,7 +185,8 @@ public sealed class GroundTrafficService : IDisposable
                         DateTimeOffset.UtcNow,
                         true,
                         request.Contacts.ToArray(),
-                        $"{request.Contacts.Count} objet(s) avion reçu(s).");
+                        $"{request.Contacts.Count} objet(s) trafic reçu(s), " +
+                        $"{request.ExcludedUserAircraftCount} avion utilisateur exclu.");
                 }
             }
 
@@ -256,6 +267,8 @@ public sealed class GroundTrafficService : IDisposable
         public DateTimeOffset CreatedAt { get; } = createdAt;
 
         public List<GroundTrafficContactData> Contacts { get; } = new();
+
+        public int ExcludedUserAircraftCount { get; set; }
     }
 
     public void Dispose()

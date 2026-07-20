@@ -5,11 +5,13 @@ var tests = new List<(string Name, Action Test)>
 {
     ("graphe taxi valide", TestGraphBuild),
     ("capture LFBI MSFS 2024 exploitable", TestLfbiMsfs2024Fixture),
+    ("tous parkings LFBI reliés à une attente", TestLfbiAllParkingsReachHold),
     ("capture LFBI MSFS 2020 normalisée", TestLfbiMsfs2020Fixture),
     ("chemin parking vers attente", TestParkingToHoldRoute),
     ("attente libre la plus proche", TestNearestAvailableHold),
     ("attente occupée exclue", TestOccupiedHoldExcluded),
     ("absence itinéraire signalée", TestNoRoute),
+    ("avion utilisateur exclu de l'occupation", TestUserAircraftExcludedFromOccupancy),
     ("demande roulage reconnue", () => Assert(PilotIntentParser.Parse("demande roulage") == PilotIntent.TaxiRequest)),
     ("prêt au départ reconnu au point d'attente", () => Assert(PilotIntentParser.Parse("Fox Novembre Yankee prêt au départ") == PilotIntent.ReadyAtHoldShort)),
     ("alignement et décollage distinct", () => Assert(PilotIntentParser.Parse("demande alignement et décollage") == PilotIntent.LineUpAndTakeoffRequest)),
@@ -65,6 +67,28 @@ static void TestLfbiMsfs2024Fixture()
     Assert(route.HoldShort is not null);
     Assert(route.HoldShort.AssociatedRunwayIndex == runway03.RunwayIndex);
     Assert(route.TaxiwayNames.Count > 0);
+}
+
+static void TestLfbiAllParkingsReachHold()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var runway03 = model.RunwayEnds.Single(item => item.Designator == "03");
+
+    for (var parkingIndex = 0; parkingIndex < 23; parkingIndex++)
+    {
+        var route = TaxiRouter.RouteToNearestAvailableHoldShort(
+            model,
+            new GroundLocation(
+                GroundPositionKind.Parking,
+                $"P:{parkingIndex}",
+                null,
+                0,
+                1,
+                $"Parking {parkingIndex}"),
+            runway03,
+            AvailableOccupancy());
+        Assert(route.Success, $"Parking P:{parkingIndex} - {route.FailureReason}");
+    }
 }
 
 static void TestLfbiMsfs2020Fixture()
@@ -159,6 +183,29 @@ static void TestNoRoute()
         blocked);
     Assert(!route.Success);
     Assert(route.FailureReason.Contains("occup", StringComparison.OrdinalIgnoreCase));
+}
+
+static void TestUserAircraftExcludedFromOccupancy()
+{
+    var model = BuildAirport();
+    var own = new GroundTrafficContact(
+        0,
+        "F-HNNY",
+        46.0,
+        LocalLongitude(46.0, -20),
+        0,
+        true,
+        DateTimeOffset.UtcNow);
+    var occupancy = GroundOccupancy.Build(
+        model,
+        new[] { own },
+        DateTimeOffset.UtcNow,
+        providerAvailable: true,
+        userObjectId: 0);
+
+    Assert(occupancy.Knowledge == OccupancyKnowledge.Available);
+    Assert(occupancy.OccupiedNodeIds.Count == 0, $"nœuds occupés={occupancy.OccupiedNodeIds.Count}");
+    Assert(occupancy.OccupiedEdgeIds.Count == 0, $"segments occupés={occupancy.OccupiedEdgeIds.Count}");
 }
 
 static void TestTakeoffFromParkingRefused()

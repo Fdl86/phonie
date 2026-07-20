@@ -6,6 +6,7 @@ namespace Phonie.Services;
 
 public sealed class GroundOperationsCoordinator
 {
+    private const double OwnAircraftFallbackRadiusMeters = 20.0;
     private readonly object sync = new();
     private readonly GroundOperationsEngine engine = new();
     private AirportGroundModel? airport;
@@ -263,16 +264,21 @@ public sealed class GroundOperationsCoordinator
             this.airport,
             contacts,
             snapshot.Timestamp,
-            snapshot.ProviderAvailable);
+            snapshot.ProviderAvailable,
+            userObjectId: 0);
     }
 
     private bool IsOwnAircraft(GroundTrafficContactData contact, string normalizedOwn)
     {
+        // Valeur officielle SimConnect pour l'objet utilisateur.
+        if (contact.ObjectId == 0)
+        {
+            return true;
+        }
+
+        var normalizedContact = CallsignFormatter.Normalize(contact.Callsign);
         if (!string.IsNullOrWhiteSpace(normalizedOwn)
-            && string.Equals(
-                CallsignFormatter.Normalize(contact.Callsign),
-                normalizedOwn,
-                StringComparison.OrdinalIgnoreCase))
+            && string.Equals(normalizedContact, normalizedOwn, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
@@ -287,7 +293,18 @@ public sealed class GroundOperationsCoordinator
             this.ownLongitude,
             contact.Latitude,
             contact.Longitude);
-        return Geometry.Distance(0, 0, east, north) <= 8.0;
+        var distance = Geometry.Distance(0, 0, east, north);
+        if (distance > OwnAircraftFallbackRadiusMeters)
+        {
+            return false;
+        }
+
+        // Secours pour les paquets dont l'ATC ID est vide ou transitoirement
+        // différent. La vitesse proche évite d'exclure arbitrairement un trafic
+        // réellement voisin sur l'aire de stationnement.
+        var ownSpeed = this.aircraft?.GroundSpeedKnots ?? double.NaN;
+        return !double.IsFinite(ownSpeed)
+            || Math.Abs(ownSpeed - contact.GroundSpeedKnots) <= 2.0;
     }
 
     private void RecomputeDerivedStateLocked(double windDirection = double.NaN, double windSpeed = double.NaN)
@@ -312,6 +329,14 @@ public sealed class GroundOperationsCoordinator
     {
         try
         {
+            GroundLocation? location;
+            GroundOccupancySnapshot occupancy;
+            lock (this.sync)
+            {
+                location = this.location;
+                occupancy = this.occupancy;
+            }
+
             Directory.CreateDirectory(AppPaths.GroundOperationsDirectory);
             var path = Path.Combine(
                 AppPaths.GroundOperationsDirectory,
@@ -332,6 +357,16 @@ public sealed class GroundOperationsCoordinator
                 HoldShort = decision.TaxiRoute?.HoldShort?.Label,
                 Taxiways = decision.TaxiRoute?.TaxiwayNames,
                 DistanceMeters = decision.TaxiRoute?.TotalDistanceMeters,
+                PositionKind = location?.Kind.ToString(),
+                PositionNode = location?.NodeId,
+                PositionEdge = location?.EdgeId,
+                PositionDescription = location?.Description,
+                OccupancyKnowledge = occupancy.Knowledge.ToString(),
+                OccupiedNodeCount = occupancy.OccupiedNodeIds.Count,
+                OccupiedEdgeCount = occupancy.OccupiedEdgeIds.Count,
+                OccupiedNodes = occupancy.OccupiedNodeIds.OrderBy(item => item, StringComparer.Ordinal).ToArray(),
+                OccupiedEdges = occupancy.OccupiedEdgeIds.OrderBy(item => item).ToArray(),
+                OccupancySource = occupancy.Source,
             });
             File.AppendAllText(path, line + Environment.NewLine);
         }

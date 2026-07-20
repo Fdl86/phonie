@@ -1,4 +1,4 @@
-name: Build PHONIE DEV0.4.0.2 - Ground Operations RC
+name: Build PHONIE DEV0.4.0.3 - Ground Operations RC
 
 on:
   workflow_dispatch:
@@ -47,7 +47,7 @@ jobs:
           --runtime win-x64
           --self-contained true
           --no-restore
-          --output dist/PHONIE-DEV0.4.0.2-win-x64
+          --output dist/PHONIE-DEV0.4.0.3-win-x64
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
@@ -59,19 +59,19 @@ jobs:
         run: |
           $commit = "${{ github.sha }}".Substring(0, 7)
           @"
-          PHONIE DEV0.4.0.2 - GROUND OPERATIONS RC
+          PHONIE DEV0.4.0.3 - GROUND OPERATIONS RC
           Commit: $commit
           Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
           Runtime: Windows x64 autonome
           Noyau: graphe taxi, piste en service, occupation, routage, machine d'état et mémoire indicatif
           Sécurité: aucune clairance si station, position, piste, point d'attente ou occupation ne sont pas fiables
           Base préservée: DEV0.3.0.5 - SimConnect, PTT, enregistrement, ASR CPU/Vulkan/Turbo/Vosk et télémétrie GPU
-          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.4.0.2-win-x64/BUILD-INFO.txt
+          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.4.0.3-win-x64/BUILD-INFO.txt
 
       - name: Create portable folders and documentation
         shell: pwsh
         run: |
-          $root = "dist/PHONIE-DEV0.4.0.2-win-x64"
+          $root = "dist/PHONIE-DEV0.4.0.3-win-x64"
           $folders = @(
             "config",
             "logs",
@@ -107,12 +107,12 @@ jobs:
           Le modèle est enregistré dans models\vosk et vérifié par SHA-256 avant extraction.
           "@ | Set-Content -Encoding UTF8 "$root/models/vosk/LISEZ-MOI.txt"
           Copy-Item README.md "$root/README.md"
-          Copy-Item TEST-DEV0.4.0.2.md "$root/TEST-DEV0.4.0.2.md"
-          Copy-Item GROUND-OPERATIONS-DEV0.4.0.2.md "$root/GROUND-OPERATIONS-DEV0.4.0.2.md"
-          Copy-Item FACILITIES-NORMALIZATION-DEV0.4.0.2.md "$root/FACILITIES-NORMALIZATION-DEV0.4.0.2.md"
-          Copy-Item CALLSIGN-RULES-DEV0.4.0.2.md "$root/CALLSIGN-RULES-DEV0.4.0.2.md"
-          Copy-Item CHANGELOG-DEV0.4.0.2.md "$root/CHANGELOG-DEV0.4.0.2.md"
-          Copy-Item STATIC-VALIDATION-DEV0.4.0.2.txt "$root/STATIC-VALIDATION-DEV0.4.0.2.txt"
+          Copy-Item TEST-DEV0.4.0.3.md "$root/TEST-DEV0.4.0.3.md"
+          Copy-Item GROUND-OPERATIONS-DEV0.4.0.3.md "$root/GROUND-OPERATIONS-DEV0.4.0.3.md"
+          Copy-Item FACILITIES-NORMALIZATION-DEV0.4.0.3.md "$root/FACILITIES-NORMALIZATION-DEV0.4.0.3.md"
+          Copy-Item CALLSIGN-RULES-DEV0.4.0.3.md "$root/CALLSIGN-RULES-DEV0.4.0.3.md"
+          Copy-Item CHANGELOG-DEV0.4.0.3.md "$root/CHANGELOG-DEV0.4.0.3.md"
+          Copy-Item STATIC-VALIDATION-DEV0.4.0.3.txt "$root/STATIC-VALIDATION-DEV0.4.0.3.txt"
           Copy-Item ASR-PROFILES-DEV0.3.0.5.md "$root/ASR-PROFILES-DEV0.3.0.5.md"
           Copy-Item TURBO-PROFILE-DEV0.3.0.5.md "$root/TURBO-PROFILE-DEV0.3.0.5.md"
           Copy-Item GPU-BENCHMARK-DEV0.3.0.5.md "$root/GPU-BENCHMARK-DEV0.3.0.5.md"
@@ -122,7 +122,7 @@ jobs:
       - name: Verify portable storage layout
         shell: pwsh
         run: |
-          $root = "dist/PHONIE-DEV0.4.0.2-win-x64"
+          $root = "dist/PHONIE-DEV0.4.0.3-win-x64"
           $required = @(
             "$root/PHONIE.exe",
             "$root/config",
@@ -141,12 +141,12 @@ jobs:
 
       - name: Create portable zip
         shell: pwsh
-        run: Compress-Archive -Path dist/PHONIE-DEV0.4.0.2-win-x64/* -DestinationPath dist/PHONIE-DEV0.4.0.2-win-x64.zip -Force
+        run: Compress-Archive -Path dist/PHONIE-DEV0.4.0.3-win-x64/* -DestinationPath dist/PHONIE-DEV0.4.0.3-win-x64.zip -Force
 
       - name: Upload portable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PHONIE-DEV0.4.0.2-win-x64
-          path: dist/PHONIE-DEV0.4.0.2-win-x64.zip
+          name: PHONIE-DEV0.4.0.3-win-x64
+          path: dist/PHONIE-DEV0.4.0.3-win-x64.zip
           if-no-files-found: error
           retention-days: 14

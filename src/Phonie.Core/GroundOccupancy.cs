@@ -2,8 +2,8 @@ namespace Phonie.Core;
 
 public static class GroundOccupancy
 {
-    private const double NodeOccupancyRadiusMeters = 45.0;
-    private const double EdgeOccupancyRadiusMeters = 35.0;
+    private const double NodeOccupancyRadiusMeters = 30.0;
+    private const double EdgeOccupancyRadiusMeters = 20.0;
     private static readonly TimeSpan MaximumTrafficAge = TimeSpan.FromSeconds(5);
 
     public static GroundOccupancySnapshot Build(
