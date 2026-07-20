@@ -11,7 +11,6 @@ namespace Phonie.Services;
 public sealed class AirportFacilityService : IDisposable
 {
     private const uint AirportDefinitionId = 0x02500001;
-    private const int FacilityDataHeaderSize = 40;
     private const int MaximumSavedReports = 10;
 
     private readonly object sync = new();
@@ -207,22 +206,31 @@ public sealed class AirportFacilityService : IDisposable
 
     private void ProcessFacilityData(IntPtr dataPointer, int dataSize)
     {
-        if (dataPointer == IntPtr.Zero || dataSize < FacilityDataHeaderSize)
+        if (dataPointer == IntPtr.Zero || dataSize < FacilityPacketDecoder.HeaderSize)
         {
+            this.PublishLog($"Airport Data : paquet Facilities trop court ({dataSize} octets).");
             return;
         }
 
         var buffer = new byte[dataSize];
         Marshal.Copy(dataPointer, buffer, 0, dataSize);
 
-        var requestId = BitConverter.ToUInt32(buffer, 12);
-        var facilityType = (SimConnectFacilityDataType)BitConverter.ToInt32(buffer, 24);
-        var itemIndex = BitConverter.ToUInt32(buffer, 32);
+        FacilityPacketEnvelope envelope;
+        try
+        {
+            envelope = FacilityPacketDecoder.DecodeEnvelope(buffer);
+        }
+        catch (Exception exception)
+        {
+            this.PublishLog($"Airport Data : en-tête Facilities invalide - {CleanMessage(exception)}");
+            return;
+        }
 
+        var facilityType = (SimConnectFacilityDataType)envelope.FacilityType;
         PendingAirportRequest? pending;
         lock (this.sync)
         {
-            this.pendingRequests.TryGetValue(requestId, out pending);
+            this.pendingRequests.TryGetValue(envelope.UserRequestId, out pending);
         }
 
         if (pending is null)
@@ -230,42 +238,68 @@ public sealed class AirportFacilityService : IDisposable
             return;
         }
 
+        FacilityPacketDiagnostic diagnostic;
+        lock (this.sync)
+        {
+            var sequence = ++pending.NextPacketSequence;
+            diagnostic = new FacilityPacketDiagnostic
+            {
+                Sequence = sequence,
+                Envelope = envelope,
+                FacilityTypeName = facilityType.ToString(),
+                HeaderHex = FacilityPacketDecoder.ToHex(buffer.AsSpan(0, FacilityPacketDecoder.HeaderSize)),
+                PayloadHexPreview = FacilityPacketDecoder.ToHex(
+                    buffer.AsSpan(FacilityPacketDecoder.HeaderSize),
+                    maximumBytes: 96),
+            };
+            pending.Report.PacketDiagnostics.Add(diagnostic);
+            pending.RawPackets.Add(new RawFacilityPacket(sequence, facilityType.ToString(), envelope.ItemIndex, buffer));
+        }
+
         try
         {
-            var reader = new PacketReader(buffer, FacilityDataHeaderSize);
+            var reader = new PacketReader(buffer, FacilityPacketDecoder.HeaderSize);
             switch (facilityType)
             {
                 case SimConnectFacilityDataType.Airport:
                     ParseAirport(reader, pending.Report);
                     break;
                 case SimConnectFacilityDataType.Runway:
-                    pending.Report.Runways.Add(ParseRunway(reader, itemIndex));
+                    pending.Report.Runways.Add(ParseRunway(reader, envelope.ItemIndex));
                     break;
                 case SimConnectFacilityDataType.Start:
-                    pending.Report.Starts.Add(ParseStart(reader, itemIndex));
+                    pending.Report.Starts.Add(ParseStart(reader, envelope.ItemIndex));
                     break;
                 case SimConnectFacilityDataType.Frequency:
-                    pending.Report.Frequencies.Add(ParseFrequency(reader, itemIndex));
+                    pending.Report.Frequencies.Add(ParseFrequency(reader, envelope.ItemIndex));
                     break;
                 case SimConnectFacilityDataType.TaxiParking:
-                    pending.Report.TaxiParkings.Add(ParseTaxiParking(reader, itemIndex));
+                    pending.Report.TaxiParkings.Add(ParseTaxiParking(reader, envelope.ItemIndex));
                     break;
                 case SimConnectFacilityDataType.TaxiPoint:
-                    pending.Report.TaxiPoints.Add(ParseTaxiPoint(reader, itemIndex));
+                    pending.Report.TaxiPoints.Add(ParseTaxiPoint(reader, envelope.ItemIndex));
                     break;
                 case SimConnectFacilityDataType.TaxiPath:
-                    pending.Report.TaxiPaths.Add(ParseTaxiPath(reader, itemIndex));
+                    var path = FacilityPacketDecoder.DecodeTaxiPath(buffer, envelope, out var fields);
+                    diagnostic.Fields.AddRange(fields);
+                    pending.Report.TaxiPaths.Add(path);
                     break;
                 case SimConnectFacilityDataType.TaxiName:
-                    pending.Report.TaxiNames.Add(new AirportTaxiNameData(itemIndex, reader.ReadAnsiString(32)));
+                    pending.Report.TaxiNames.Add(new AirportTaxiNameData(envelope.ItemIndex, reader.ReadAnsiString(32)));
                     break;
+                default:
+                    throw new InvalidDataException($"Type Facilities non prévu : {envelope.FacilityType}.");
             }
+
+            diagnostic.ParseSucceeded = true;
         }
         catch (Exception exception)
         {
+            diagnostic.ParseError = CleanMessage(exception);
             lock (this.sync)
             {
-                pending.Report.ParseWarnings.Add($"{facilityType} #{itemIndex} : {CleanMessage(exception)}");
+                pending.Report.ParseWarnings.Add(
+                    $"{facilityType} #{envelope.ItemIndex} - paquet {diagnostic.Sequence} : {diagnostic.ParseError}");
             }
         }
     }
@@ -277,7 +311,9 @@ public sealed class AirportFacilityService : IDisposable
             return;
         }
 
-        var requestId = unchecked((uint)Marshal.ReadInt32(dataPointer, 12));
+        var buffer = new byte[dataSize];
+        Marshal.Copy(dataPointer, buffer, 0, dataSize);
+        var requestId = BitConverter.ToUInt32(buffer, 12);
         PendingAirportRequest completedRequest;
 
         lock (this.sync)
@@ -288,25 +324,34 @@ public sealed class AirportFacilityService : IDisposable
             }
 
             completedRequest = removedRequest;
+            var sequence = ++completedRequest.NextPacketSequence;
+            completedRequest.RawPackets.Add(new RawFacilityPacket(sequence, "FacilityDataEnd", 0, buffer));
         }
 
-        _ = Task.Run(() => this.SaveAndPublishReport(completedRequest.Report));
+        _ = Task.Run(() => this.SaveAndPublishReport(completedRequest));
     }
 
-    private void SaveAndPublishReport(AirportFacilityReport report)
+    private void SaveAndPublishReport(PendingAirportRequest completedRequest)
     {
+        var report = completedRequest.Report;
         try
         {
+            ValidatePacketDiagnostics(report);
             ValidateReport(report);
             Directory.CreateDirectory(AppPaths.AirportDataDirectory);
-            var safeSimulator = report.Simulator.Replace(" ", string.Empty, StringComparison.Ordinal);
-            var safeIcao = string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao;
+            Directory.CreateDirectory(AppPaths.AirportDataRawDirectory);
+            var safeSimulator = MakeSafeFileName(report.Simulator.Replace(" ", string.Empty, StringComparison.Ordinal));
+            var safeIcao = MakeSafeFileName(string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao);
             var stem = $"airport-{safeIcao}-{safeSimulator}-{report.Timestamp:yyyyMMdd-HHmmss}";
             var jsonPath = Path.Combine(AppPaths.AirportDataDirectory, stem + ".json");
             var textPath = Path.Combine(AppPaths.AirportDataDirectory, stem + ".txt");
+            var diagnosticDirectory = Path.Combine(AppPaths.AirportDataRawDirectory, stem);
 
             report.JsonPath = jsonPath;
             report.TextPath = textPath;
+            report.DiagnosticDirectoryPath = diagnosticDirectory;
+
+            SaveDiagnosticArtifacts(report, completedRequest.RawPackets, diagnosticDirectory);
 
             var jsonOptions = new JsonSerializerOptions
             {
@@ -317,9 +362,13 @@ public sealed class AirportFacilityService : IDisposable
             File.WriteAllText(textPath, BuildTextReport(report), new UTF8Encoding(false));
             RotateReports();
 
+            var diagnosticState = report.DiagnosticSummary.TaxiPathBinaryLayoutValidated
+                ? "TaxiPath binaire cohérent"
+                : "TaxiPath à analyser";
             this.PublishLog(
                 $"Airport Data {safeIcao} : {report.Runways.Count} piste(s), {report.Frequencies.Count} fréquence(s), " +
-                $"{report.TaxiParkings.Count} parking(s), {report.TaxiPaths.Count} chemin(s). Rapport : logs\\airport-data\\{Path.GetFileName(textPath)}");
+                $"{report.TaxiParkings.Count} parking(s), {report.TaxiPaths.Count} chemin(s) - {diagnosticState}. " +
+                $"Diagnostic : logs\\airport-data\\raw\\{Path.GetFileName(diagnosticDirectory)}");
             this.ReportCompleted?.Invoke(this, report);
         }
         catch (Exception exception)
@@ -399,25 +448,296 @@ public sealed class AirportFacilityService : IDisposable
         reader.ReadSingle(),
         reader.ReadSingle());
 
-    private static AirportTaxiPathData ParseTaxiPath(PacketReader reader, uint index) => new(
-        index,
-        reader.ReadInt32(),
-        reader.ReadSingle(),
-        reader.ReadSingle(),
-        reader.ReadSingle(),
-        reader.ReadUInt32(),
-        reader.ReadInt32(),
-        reader.ReadInt32(),
-        reader.ReadInt32(),
-        reader.ReadInt32() != 0,
-        reader.ReadInt32(),
-        reader.ReadInt32() != 0,
-        reader.ReadInt32() != 0,
-        reader.ReadInt32() != 0,
-        reader.ReadInt32(),
-        reader.ReadInt32(),
-        reader.ReadUInt32());
+    private static void ValidatePacketDiagnostics(AirportFacilityReport report)
+    {
+        var taxiPathType = (int)SimConnectFacilityDataType.TaxiPath;
+        var diagnostics = report.PacketDiagnostics.OrderBy(item => item.Sequence).ToArray();
+        var taxiPathDiagnostics = diagnostics
+            .Where(item => item.Envelope.FacilityType == taxiPathType)
+            .ToArray();
 
+        var summary = new FacilityDiagnosticSummary
+        {
+            PacketCount = diagnostics.Length,
+            TaxiPathPacketCount = taxiPathDiagnostics.Length,
+            ParsedTaxiPathPacketCount = taxiPathDiagnostics.Count(item => item.ParseSucceeded),
+            FailedPacketCount = diagnostics.Count(item => !item.ParseSucceeded),
+            SizeMismatchCount = diagnostics.Count(item => !item.Envelope.SizeMatches),
+            UnexpectedPayloadLengthCount = taxiPathDiagnostics.Count(
+                item => item.Envelope.PayloadLength != FacilityPacketDecoder.TaxiPathPayloadSize),
+        };
+
+        var firstFailedTaxiPath = taxiPathDiagnostics.FirstOrDefault(item => !item.ParseSucceeded);
+        if (firstFailedTaxiPath is not null)
+        {
+            summary.FirstFailedTaxiPathSequence = firstFailedTaxiPath.Sequence;
+            summary.FirstFailedTaxiPathIndex = firstFailedTaxiPath.Envelope.ItemIndex;
+        }
+
+        var pathsByIndex = report.TaxiPaths
+            .GroupBy(item => item.Index)
+            .ToDictionary(group => group.Key, group => group.First());
+        foreach (var diagnostic in taxiPathDiagnostics.Where(item => item.ParseSucceeded))
+        {
+            if (!pathsByIndex.TryGetValue(diagnostic.Envelope.ItemIndex, out var path))
+            {
+                diagnostic.SemanticWarning = "TaxiPath décodé absent du rapport normalisé.";
+            }
+            else
+            {
+                diagnostic.SemanticWarning = BuildTaxiPathSemanticWarning(path);
+            }
+        }
+
+        var suspiciousTaxiPaths = taxiPathDiagnostics
+            .Where(item => !string.IsNullOrWhiteSpace(item.SemanticWarning))
+            .ToArray();
+        summary.SuspiciousTaxiPathCount = suspiciousTaxiPaths.Length;
+        var firstSuspiciousTaxiPath = suspiciousTaxiPaths.FirstOrDefault();
+        if (firstSuspiciousTaxiPath is not null)
+        {
+            summary.FirstSuspiciousTaxiPathSequence = firstSuspiciousTaxiPath.Sequence;
+            summary.FirstSuspiciousTaxiPathIndex = firstSuspiciousTaxiPath.Envelope.ItemIndex;
+        }
+
+        foreach (var group in taxiPathDiagnostics
+                     .Where(item => item.Envelope.ListSize > 0)
+                     .GroupBy(item => item.Envelope.FacilityType))
+        {
+            var listSizes = group.Select(item => item.Envelope.ListSize).Distinct().ToArray();
+            if (listSizes.Length != 1)
+            {
+                summary.InconsistentListSizeCount += listSizes.Length;
+                continue;
+            }
+
+            var listSize = listSizes[0];
+            var indexes = group.Select(item => item.Envelope.ItemIndex).ToArray();
+            summary.DuplicateIndexCount += indexes
+                .GroupBy(index => index)
+                .Sum(indexGroup => Math.Max(0, indexGroup.Count() - 1));
+            summary.OutOfRangeIndexCount += indexes.Count(index => index >= listSize);
+
+            if (listSize <= 100_000)
+            {
+                var received = indexes.Where(index => index < listSize).ToHashSet();
+                summary.MissingIndexCount += checked((int)listSize - received.Count);
+            }
+        }
+
+        report.DiagnosticSummary = summary;
+
+        if (summary.SizeMismatchCount > 0)
+        {
+            report.ParseWarnings.Add($"Facilities : {summary.SizeMismatchCount} paquet(s) avec taille déclarée différente de la taille reçue.");
+        }
+
+        if (summary.UnexpectedPayloadLengthCount > 0)
+        {
+            report.ParseWarnings.Add(
+                $"TaxiPath : {summary.UnexpectedPayloadLengthCount} paquet(s) avec une charge utile différente de {FacilityPacketDecoder.TaxiPathPayloadSize} octets.");
+        }
+
+        if (summary.DuplicateIndexCount > 0 || summary.MissingIndexCount > 0 || summary.OutOfRangeIndexCount > 0)
+        {
+            report.ParseWarnings.Add(
+                $"TaxiPath : index dupliqués {summary.DuplicateIndexCount}, manquants {summary.MissingIndexCount}, hors plage {summary.OutOfRangeIndexCount}.");
+        }
+
+        if (summary.InconsistentListSizeCount > 0)
+        {
+            report.ParseWarnings.Add("TaxiPath : ListSize incohérent dans la liste reçue.");
+        }
+
+        if (summary.FirstFailedTaxiPathSequence is not null)
+        {
+            report.ParseWarnings.Add(
+                $"Premier TaxiPath non décodé : paquet {summary.FirstFailedTaxiPathSequence}, index {summary.FirstFailedTaxiPathIndex}.");
+        }
+
+        if (summary.FirstSuspiciousTaxiPathSequence is not null)
+        {
+            report.ParseWarnings.Add(
+                $"Premier TaxiPath aux valeurs suspectes : paquet {summary.FirstSuspiciousTaxiPathSequence}, index {summary.FirstSuspiciousTaxiPathIndex}.");
+        }
+    }
+
+    private static string BuildTaxiPathSemanticWarning(AirportTaxiPathData path)
+    {
+        var warnings = new List<string>();
+        if (path.Type is < 0 or > 8)
+        {
+            warnings.Add($"TYPE={path.Type}");
+        }
+
+        if (!float.IsFinite(path.WidthMeters) || path.WidthMeters is < 0 or > 250)
+        {
+            warnings.Add($"WIDTH={path.WidthMeters:R}");
+        }
+
+        if (!float.IsFinite(path.LeftHalfWidthMeters) || path.LeftHalfWidthMeters is < 0 or > 250)
+        {
+            warnings.Add($"LEFT_HALF_WIDTH={path.LeftHalfWidthMeters:R}");
+        }
+
+        if (!float.IsFinite(path.RightHalfWidthMeters) || path.RightHalfWidthMeters is < 0 or > 250)
+        {
+            warnings.Add($"RIGHT_HALF_WIDTH={path.RightHalfWidthMeters:R}");
+        }
+
+        if (path.RunwayNumber is < 0 or > 45)
+        {
+            warnings.Add($"RUNWAY_NUMBER={path.RunwayNumber}");
+        }
+
+        if (path.RunwayDesignator is < 0 or > 7)
+        {
+            warnings.Add($"RUNWAY_DESIGNATOR={path.RunwayDesignator}");
+        }
+
+        if (path.StartIndex is < 0 or > 3999)
+        {
+            warnings.Add($"START={path.StartIndex}");
+        }
+
+        if (path.EndIndex is < 0 or > 3999)
+        {
+            warnings.Add($"END={path.EndIndex}");
+        }
+
+        return string.Join(", ", warnings);
+    }
+
+    private static void SaveDiagnosticArtifacts(
+        AirportFacilityReport report,
+        IReadOnlyList<RawFacilityPacket> rawPackets,
+        string diagnosticDirectory)
+    {
+        Directory.CreateDirectory(diagnosticDirectory);
+        var diagnosticBySequence = report.PacketDiagnostics.ToDictionary(item => item.Sequence);
+
+        foreach (var rawPacket in rawPackets.OrderBy(item => item.Sequence))
+        {
+            var typeName = MakeSafeFileName(rawPacket.FacilityTypeName);
+            var fileName = $"{rawPacket.Sequence:0000}-{typeName}-index-{rawPacket.ItemIndex}.bin";
+            var path = Path.Combine(diagnosticDirectory, fileName);
+            File.WriteAllBytes(path, rawPacket.Buffer);
+            if (diagnosticBySequence.TryGetValue(rawPacket.Sequence, out var diagnostic))
+            {
+                diagnostic.RawFile = Path.Combine("logs", "airport-data", "raw", Path.GetFileName(diagnosticDirectory), fileName);
+            }
+        }
+
+        var jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
+        };
+        File.WriteAllText(
+            Path.Combine(diagnosticDirectory, "diagnostic-summary.json"),
+            JsonSerializer.Serialize(new
+            {
+                report.Timestamp,
+                report.Simulator,
+                report.RequestedIcao,
+                report.Icao,
+                report.DiagnosticSummary,
+                report.ParseWarnings,
+                Packets = report.PacketDiagnostics,
+            }, jsonOptions),
+            new UTF8Encoding(false));
+
+        var packetCsv = new StringBuilder();
+        packetCsv.AppendLine("sequence;type;declared_size;actual_size;version;message_id;request_id;unique_request_id;parent_request_id;is_list_item;item_index;list_size;payload_length;parse_ok;parse_error;semantic_warning;raw_file;header_hex;payload_hex_preview");
+        foreach (var item in report.PacketDiagnostics.OrderBy(item => item.Sequence))
+        {
+            packetCsv.AppendLine(string.Join(";", new[]
+            {
+                item.Sequence.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Csv(item.FacilityTypeName),
+                item.Envelope.DeclaredSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.Envelope.ActualSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.Envelope.Version.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.Envelope.MessageId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.Envelope.UserRequestId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.Envelope.UniqueRequestId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.Envelope.ParentUniqueRequestId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.Envelope.IsListItem ? "1" : "0",
+                item.Envelope.ItemIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.Envelope.ListSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.Envelope.PayloadLength.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                item.ParseSucceeded ? "1" : "0",
+                Csv(item.ParseError),
+                Csv(item.SemanticWarning),
+                Csv(item.RawFile),
+                item.HeaderHex,
+                item.PayloadHexPreview,
+            }));
+        }
+        File.WriteAllText(Path.Combine(diagnosticDirectory, "packets.csv"), packetCsv.ToString(), new UTF8Encoding(false));
+
+        var fieldsCsv = new StringBuilder();
+        fieldsCsv.AppendLine("sequence;item_index;field;packet_offset;payload_offset;size;data_type;value;hex");
+        foreach (var item in report.PacketDiagnostics
+                     .Where(item => item.Envelope.FacilityType == (int)SimConnectFacilityDataType.TaxiPath)
+                     .OrderBy(item => item.Sequence))
+        {
+            foreach (var field in item.Fields)
+            {
+                fieldsCsv.AppendLine(string.Join(";", new[]
+                {
+                    item.Sequence.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    item.Envelope.ItemIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    Csv(field.Name),
+                    field.PacketOffset.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    field.PayloadOffset.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    field.Size.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    field.DataType,
+                    Csv(field.Value),
+                    field.Hex,
+                }));
+            }
+        }
+        File.WriteAllText(Path.Combine(diagnosticDirectory, "taxipath-fields.csv"), fieldsCsv.ToString(), new UTF8Encoding(false));
+
+        var readme = new StringBuilder();
+        readme.AppendLine("PHONIE DEV0.4.0.1 - FACILITIES DIAGNOSTIC");
+        readme.AppendLine();
+        readme.AppendLine("Ce dossier contient la capture brute SimConnect Facilities de la demande aérodrome.");
+        readme.AppendLine("Ne modifier aucun fichier avant transmission pour analyse.");
+        readme.AppendLine();
+        readme.AppendLine($"Aérodrome : {(string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao)}");
+        readme.AppendLine($"Simulateur : {report.Simulator}");
+        readme.AppendLine($"Paquets : {report.DiagnosticSummary.PacketCount}");
+        readme.AppendLine($"TaxiPaths : {report.DiagnosticSummary.ParsedTaxiPathPacketCount}/{report.DiagnosticSummary.TaxiPathPacketCount} décodés");
+        readme.AppendLine($"TaxiPaths suspects : {report.DiagnosticSummary.SuspiciousTaxiPathCount}");
+        readme.AppendLine($"Disposition binaire validée : {(report.DiagnosticSummary.TaxiPathBinaryLayoutValidated ? "OUI" : "NON")}");
+        readme.AppendLine();
+        readme.AppendLine("Fichiers :");
+        readme.AppendLine("- diagnostic-summary.json : métadonnées, avertissements et traces de champs ;");
+        readme.AppendLine("- packets.csv : index de tous les paquets ;");
+        readme.AppendLine("- taxipath-fields.csv : valeur et octets exacts de chaque champ TaxiPath ;");
+        readme.AppendLine("- *.bin : paquets SimConnect bruts, en-tête compris.");
+        File.WriteAllText(Path.Combine(diagnosticDirectory, "LISEZ-MOI.txt"), readme.ToString(), new UTF8Encoding(false));
+    }
+
+    private static string Csv(string? value)
+    {
+        var normalized = (value ?? string.Empty).ReplaceLineEndings(" ");
+        return normalized.Contains(';') || normalized.Contains('"')
+            ? '"' + normalized.Replace("\"", "\"\"") + '"'
+            : normalized;
+    }
+
+    private static string MakeSafeFileName(string value)
+    {
+        var invalidCharacters = Path.GetInvalidFileNameChars();
+        var safe = new string((value ?? string.Empty)
+            .Select(character => invalidCharacters.Contains(character) ? '_' : character)
+            .ToArray())
+            .Trim();
+        return string.IsNullOrWhiteSpace(safe) ? "unknown" : safe;
+    }
 
     private static void ValidateReport(AirportFacilityReport report)
     {
@@ -466,7 +786,7 @@ public sealed class AirportFacilityService : IDisposable
     private static string BuildTextReport(AirportFacilityReport report)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("PHONIE DEV0.3.0.5 - AIRPORT DATA");
+        builder.AppendLine("PHONIE DEV0.4.0.1 - FACILITIES DIAGNOSTIC");
         builder.AppendLine($"Date : {report.Timestamp:yyyy-MM-dd HH:mm:ss zzz}");
         builder.AppendLine($"Simulateur : {report.Simulator}");
         builder.AppendLine($"Source : {report.Source}");
@@ -509,6 +829,18 @@ public sealed class AirportFacilityService : IDisposable
         builder.AppendLine($"Points taxi : {report.TaxiPoints.Count} / déclaré {report.TaxiPointCountDeclared}");
         builder.AppendLine($"Chemins taxi : {report.TaxiPaths.Count} / déclaré {report.TaxiPathCountDeclared}");
         builder.AppendLine($"Noms taxi : {report.TaxiNames.Count} / déclaré {report.TaxiNameCountDeclared}");
+        builder.AppendLine();
+        builder.AppendLine("DIAGNOSTIC FACILITIES");
+        builder.AppendLine($"  Paquets : {report.DiagnosticSummary.PacketCount}");
+        builder.AppendLine($"  TaxiPaths décodés : {report.DiagnosticSummary.ParsedTaxiPathPacketCount} / {report.DiagnosticSummary.TaxiPathPacketCount}");
+        builder.AppendLine($"  Valeurs TaxiPath suspectes : {report.DiagnosticSummary.SuspiciousTaxiPathCount}");
+        builder.AppendLine($"  Tailles incohérentes : {report.DiagnosticSummary.SizeMismatchCount}");
+        builder.AppendLine($"  Charges utiles TaxiPath inattendues : {report.DiagnosticSummary.UnexpectedPayloadLengthCount}");
+        builder.AppendLine($"  Index dupliqués : {report.DiagnosticSummary.DuplicateIndexCount}");
+        builder.AppendLine($"  Index manquants : {report.DiagnosticSummary.MissingIndexCount}");
+        builder.AppendLine($"  Index hors plage : {report.DiagnosticSummary.OutOfRangeIndexCount}");
+        builder.AppendLine($"  Disposition binaire TaxiPath validée : {(report.DiagnosticSummary.TaxiPathBinaryLayoutValidated ? "OUI" : "NON")}");
+        builder.AppendLine($"  Capture brute : {report.DiagnosticDirectoryPath}");
 
         if (report.ParseWarnings.Count > 0)
         {
@@ -557,6 +889,28 @@ public sealed class AirportFacilityService : IDisposable
             try
             {
                 file.Delete();
+            }
+            catch
+            {
+                // Rotation is best effort and must not break a completed report.
+            }
+        }
+
+        if (!Directory.Exists(AppPaths.AirportDataRawDirectory))
+        {
+            return;
+        }
+
+        var diagnosticDirectories = new DirectoryInfo(AppPaths.AirportDataRawDirectory)
+            .EnumerateDirectories("airport-*", SearchOption.TopDirectoryOnly)
+            .OrderByDescending(directory => directory.LastWriteTimeUtc)
+            .Skip(MaximumSavedReports)
+            .ToArray();
+        foreach (var directory in diagnosticDirectories)
+        {
+            try
+            {
+                directory.Delete(recursive: true);
             }
             catch
             {
@@ -633,7 +987,13 @@ public sealed class AirportFacilityService : IDisposable
         public AirportFacilityReport Report { get; }
 
         public DateTimeOffset CreatedAt { get; }
+
+        public int NextPacketSequence { get; set; }
+
+        public List<RawFacilityPacket> RawPackets { get; } = new();
     }
+
+    private sealed record RawFacilityPacket(int Sequence, string FacilityTypeName, uint ItemIndex, byte[] Buffer);
 
     private sealed class PacketReader
     {

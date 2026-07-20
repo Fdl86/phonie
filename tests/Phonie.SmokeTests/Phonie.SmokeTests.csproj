@@ -17,5 +17,8 @@
     <Compile Include="..\..\src\Phonie\Models\SpeechRecognitionModels.cs" Link="Source\SpeechRecognitionModels.cs" />
     <Compile Include="..\..\src\Phonie\Models\OperationalModels.cs" Link="Source\OperationalModels.cs" />
     <Compile Include="..\..\src\Phonie\Models\SimulatorSnapshot.cs" Link="Source\SimulatorSnapshot.cs" />
+    <Compile Include="..\..\src\Phonie\Models\AirportFacilityModels.cs" Link="Source\AirportFacilityModels.cs" />
+    <Compile Include="..\..\src\Phonie\Models\FacilityDiagnosticModels.cs" Link="Source\FacilityDiagnosticModels.cs" />
+    <Compile Include="..\..\src\Phonie\Services\FacilityPacketDecoder.cs" Link="Source\FacilityPacketDecoder.cs" />
   </ItemGroup>
 </Project>

@@ -351,10 +351,10 @@ public partial class MainWindow : Window
 
     private void RequestLfbiAirportDataButton_OnClick(object sender, RoutedEventArgs e)
     {
-        this.AirportDataText.Text = "Airport Data : lecture LFBI...";
+        this.AirportDataText.Text = "Facilities : capture binaire LFBI...";
         if (!this.simConnectService.RequestAirportData("LFBI"))
         {
-            this.AirportDataText.Text = "Airport Data : SimConnect indisponible";
+            this.AirportDataText.Text = "Facilities : SimConnect indisponible";
             this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Airport Data LFBI : attendre la connexion au simulateur.");
         }
     }
@@ -1160,7 +1160,8 @@ public partial class MainWindow : Window
                 $"{report.Runways.Count} piste(s), {report.Frequencies.Count} fréquence(s), " +
                 $"{report.TaxiParkings.Count} parking(s), {report.TaxiPaths.Count} chemin(s), " +
                 $"{report.ParseWarnings.Count} avertissement(s). " +
-                $"Fichier : logs\\airport-data\\{System.IO.Path.GetFileName(report.TextPath)}");
+                $"TaxiPath : {report.DiagnosticSummary.ParsedTaxiPathPacketCount}/{report.DiagnosticSummary.TaxiPathPacketCount}. " +
+                $"Capture : logs\\airport-data\\raw\\{System.IO.Path.GetFileName(report.DiagnosticDirectoryPath)}");
         });
     }
 
@@ -1356,12 +1357,17 @@ public partial class MainWindow : Window
         var name = string.IsNullOrWhiteSpace(report.Name) ? "Aérodrome" : report.Name;
         this.AirportNameText.Text = $"{icao} - {name}";
         var runwayStarts = report.Starts.Count(item => item.Type == 1 && item.Number is >= 1 and <= 36);
+        var diagnosticState = report.DiagnosticSummary.TaxiPathBinaryLayoutValidated
+            ? "DIAG TAXIPATH COHÉRENT"
+            : "DIAG TAXIPATH À TRANSMETTRE";
         this.AirportSummaryText.Text =
-            $"{report.Runways.Count} piste(s) - {runwayStarts} seuil(s) exploitables - {report.TaxiParkings.Count} parking(s) - {report.TaxiPaths.Count} segment(s) taxi" +
+            $"{report.Runways.Count} piste(s) - {runwayStarts} seuil(s) - {report.TaxiParkings.Count} parking(s) - {report.TaxiPaths.Count} segment(s) taxi" +
+            $" - {diagnosticState} ({report.DiagnosticSummary.ParsedTaxiPathPacketCount}/{report.DiagnosticSummary.TaxiPathPacketCount})" +
             (report.ParseWarnings.Count > 0 ? $" - {report.ParseWarnings.Count} avertissement(s)" : string.Empty);
         this.FrequencySummaryText.Text = "Fréquences : " + string.Join(" | ", report.Frequencies
             .OrderBy(item => item.FrequencyMhz)
             .Select(item => $"{item.FrequencyMhz:F3}"));
+        this.SetForegroundResource(this.AirportSummaryText, report.DiagnosticSummary.TaxiPathBinaryLayoutValidated ? "Success" : "Warning");
         this.SetForegroundResource(this.FrequencySummaryText, report.ParseWarnings.Count > 0 ? "Warning" : "Accent");
     }
 

@@ -1,58 +1,64 @@
-# PHONIE DEV0.3.0.5 - GPU TELEMETRY & TURBO WARMUP
+# PHONIE DEV0.4.0.1 - FACILITIES DIAGNOSTIC
 
 PHONIE est une application Windows x64 portable destinée au contrôle aérien VFR vocal en français dans Microsoft Flight Simulator 2020 et 2024.
 
-DEV0.3.0.5 clôt la branche technique DEV0.3 avec deux fonctions : le préchauffage automatique du profil Whisper Large-v3 Turbo Vulkan et un benchmark local GPU/VRAM.
+DEV0.4.0.1 est le premier build du chantier `GROUND OPERATIONS`. Son objectif unique est d'obtenir une preuve binaire fiable du contenu SimConnect Facilities, en particulier des `TaxiPaths`, avant la construction du graphe de roulage.
 
-## Préchauffage Turbo
+## Base conservée
 
-Lorsque le profil `Whisper Large-v3 Turbo Vulkan - qualité` est sélectionné et que son modèle est installé, PHONIE initialise le moteur en arrière-plan :
+Le build reprend sans modification volontaire du comportement :
 
-- état visible pendant l'initialisation ;
-- interface toujours utilisable ;
-- modèle conservé en mémoire pour supprimer le délai du premier véritable appel ;
-- nouvelle initialisation après une comparaison ou un benchmark ayant libéré les moteurs ;
-- erreur visible et journalisée sans blocage de l'application.
-
-Le modèle reste téléchargé uniquement à la demande dans `models\whisper` et son empreinte SHA-256 est vérifiée.
-
-## Benchmark GPU / VRAM
-
-Le bouton `Bench GPU` utilise le dernier WAV enregistré et exécute, lorsqu'ils sont installés :
-
+- SimConnect MSFS 2020 et MSFS 2024 ;
+- scanner radio et règles par type de service ;
+- PTT clavier global et HOTAS ;
+- enregistrement local ;
+- Whisper Small CPU ;
 - Whisper Small Vulkan ;
-- Whisper Large-v3 Turbo Vulkan ;
-- Vosk FR comme référence CPU.
+- Whisper Large-v3 Turbo Vulkan et son préchauffage ;
+- Vosk FR expérimental ;
+- installation et vérification des modèles ;
+- comparaison ASR ;
+- benchmark GPU, VRAM, CPU et RAM ;
+- contexte ATC ID et protection contre les indicatifs inventés ;
+- stockage exclusivement dans le dossier portable PHONIE.
 
-Chaque moteur est exécuté trois fois : un passage à froid puis deux passages à chaud. PHONIE mesure notamment :
+## Diagnostic Facilities
 
-- temps de chargement du modèle ;
-- temps d'inférence ;
-- temps bout en bout ;
-- utilisation GPU du processus PHONIE ;
-- VRAM dédiée et mémoire GPU partagée du processus ;
-- RAM et CPU du processus ;
-- mémoire GPU immédiatement après libération puis après 30 secondes.
+Chaque demande d'aérodrome capture désormais :
 
-Les rapports sont écrits dans :
+- l'en-tête complet de chaque paquet `SIMCONNECT_RECV_FACILITY_DATA` ;
+- la taille déclarée et la taille réellement reçue ;
+- la version, les identifiants de demande et de parent ;
+- le type de donnée, `IsListItem`, `ItemIndex` et `ListSize` ;
+- le paquet binaire brut, en-tête compris ;
+- les 16 champs de chaque `TaxiPath` avec offset, type, valeur et octets exacts ;
+- les index dupliqués, manquants ou hors plage ;
+- le premier `TaxiPath` impossible à décoder ou présentant des valeurs manifestement suspectes.
 
-- `logs\benchmarks\gpu-benchmark-*.txt` ;
-- `logs\benchmarks\gpu-benchmark-*.json`.
+Les captures sont écrites dans :
 
-Les compteurs GPU sont ceux de Windows et ne nécessitent ni logiciel AMD, ni `nvidia-smi`, ni outil Intel. La mesure fonctionne donc avec les cartes AMD, NVIDIA et Intel lorsque le pilote expose les compteurs Windows. Lorsqu'une attribution fiable au processus n'est pas possible, le rapport l'indique explicitement.
+```text
+logs\airport-data\raw\airport-<ICAO>-<SIMULATEUR>-<DATE>\
+```
 
-## Profils ASR
+Le dossier contient notamment :
 
-- Whisper Base CPU - rapide ;
-- Whisper Small CPU - équilibré ;
-- Whisper Small Vulkan - GPU ;
-- Whisper Large-v3 Turbo Vulkan - qualité ;
-- Vosk FR - expérimental.
+- `diagnostic-summary.json` ;
+- `packets.csv` ;
+- `taxipath-fields.csv` ;
+- les paquets `*.bin` ;
+- `LISEZ-MOI.txt`.
 
-Le passage entre deux profils Vulkan ne demande pas de redémarrage. Le passage CPU vers Vulkan, ou Vulkan vers CPU, demande un redémarrage afin de charger le runtime natif adapté.
+Aucune valeur incohérente n'est remplacée, corrigée artificiellement ou masquée.
 
-## Limites connues
+## Indicatifs pour le futur moteur de session
 
-Le décodage des `TaxiPaths` et le moteur de roulage restent hors du périmètre de DEV0.3. Ils constituent le chantier principal de DEV0.4.0 - GROUND OPERATIONS.
+La règle DEV0.4 reste : premier contact avec l'indicatif complet, puis abréviation autorisée après établissement du contact ou emploi par le contrôleur. Exemple : `F-HNNY` devient `F-NY`, tout en restant lié en mémoire à `F-HNNY`.
 
-Commencer par `TEST-DEV0.3.0.5.md`.
+DEV0.4.0.1 ne modifie pas encore la machine conversationnelle. Cette règle sera intégrée dans le build fonctionnel Ground Operations.
+
+## Limite volontaire
+
+Ce build ne construit pas encore de graphe, ne choisit pas de point d'attente et ne génère aucune nouvelle clairance de roulage. Les données réelles LFBI doivent d'abord confirmer le format binaire exact.
+
+Commencer par `TEST-DEV0.4.0.1.md`.

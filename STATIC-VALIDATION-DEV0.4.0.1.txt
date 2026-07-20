@@ -1,0 +1,124 @@
+PHONIE DEV0.4.0.1 - VALIDATION STATIQUE
+
+Résultat : OK
+Contrôles réussis : 115
+Contrôles échoués : 0
+
+Contrôles réalisés :
+- OK - XML src/Phonie/App.xaml
+- OK - XML src/Phonie/MainWindow.xaml
+- OK - XML src/Phonie/Phonie.csproj
+- OK - XML src/Phonie/Themes/Dark.xaml
+- OK - XML src/Phonie/Themes/Light.xaml
+- OK - XML tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj
+- OK - JSON global.json
+- OK - YAML .github/workflows/build-windows.yml
+- OK - C# lexical src/Phonie/App.xaml.cs
+- OK - C# lexical src/Phonie/GlobalUsings.cs
+- OK - C# lexical src/Phonie/MainWindow.xaml.cs
+- OK - C# lexical src/Phonie/Models/AirportFacilityModels.cs
+- OK - C# lexical src/Phonie/Models/AppSettings.cs
+- OK - C# lexical src/Phonie/Models/AudioDeviceInfo.cs
+- OK - C# lexical src/Phonie/Models/ConnectionState.cs
+- OK - C# lexical src/Phonie/Models/DiagnosticsModels.cs
+- OK - C# lexical src/Phonie/Models/FacilityDiagnosticModels.cs
+- OK - C# lexical src/Phonie/Models/GpuBenchmarkModels.cs
+- OK - C# lexical src/Phonie/Models/JoystickModels.cs
+- OK - C# lexical src/Phonie/Models/OperationalModels.cs
+- OK - C# lexical src/Phonie/Models/RadioPolicy.cs
+- OK - C# lexical src/Phonie/Models/SimulatorSnapshot.cs
+- OK - C# lexical src/Phonie/Models/SpeechRecognitionModels.cs
+- OK - C# lexical src/Phonie/Services/AirportFacilityService.cs
+- OK - C# lexical src/Phonie/Services/AppPaths.cs
+- OK - C# lexical src/Phonie/Services/AtisService.cs
+- OK - C# lexical src/Phonie/Services/AudioPreparation.cs
+- OK - C# lexical src/Phonie/Services/AudioService.cs
+- OK - C# lexical src/Phonie/Services/DiagnosticsService.cs
+- OK - C# lexical src/Phonie/Services/FacilityPacketDecoder.cs
+- OK - C# lexical src/Phonie/Services/GlobalKeyboardHook.cs
+- OK - C# lexical src/Phonie/Services/GpuBenchmarkService.cs
+- OK - C# lexical src/Phonie/Services/GpuTelemetryService.cs
+- OK - C# lexical src/Phonie/Services/JoystickService.cs
+- OK - C# lexical src/Phonie/Services/OperationalRadioService.cs
+- OK - C# lexical src/Phonie/Services/PhraseologyService.cs
+- OK - C# lexical src/Phonie/Services/RadioPolicyResolver.cs
+- OK - C# lexical src/Phonie/Services/SettingsService.cs
+- OK - C# lexical src/Phonie/Services/SimConnectService.cs
+- OK - C# lexical src/Phonie/Services/SpeechRecognitionService.cs
+- OK - C# lexical src/Phonie/Services/ThemeService.cs
+- OK - C# lexical src/Phonie/Services/VoskService.cs
+- OK - C# lexical src/Phonie/Services/WhisperService.cs
+- OK - C# lexical src/Phonie/Utilities/GeoMath.cs
+- OK - C# lexical tests/Phonie.SmokeTests/Program.cs
+- OK - Solution has 2 projects - ['src\\Phonie\\Phonie.csproj', 'tests\\Phonie.SmokeTests\\Phonie.SmokeTests.csproj']
+- OK - Solution path src\Phonie\Phonie.csproj
+- OK - Solution path tests\Phonie.SmokeTests\Phonie.SmokeTests.csproj
+- OK - Workflow input README.md
+- OK - Workflow input TEST-DEV0.4.0.1.md
+- OK - Workflow input FACILITIES-DIAGNOSTIC-DEV0.4.0.1.md
+- OK - Workflow input CALLSIGN-RULES-DEV0.4.0.1.md
+- OK - Workflow input CHANGELOG-DEV0.4.0.1.md
+- OK - Workflow input STATIC-VALIDATION-DEV0.4.0.1.txt
+- OK - Workflow input ASR-PROFILES-DEV0.3.0.5.md
+- OK - Workflow input TURBO-PROFILE-DEV0.3.0.5.md
+- OK - Workflow input GPU-BENCHMARK-DEV0.3.0.5.md
+- OK - Workflow input ATC-ID-CALLSIGN-DEV0.3.0.5.md
+- OK - Workflow input THIRD-PARTY-NOTICES.md
+- OK - Version DEV0.4.0.1 in src/Phonie/Phonie.csproj
+- OK - Version DEV0.4.0.1 in src/Phonie/MainWindow.xaml
+- OK - Version DEV0.4.0.1 in .github/workflows/build-windows.yml
+- OK - Version DEV0.4.0.1 in README.md
+- OK - Version DEV0.4.0.1 in CHANGELOG-DEV0.4.0.1.md
+- OK - Version DEV0.4.0.1 in TEST-DEV0.4.0.1.md
+- OK - Numeric version 0.4.0.1
+- OK - BuildDefinition field TYPE
+- OK - Decoder field TYPE
+- OK - BuildDefinition field WIDTH
+- OK - Decoder field WIDTH
+- OK - BuildDefinition field LEFT_HALF_WIDTH
+- OK - Decoder field LEFT_HALF_WIDTH
+- OK - BuildDefinition field RIGHT_HALF_WIDTH
+- OK - Decoder field RIGHT_HALF_WIDTH
+- OK - BuildDefinition field WEIGHT
+- OK - Decoder field WEIGHT
+- OK - BuildDefinition field RUNWAY_NUMBER
+- OK - Decoder field RUNWAY_NUMBER
+- OK - BuildDefinition field RUNWAY_DESIGNATOR
+- OK - Decoder field RUNWAY_DESIGNATOR
+- OK - BuildDefinition field LEFT_EDGE
+- OK - Decoder field LEFT_EDGE
+- OK - BuildDefinition field LEFT_EDGE_LIGHTED
+- OK - Decoder field LEFT_EDGE_LIGHTED
+- OK - BuildDefinition field RIGHT_EDGE
+- OK - Decoder field RIGHT_EDGE
+- OK - BuildDefinition field RIGHT_EDGE_LIGHTED
+- OK - Decoder field RIGHT_EDGE_LIGHTED
+- OK - BuildDefinition field CENTER_LINE
+- OK - Decoder field CENTER_LINE
+- OK - BuildDefinition field CENTER_LINE_LIGHTED
+- OK - Decoder field CENTER_LINE_LIGHTED
+- OK - BuildDefinition field START
+- OK - Decoder field START
+- OK - BuildDefinition field END
+- OK - Decoder field END
+- OK - BuildDefinition field NAME_INDEX
+- OK - Decoder field NAME_INDEX
+- OK - Header size 40
+- OK - TaxiPath payload size 64
+- OK - Raw packet output
+- OK - No legacy TaxiPath reader
+- OK - Unique XAML x:Name values - []
+- OK - No bin directory
+- OK - No obj directory
+- OK - No node_modules directory
+- OK - No dist directory
+- OK - No .vs directory
+- OK - Document README.md
+- OK - Document CHANGELOG-DEV0.4.0.1.md
+- OK - Document TEST-DEV0.4.0.1.md
+- OK - Document FACILITIES-DIAGNOSTIC-DEV0.4.0.1.md
+- OK - Document CALLSIGN-RULES-DEV0.4.0.1.md
+- OK - Document THIRD-PARTY-NOTICES.md
+- OK - Document STATIC-VALIDATION-DEV0.4.0.1.txt
+
+Limite de l’environnement : le SDK .NET 8 n’est pas installé dans le conteneur local. La compilation Release et l’exécution réelle des smoke tests sont donc déléguées au workflow GitHub Actions inclus, qui bloque la publication si la compilation ou les tests échouent.

@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using Phonie.Services;
 
 var failures = new List<string>();
@@ -109,6 +110,8 @@ Check(
     expectedPosition: "parking",
     expectedIntention: "tours de piste");
 
+RunFacilityDecoderTests();
+
 var stationOnly = PhraseologyService.Analyze("Poitiers Tour, bonjour.", "F-HNNY");
 if (stationOnly.Callsign is not null)
 {
@@ -132,7 +135,7 @@ if (!string.Equals(noContext.Callsign, "F-GABC", StringComparison.Ordinal))
 
 if (failures.Count > 0)
 {
-    Console.Error.WriteLine("PHONIE phraseology smoke tests FAILED");
+    Console.Error.WriteLine("PHONIE smoke tests FAILED");
     foreach (var failure in failures)
     {
         Console.Error.WriteLine($"- {failure}");
@@ -142,7 +145,117 @@ if (failures.Count > 0)
     return;
 }
 
-Console.WriteLine("PHONIE phraseology smoke tests OK");
+Console.WriteLine("PHONIE smoke tests OK");
+
+void RunFacilityDecoderTests()
+{
+    var packet = new byte[Phonie.Services.FacilityPacketDecoder.HeaderSize + Phonie.Services.FacilityPacketDecoder.TaxiPathPayloadSize];
+    WriteUInt32(packet, 0, (uint)packet.Length);
+    WriteUInt32(packet, 4, 4);
+    WriteUInt32(packet, 8, 0x1234);
+    WriteUInt32(packet, 12, 0x2501001);
+    WriteUInt32(packet, 16, 0x6001);
+    WriteUInt32(packet, 20, 0x5001);
+    WriteInt32(packet, 24, 7);
+    WriteUInt32(packet, 28, 1);
+    WriteUInt32(packet, 32, 12);
+    WriteUInt32(packet, 36, 20);
+
+    var offset = Phonie.Services.FacilityPacketDecoder.HeaderSize;
+    WriteInt32(packet, offset, 3); offset += 4;
+    WriteSingle(packet, offset, 18.5f); offset += 4;
+    WriteSingle(packet, offset, 9.25f); offset += 4;
+    WriteSingle(packet, offset, 9.25f); offset += 4;
+    WriteUInt32(packet, offset, 12_000); offset += 4;
+    WriteInt32(packet, offset, 3); offset += 4;
+    WriteInt32(packet, offset, 1); offset += 4;
+    WriteInt32(packet, offset, 2); offset += 4;
+    WriteInt32(packet, offset, 1); offset += 4;
+    WriteInt32(packet, offset, 3); offset += 4;
+    WriteInt32(packet, offset, 0); offset += 4;
+    WriteInt32(packet, offset, 1); offset += 4;
+    WriteInt32(packet, offset, 1); offset += 4;
+    WriteInt32(packet, offset, 42); offset += 4;
+    WriteInt32(packet, offset, 43); offset += 4;
+    WriteUInt32(packet, offset, 5);
+
+    var envelope = Phonie.Services.FacilityPacketDecoder.DecodeEnvelope(packet);
+    if (envelope.DeclaredSize != packet.Length
+        || envelope.UserRequestId != 0x2501001
+        || envelope.UniqueRequestId != 0x6001
+        || envelope.ParentUniqueRequestId != 0x5001
+        || !envelope.IsListItem
+        || envelope.ItemIndex != 12
+        || envelope.ListSize != 20
+        || envelope.PayloadLength != Phonie.Services.FacilityPacketDecoder.TaxiPathPayloadSize)
+    {
+        failures.Add("Décodeur Facilities : en-tête synthétique incorrect.");
+    }
+
+    var path = Phonie.Services.FacilityPacketDecoder.DecodeTaxiPath(packet, envelope, out var fields);
+    if (path.Index != 12
+        || path.Type != 3
+        || Math.Abs(path.WidthMeters - 18.5f) > 0.001f
+        || path.WeightLimit != 12_000
+        || path.RunwayNumber != 3
+        || path.RunwayDesignator != 1
+        || path.StartIndex != 42
+        || path.EndIndex != 43
+        || path.NameIndex != 5
+        || fields.Count != 16
+        || fields[0].PacketOffset != Phonie.Services.FacilityPacketDecoder.HeaderSize
+        || fields[^1].PacketOffset != packet.Length - 4)
+    {
+        failures.Add("Décodeur Facilities : charge utile TaxiPath synthétique incorrecte.");
+    }
+
+    var truncated = packet[..^4];
+    ExpectInvalidData(
+        "Décodeur Facilities : paquet TaxiPath tronqué accepté.",
+        () =>
+        {
+            var truncatedEnvelope = Phonie.Services.FacilityPacketDecoder.DecodeEnvelope(truncated);
+            _ = Phonie.Services.FacilityPacketDecoder.DecodeTaxiPath(truncated, truncatedEnvelope, out _);
+        });
+
+    var invalidDeclaredSize = packet.ToArray();
+    WriteUInt32(invalidDeclaredSize, 0, (uint)(invalidDeclaredSize.Length + 4));
+    var oversizedEnvelope = Phonie.Services.FacilityPacketDecoder.DecodeEnvelope(invalidDeclaredSize);
+    if (oversizedEnvelope.SizeMatches)
+    {
+        failures.Add("Décodeur Facilities : taille déclarée supérieure au tampon non signalée.");
+    }
+
+    var mismatchedSize = packet.ToArray();
+    WriteUInt32(mismatchedSize, 0, (uint)(mismatchedSize.Length - 4));
+    var mismatchedEnvelope = Phonie.Services.FacilityPacketDecoder.DecodeEnvelope(mismatchedSize);
+    if (mismatchedEnvelope.SizeMatches)
+    {
+        failures.Add("Décodeur Facilities : différence entre taille déclarée et reçue non signalée.");
+    }
+}
+
+void ExpectInvalidData(string failureMessage, Action action)
+{
+    try
+    {
+        action();
+        failures.Add(failureMessage);
+    }
+    catch (InvalidDataException)
+    {
+        // Résultat attendu.
+    }
+}
+
+void WriteUInt32(byte[] buffer, int offset, uint value) =>
+    BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(offset, 4), value);
+
+void WriteInt32(byte[] buffer, int offset, int value) =>
+    BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(offset, 4), value);
+
+void WriteSingle(byte[] buffer, int offset, float value) =>
+    BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(offset, 4), BitConverter.SingleToInt32Bits(value));
 
 void Check(
     string name,

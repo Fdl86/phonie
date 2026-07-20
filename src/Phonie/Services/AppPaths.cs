@@ -12,6 +12,8 @@ public static class AppPaths
 
     public static string AirportDataDirectory { get; } = Path.Combine(LogsDirectory, "airport-data");
 
+    public static string AirportDataRawDirectory { get; } = Path.Combine(AirportDataDirectory, "raw");
+
     public static string BenchmarksDirectory { get; } = Path.Combine(LogsDirectory, "benchmarks");
 
     public static string CacheDirectory { get; } = Path.Combine(BaseDirectory, "cache");
@@ -31,6 +33,7 @@ public static class AppPaths
                      ConfigDirectory,
                      LogsDirectory,
                      AirportDataDirectory,
+                     AirportDataRawDirectory,
                      BenchmarksDirectory,
                      RecordingsDirectory,
                      CacheDirectory,

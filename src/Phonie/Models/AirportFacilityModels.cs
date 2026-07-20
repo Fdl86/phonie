@@ -54,6 +54,12 @@ public sealed class AirportFacilityReport
 
     public List<string> ParseWarnings { get; init; } = new();
 
+    public List<FacilityPacketDiagnostic> PacketDiagnostics { get; init; } = new();
+
+    public FacilityDiagnosticSummary DiagnosticSummary { get; set; } = new();
+
+    public string DiagnosticDirectoryPath { get; set; } = string.Empty;
+
     public string JsonPath { get; set; } = string.Empty;
 
     public string TextPath { get; set; } = string.Empty;
