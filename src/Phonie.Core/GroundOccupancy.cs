@@ -114,13 +114,14 @@ public static class GroundOccupancy
                     || nearestParking.Distance <= 12.0
                     || nearestParking.Distance <= nearestEdge.Distance + ParkingVsTaxiwayToleranceMeters);
 
-            if (parkedAtStand)
+            if (parkedAtStand && nearestParking is not null)
             {
-                contactNodes.Add(nearestParking.Node.Id);
+                var parking = nearestParking;
+                contactNodes.Add(parking.Node.Id);
                 foreach (var edge in model.Edges.Where(edge =>
                              edge.Kind == TaxiPathKind.Parking
-                             && (string.Equals(edge.FromNodeId, nearestParking.Node.Id, StringComparison.Ordinal)
-                                 || string.Equals(edge.ToNodeId, nearestParking.Node.Id, StringComparison.Ordinal))))
+                             && (string.Equals(edge.FromNodeId, parking.Node.Id, StringComparison.Ordinal)
+                                 || string.Equals(edge.ToNodeId, parking.Node.Id, StringComparison.Ordinal))))
                 {
                     contactEdges.Add(edge.SourceIndex);
                 }
@@ -132,8 +133,8 @@ public static class GroundOccupancy
                     contact.GroundSpeedKnots,
                     contact.IsOnGround,
                     "PARKED_AT_STAND",
-                    nearestParking.Node.Id,
-                    nearestParking.Distance,
+                    parking.Node.Id,
+                    parking.Distance,
                     nearestEdge?.Edge.SourceIndex,
                     nearestEdge?.Distance,
                     contactNodes.OrderBy(item => item, StringComparer.Ordinal).ToArray(),

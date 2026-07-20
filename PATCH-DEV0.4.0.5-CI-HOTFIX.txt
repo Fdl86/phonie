@@ -1,0 +1,11 @@
+PHONIE DEV0.4.0.5 - CI COMPILE HOTFIX
+
+Extraire cette archive directement à la racine du dépôt PHONIE et accepter le remplacement des fichiers.
+Ne pas vider le dépôt. Conserver le dossier .git.
+
+Corrections :
+- CS0136 : variable locale destination renommée dans le rappel de roulage.
+- CS8602 : garde nullable explicite pour le parking associé.
+- workflow restore/build fail-fast après chaque commande dotnet.
+
+La version reste DEV0.4.0.5 car aucun artefact exécutable n'a été publié par le build en échec.

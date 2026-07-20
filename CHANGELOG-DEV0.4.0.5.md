@@ -55,3 +55,9 @@
 - artefact Windows à extraction unique ;
 - suppression du ZIP imbriqué ;
 - tests LFBI, AFIS, collationnement et profil opérationnel.
+
+## CI compilation hotfix
+
+- Renommage de la variable locale de rappel de roulage pour supprimer CS0136.
+- Garde nullable explicite sur le parking associé pour supprimer CS8602.
+- Workflow restore/build rendu fail-fast après chaque commande dotnet.

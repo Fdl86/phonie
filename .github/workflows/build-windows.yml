@@ -63,18 +63,28 @@ jobs:
       - name: Restore projects
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           dotnet restore src/Phonie.Core/Phonie.Core.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet restore tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet restore tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet restore src/Phonie/Phonie.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build all projects
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           dotnet build src/Phonie.Core/Phonie.Core.csproj --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build src/Phonie/Phonie.csproj --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run DEV0.3 regression smoke tests
         run: dotnet run --project tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-build --no-restore

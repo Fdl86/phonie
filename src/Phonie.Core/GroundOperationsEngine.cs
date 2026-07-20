@@ -183,10 +183,10 @@ public sealed class GroundOperationsEngine
                 && this.session.AssignedTaxiRoute is { Success: true } assignedRoute
                 && this.session.AssignedRunway is not null)
             {
-                var destination = BuildHoldingPointPhrase(assignedRoute, this.session.AssignedRunway);
+                var assignedDestination = BuildHoldingPointPhrase(assignedRoute, this.session.AssignedRunway);
                 var reminder = radio.Capability == ServiceCapability.InformationOnly
-                    ? $"{CurrentCallsign(spokenFull, spokenShort)}, point d'attente recommandé {destination}, rappelez prêt."
-                    : $"{CurrentCallsign(spokenFull, spokenShort)}, poursuivez vers {destination}.";
+                    ? $"{CurrentCallsign(spokenFull, spokenShort)}, point d'attente recommandé {assignedDestination}, rappelez prêt."
+                    : $"{CurrentCallsign(spokenFull, spokenShort)}, poursuivez vers {assignedDestination}.";
                 return Message(
                     ControllerAction.Speak,
                     "TAXI_CLEARANCE_ALREADY_ISSUED",
