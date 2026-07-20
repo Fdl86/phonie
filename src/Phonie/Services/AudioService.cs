@@ -146,6 +146,14 @@ public sealed class AudioService : IDisposable
         }
     }
 
+    public void StopPlayback()
+    {
+        lock (this.syncRoot)
+        {
+            this.StopPlaybackInternal(true);
+        }
+    }
+
     public bool PlayFile(string? outputDeviceId, string? filePath)
     {
         ObjectDisposedException.ThrowIf(this.disposed, this);

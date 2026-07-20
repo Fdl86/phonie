@@ -2,6 +2,7 @@ namespace Phonie.Core;
 
 public sealed class GroundOperationsEngine
 {
+    private static readonly TimeSpan AcknowledgementReminderInterval = TimeSpan.FromSeconds(9);
     private readonly GroundSession session = new();
 
     public GroundSession Session => this.session;
@@ -14,7 +15,9 @@ public sealed class GroundOperationsEngine
         AircraftGroundObservation? aircraft,
         GroundOccupancySnapshot occupancy,
         double windDirectionDegrees,
-        double windSpeedKnots)
+        double windSpeedKnots,
+        AirportOperationalProfile? profile = null,
+        double qnhHpa = double.NaN)
     {
         var stateBefore = this.session.State;
         var fullCallsign = CallsignFormatter.Normalize(simulatorCallsign);
@@ -26,8 +29,10 @@ public sealed class GroundOperationsEngine
 
         var spokenFull = CallsignFormatter.SpeakFull(this.session.FullCallsign);
         var spokenShort = CallsignFormatter.SpeakShort(this.session.FullCallsign);
-        var intent = PilotIntentParser.Parse(pilotText);
+        var intentDetails = PilotIntentParser.ParseDetailed(pilotText);
+        var intent = intentDetails.Intent;
         this.session.LastPilotRequest = pilotText.Trim();
+        var requiresAcknowledgement = radio.Capability is ServiceCapability.Controlled or ServiceCapability.InformationOnly;
 
         if (!radio.DialogueAllowed)
         {
@@ -45,7 +50,8 @@ public sealed class GroundOperationsEngine
                 stateBefore,
                 stateBefore,
                 null,
-                1);
+                1,
+                false);
         }
 
         if (string.IsNullOrWhiteSpace(this.session.FullCallsign))
@@ -58,101 +64,78 @@ public sealed class GroundOperationsEngine
                 stateBefore,
                 stateBefore,
                 null,
-                0.4);
-        }
-
-        if (radio.Capability == ServiceCapability.InformationOnly)
-        {
-            var informationText = $"{CurrentCallsign(spokenFull, spokenShort)}, {radio.StationName}, bonjour. Transmettez votre position, altitude et destination.";
-            this.EstablishContact(informationText);
-            return Decision(
-                ControllerAction.Speak,
-                "INFORMATION_SERVICE",
-                informationText,
-                "Service d'information : aucune clairance de contrôle émise.",
-                stateBefore,
-                this.session.State,
-                null,
-                0.9);
-        }
-
-        if (radio.Capability != ServiceCapability.Controlled)
-        {
-            return Decision(
-                ControllerAction.Silent,
-                "SERVICE_NOT_CONTROLLED",
-                string.Empty,
-                "Le type de service ne permet pas une clairance.",
-                stateBefore,
-                stateBefore,
-                null,
-                1);
+                0.4,
+                requiresAcknowledgement);
         }
 
         if (airport is null || !airport.IsUsable)
         {
-            return Decision(
+            return Message(
                 ControllerAction.Unable,
                 "AIRPORT_DATA_UNAVAILABLE",
                 $"{CurrentCallsign(spokenFull, spokenShort)}, impossible de déterminer le réseau de roulage.",
                 "Données Facilities absentes ou invalides.",
-                stateBefore,
-                stateBefore,
                 null,
                 0.2);
         }
 
         if (aircraft is null)
         {
-            return Decision(
+            return Message(
                 ControllerAction.Unable,
                 "AIRCRAFT_POSITION_UNAVAILABLE",
                 $"{CurrentCallsign(spokenFull, spokenShort)}, position non déterminée, maintenez.",
                 "Observation avion absente.",
-                stateBefore,
-                stateBefore,
                 null,
                 0.2);
         }
 
         var location = GroundLocator.Locate(airport, aircraft);
-        this.UpdateObservedState(location, aircraft);
+        this.UpdateObservedState(location, aircraft, profile, airport);
 
         if (intent == PilotIntent.Unknown)
         {
-            return Decision(
+            return Message(
                 ControllerAction.RequestClarification,
                 "INTENT_UNKNOWN",
                 $"{CurrentCallsign(spokenFull, spokenShort)}, précisez vos intentions.",
                 "Intention essentielle non reconnue.",
-                stateBefore,
-                this.session.State,
                 null,
                 0.45);
+        }
+
+        if (intent == PilotIntent.Readback)
+        {
+            return Decision(
+                ControllerAction.Silent,
+                "READBACK_RECEIVED",
+                string.Empty,
+                "Collationnement reçu au PTT. Le contenu est journalisé mais non bloquant dans cette version.",
+                stateBefore,
+                this.session.State,
+                this.session.AssignedTaxiRoute,
+                1,
+                false);
         }
 
         if (intent == PilotIntent.RepeatRequest)
         {
             if (string.IsNullOrWhiteSpace(this.session.LastControllerInstruction))
             {
-                return Decision(
+                return Message(
                     ControllerAction.RequestClarification,
                     "NOTHING_TO_REPEAT",
-                    $"{CurrentCallsign(spokenFull, spokenShort)}, aucune clairance précédente, précisez votre demande.",
+                    $"{CurrentCallsign(spokenFull, spokenShort)}, aucune instruction précédente, précisez votre demande.",
                     "Aucune instruction mémorisée.",
-                    stateBefore,
-                    this.session.State,
                     null,
                     0.7);
             }
 
-            return Decision(
+            return Message(
                 ControllerAction.Speak,
                 "REPEAT_LAST",
                 this.session.LastControllerInstruction,
                 "Répétition de la dernière instruction sans recalcul.",
-                stateBefore,
-                this.session.State,
                 this.session.AssignedTaxiRoute,
                 1);
         }
@@ -165,40 +148,52 @@ public sealed class GroundOperationsEngine
             }
 
             this.session.State = GroundSessionState.StartupRequested;
-            var text = $"{CurrentCallsign(spokenFull, spokenShort)}, mise en route approuvée, rappelez prêt au roulage.";
-            this.EstablishContact(text);
-            return Speak("STARTUP_APPROVED", text, null, 0.95);
+            var startupText = radio.Capability == ServiceCapability.InformationOnly
+                ? $"{CurrentCallsign(spokenFull, spokenShort)}, mise en route à votre convenance, rappelez prêt au roulage."
+                : $"{CurrentCallsign(spokenFull, spokenShort)}, mise en route approuvée, rappelez prêt au roulage.";
+            this.EstablishContact(startupText);
+            return Message(
+                ControllerAction.Speak,
+                radio.Capability == ServiceCapability.InformationOnly ? "AFIS_STARTUP_INFORMATION" : "STARTUP_APPROVED",
+                startupText,
+                radio.Capability == ServiceCapability.InformationOnly
+                    ? "AFIS : information uniquement, aucune autorisation de contrôle."
+                    : string.Empty,
+                null,
+                0.95);
         }
 
-        if (intent is PilotIntent.InitialContact)
+        if (intent == PilotIntent.InitialContact)
         {
             var text = location.Kind switch
             {
-                GroundPositionKind.Parking => $"{spokenFull}, {radio.StationName}, bonjour, rappelez prêt au roulage.",
+                GroundPositionKind.Parking => radio.Capability == ServiceCapability.InformationOnly
+                    ? $"{spokenFull}, {radio.StationName}, bonjour, transmettez vos intentions."
+                    : $"{spokenFull}, {radio.StationName}, bonjour, rappelez prêt au roulage.",
                 GroundPositionKind.HoldShort => $"{spokenFull}, {radio.StationName}, bonjour, rappelez prêt au départ.",
                 _ => $"{spokenFull}, {radio.StationName}, bonjour, précisez vos intentions.",
             };
             this.EstablishContact(text);
-            return Speak("INITIAL_CONTACT", text, null, 0.9);
+            return Message(ControllerAction.Speak, "INITIAL_CONTACT", text, string.Empty, null, 0.9);
         }
 
         if (intent == PilotIntent.TaxiRequest)
         {
             if (this.session.State is GroundSessionState.TaxiClearanceIssued or GroundSessionState.Taxiing
                 && this.session.AssignedTaxiRoute is { Success: true } assignedRoute
-                && this.session.AssignedHoldShort is not null
                 && this.session.AssignedRunway is not null)
             {
-                var reminder =
-                    $"{CurrentCallsign(spokenFull, spokenShort)}, poursuivez vers le point d'attente " +
-                    $"{SpeakTaxiway(this.session.AssignedHoldShort.Label)} piste " +
-                    $"{SpeakRunway(this.session.AssignedRunway.Designator)}.";
-                return Speak(
+                var destination = BuildHoldingPointPhrase(assignedRoute, this.session.AssignedRunway);
+                var reminder = radio.Capability == ServiceCapability.InformationOnly
+                    ? $"{CurrentCallsign(spokenFull, spokenShort)}, point d'attente recommandé {destination}, rappelez prêt."
+                    : $"{CurrentCallsign(spokenFull, spokenShort)}, poursuivez vers {destination}.";
+                return Message(
+                    ControllerAction.Speak,
                     "TAXI_CLEARANCE_ALREADY_ISSUED",
                     reminder,
+                    "Itinéraire déjà attribué : aucun recalcul ni changement de point d'attente.",
                     assignedRoute,
-                    assignedRoute.Confidence,
-                    "Clairance déjà attribuée : aucun recalcul ni changement de point d'attente.");
+                    assignedRoute.Confidence);
             }
 
             if (location.Kind is not (GroundPositionKind.Parking or GroundPositionKind.Taxiway))
@@ -206,7 +201,7 @@ public sealed class GroundOperationsEngine
                 return Incompatible("TAXI_POSITION_INCOMPATIBLE", "roulage demandé depuis une position incompatible.");
             }
 
-            var runwaySelection = RunwaySelector.Select(airport, windDirectionDegrees, windSpeedKnots);
+            var runwaySelection = RunwaySelector.Select(airport, windDirectionDegrees, windSpeedKnots, profile);
             if (!runwaySelection.Success || runwaySelection.RunwayEnd is null)
             {
                 return Unable("RUNWAY_UNKNOWN", "impossible de déterminer la piste en service.");
@@ -217,7 +212,12 @@ public sealed class GroundOperationsEngine
                 return Unable("OCCUPANCY_UNKNOWN", "trafic au sol non déterminé, maintenez position.");
             }
 
-            var route = TaxiRouter.RouteToNearestAvailableHoldShort(airport, location, runwaySelection.RunwayEnd, occupancy);
+            var route = TaxiRouter.RouteToNearestAvailableHoldShort(
+                airport,
+                location,
+                runwaySelection.RunwayEnd,
+                occupancy,
+                profile);
             if (!route.Success || route.HoldShort is null)
             {
                 return Unable("ROUTE_UNAVAILABLE", route.FailureReason);
@@ -226,134 +226,288 @@ public sealed class GroundOperationsEngine
             this.session.AssignedRunway = runwaySelection.RunwayEnd;
             this.session.AssignedHoldShort = route.HoldShort;
             this.session.AssignedTaxiRoute = route;
+            this.session.AssignedOperationalPoint = route.OperationalPoint;
+            this.session.AssignedRunwayEntry = route.RunwayEntry;
             this.session.State = GroundSessionState.TaxiClearanceIssued;
 
-            var via = route.TaxiwayNames.Count > 0
+            var destination = BuildHoldingPointPhrase(route, runwaySelection.RunwayEnd);
+            var via = route.IncludeViaInSpeech && route.TaxiwayNames.Count > 0
                 ? $" via {JoinFrench(route.TaxiwayNames)}"
                 : string.Empty;
-            var text =
-                $"{CurrentCallsign(spokenFull, spokenShort)}, roulez au point d'attente {SpeakTaxiway(route.HoldShort.Label)} " +
-                $"piste {SpeakRunway(route.Runway!.Designator)}{via}, rappelez prêt.";
-            this.EstablishContact(text);
-            return Speak("TAXI_CLEARANCE", text, route, route.Confidence);
-        }
-
-        if (intent == PilotIntent.ReadyAtHoldShort)
-        {
-            if (location.Kind != GroundPositionKind.HoldShort)
+            string text;
+            string reason;
+            string system;
+            if (radio.Capability == ServiceCapability.InformationOnly)
             {
-                return Incompatible("READY_NOT_AT_HOLD", "avion non localisé au point d'attente.");
+                text =
+                    $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(runwaySelection.RunwayEnd.Designator)} en service, " +
+                    $"{destination}, {BuildWindAndQnh(windDirectionDegrees, windSpeedKnots, qnhHpa)}, rappelez prêt.";
+                reason = "AFIS_TAXI_INFORMATION";
+                system = "AFIS : itinéraire calculé à titre d'information, aucune clairance impérative de roulage.";
+            }
+            else
+            {
+                text = $"{CurrentCallsign(spokenFull, spokenShort)}, roulez {destination}{via}, rappelez prêt.";
+                reason = "TAXI_CLEARANCE";
+                system = route.OperationalPoint?.Confidence == OperationalLabelConfidence.Official
+                    ? $"Appellation officielle {route.OperationalPoint.RadioLabel} issue du profil {airport.Icao}."
+                    : route.OperationalPoint?.HasReliableRadioLabel == true
+                        ? "Appellation issue de la scène avec confiance moyenne."
+                        : "Nom radio non garanti : formulation générique utilisée.";
             }
 
-            this.session.State = GroundSessionState.ReadyForDeparture;
-            var text = $"{CurrentCallsign(spokenFull, spokenShort)}, maintenez point d'attente, rappelez prêt pour alignement.";
-            return Speak("READY_ACKNOWLEDGED", text, this.session.AssignedTaxiRoute, 0.9);
+            this.EstablishContact(text);
+            return Message(ControllerAction.Speak, reason, text, system, route, route.Confidence);
+        }
+
+        if (intent is PilotIntent.ReadyAtHoldShort or PilotIntent.ReadyForIntersectionDeparture)
+        {
+            if (!IsAtAssignedDeparturePoint(location, intentDetails.ReportedPoint))
+            {
+                return Incompatible(
+                    "READY_NOT_AT_ASSIGNED_HOLD",
+                    BuildReadyPositionMismatch(location, intentDetails.ReportedPoint));
+            }
+
+            this.session.State = intent == PilotIntent.ReadyForIntersectionDeparture
+                ? GroundSessionState.IntersectionDepartureRequested
+                : GroundSessionState.ReadyForDeparture;
+
+            if (this.session.AssignedRunway is null)
+            {
+                return Unable("RUNWAY_NOT_ASSIGNED", "piste attribuée non disponible.");
+            }
+
+            if (radio.Capability == ServiceCapability.InformationOnly)
+            {
+                var runwayOccupied = IsRunwayOccupied(airport, this.session.AssignedRunway, occupancy);
+                var trafficText = runwayOccupied
+                    ? "trafic signalé sur la piste"
+                    : "aucun trafic signalé sur la piste";
+                var text =
+                    $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(this.session.AssignedRunway.Designator)} en service, " +
+                    $"{BuildWindAndQnh(windDirectionDegrees, windSpeedKnots, qnhHpa)}, {trafficText}.";
+                return Message(
+                    ControllerAction.Speak,
+                    "AFIS_READY_INFORMATION",
+                    text,
+                    "AFIS : renseignements uniquement, aucune autorisation d'alignement ou de décollage.",
+                    this.session.AssignedTaxiRoute,
+                    0.9);
+            }
+
+            if (IsRunwayOccupied(airport, this.session.AssignedRunway, occupancy))
+            {
+                var waitText = $"{CurrentCallsign(spokenFull, spokenShort)}, maintenez point d'attente, trafic sur la piste.";
+                return Message(
+                    ControllerAction.Speak,
+                    "RUNWAY_OCCUPIED_HOLD",
+                    waitText,
+                    "Piste occupée : aucune autorisation d'entrée ni de décollage.",
+                    this.session.AssignedTaxiRoute,
+                    0.95);
+            }
+
+            var handling = this.session.AssignedOperationalPoint?.DepartureHandling
+                ?? DepartureHandling.ControllerChoice;
+            if (intentDetails.MentionsBacktrack || handling == DepartureHandling.BacktrackRequired)
+            {
+                this.session.State = GroundSessionState.BacktrackCleared;
+                var backtrackText =
+                    $"{CurrentCallsign(spokenFull, spokenShort)}, remontez piste {SpeakRunway(this.session.AssignedRunway.Designator)}, " +
+                    "alignez-vous et attendez.";
+                return Message(
+                    ControllerAction.Speak,
+                    "BACKTRACK_CLEARED",
+                    backtrackText,
+                    "Remontée de piste autorisée, décollage non encore autorisé.",
+                    this.session.AssignedTaxiRoute,
+                    0.95);
+            }
+
+            if (handling == DepartureHandling.IntersectionPreferred
+                && this.session.AssignedRunwayEntry?.HasReliableRadioLabel == true)
+            {
+                this.session.State = GroundSessionState.TakeoffCleared;
+                var entry = SpeakTaxiway(this.session.AssignedRunwayEntry.RadioLabel);
+                var takeoffText =
+                    $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(this.session.AssignedRunway.Designator)}, " +
+                    $"alignez-vous et autorisé décollage à partir de l'intersection {entry}, " +
+                    $"vent {SpeakWind(windDirectionDegrees, windSpeedKnots)}.";
+                return Message(
+                    ControllerAction.Speak,
+                    "INTERSECTION_TAKEOFF_CLEARED",
+                    takeoffText,
+                    $"Départ intersection {this.session.AssignedRunwayEntry.RadioLabel} autorisé depuis le point {this.session.AssignedOperationalPoint?.RadioLabel}.",
+                    this.session.AssignedTaxiRoute,
+                    0.96);
+            }
+
+            this.session.State = GroundSessionState.LineUpCleared;
+            var lineUpText =
+                $"{CurrentCallsign(spokenFull, spokenShort)}, alignez-vous piste {SpeakRunway(this.session.AssignedRunway.Designator)} et attendez.";
+            return Message(
+                ControllerAction.Speak,
+                "LINEUP_CLEARED_AFTER_READY",
+                lineUpText,
+                "Alignement autorisé, décollage en attente.",
+                this.session.AssignedTaxiRoute,
+                0.95);
+        }
+
+        if (intent == PilotIntent.BacktrackRequest)
+        {
+            if (!IsAtAssignedDeparturePoint(location, intentDetails.ReportedPoint)
+                || this.session.AssignedRunway is null)
+            {
+                return Incompatible("BACKTRACK_INCOMPATIBLE", "remontée de piste impossible depuis la position actuelle.");
+            }
+
+            if (radio.Capability == ServiceCapability.InformationOnly)
+            {
+                var text =
+                    $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(this.session.AssignedRunway.Designator)} en service, " +
+                    "remontée de piste à votre appréciation, aucun trafic signalé.";
+                return Message(
+                    ControllerAction.Speak,
+                    "AFIS_BACKTRACK_INFORMATION",
+                    text,
+                    "AFIS : information uniquement.",
+                    this.session.AssignedTaxiRoute,
+                    0.8);
+            }
+
+            this.session.State = GroundSessionState.BacktrackCleared;
+            var backtrack =
+                $"{CurrentCallsign(spokenFull, spokenShort)}, remontez piste {SpeakRunway(this.session.AssignedRunway.Designator)}, " +
+                "alignez-vous et attendez.";
+            return Message(ControllerAction.Speak, "BACKTRACK_CLEARED", backtrack, string.Empty, this.session.AssignedTaxiRoute, 0.95);
         }
 
         if (intent == PilotIntent.LineUpRequest)
         {
-            if (location.Kind != GroundPositionKind.HoldShort || this.session.AssignedRunway is null)
+            if (!IsAtAssignedDeparturePoint(location, intentDetails.ReportedPoint)
+                || this.session.AssignedRunway is null)
             {
                 return Incompatible("LINEUP_INCOMPATIBLE", "alignement impossible depuis la position ou l'état actuel.");
+            }
+
+            if (radio.Capability == ServiceCapability.InformationOnly)
+            {
+                var info =
+                    $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(this.session.AssignedRunway.Designator)} en service, " +
+                    "aucun trafic signalé sur la piste.";
+                return Message(ControllerAction.Speak, "AFIS_LINEUP_INFORMATION", info, "AFIS : information uniquement.", this.session.AssignedTaxiRoute, 0.85);
             }
 
             this.session.State = GroundSessionState.LineUpCleared;
             var text =
                 $"{CurrentCallsign(spokenFull, spokenShort)}, alignez-vous piste {SpeakRunway(this.session.AssignedRunway.Designator)} et attendez.";
-            return Speak("LINEUP_CLEARED", text, this.session.AssignedTaxiRoute, 0.95);
+            return Message(ControllerAction.Speak, "LINEUP_CLEARED", text, string.Empty, this.session.AssignedTaxiRoute, 0.95);
         }
 
         if (intent == PilotIntent.TakeoffRequest)
         {
+            if (radio.Capability == ServiceCapability.InformationOnly)
+            {
+                var info =
+                    $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(this.session.AssignedRunway?.Designator ?? "-")} en service, " +
+                    $"vent {SpeakWind(windDirectionDegrees, windSpeedKnots)}.";
+                return Message(ControllerAction.Speak, "AFIS_TAKEOFF_INFORMATION", info, "AFIS : aucune autorisation de décollage.", this.session.AssignedTaxiRoute, 0.8);
+            }
+
             if (location.Kind != GroundPositionKind.Runway
-                || this.session.State is not (GroundSessionState.LineUpCleared or GroundSessionState.LinedUp))
+                || this.session.State is not (GroundSessionState.LineUpCleared or GroundSessionState.LinedUp or GroundSessionState.Backtracking))
             {
                 return Incompatible("TAKEOFF_INCOMPATIBLE", "décollage refusé : avion non aligné sur la piste attribuée.");
             }
 
             this.session.State = GroundSessionState.TakeoffCleared;
             var runway = this.session.AssignedRunway?.Designator ?? "-";
-            var text = $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(runway)}, autorisé décollage.";
-            return Speak("TAKEOFF_CLEARED", text, this.session.AssignedTaxiRoute, 0.95);
+            var text =
+                $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(runway)}, autorisé décollage, " +
+                $"vent {SpeakWind(windDirectionDegrees, windSpeedKnots)}.";
+            return Message(ControllerAction.Speak, "TAKEOFF_CLEARED", text, string.Empty, this.session.AssignedTaxiRoute, 0.95);
         }
 
         if (intent == PilotIntent.LineUpAndTakeoffRequest)
         {
-            if (location.Kind != GroundPositionKind.HoldShort || this.session.AssignedRunway is null)
+            if (!IsAtAssignedDeparturePoint(location, intentDetails.ReportedPoint)
+                || this.session.AssignedRunway is null)
             {
                 return Incompatible("LINEUP_TAKEOFF_INCOMPATIBLE", "demande alignement et décollage incompatible avec la situation.");
+            }
+
+            if (radio.Capability == ServiceCapability.InformationOnly)
+            {
+                var info =
+                    $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(this.session.AssignedRunway.Designator)} en service, " +
+                    $"vent {SpeakWind(windDirectionDegrees, windSpeedKnots)}.";
+                return Message(ControllerAction.Speak, "AFIS_LINEUP_TAKEOFF_INFORMATION", info, "AFIS : aucune clairance de contrôle.", this.session.AssignedTaxiRoute, 0.85);
             }
 
             this.session.State = GroundSessionState.LineUpCleared;
             var text =
                 $"{CurrentCallsign(spokenFull, spokenShort)}, alignez-vous piste {SpeakRunway(this.session.AssignedRunway.Designator)} et attendez.";
-            return Speak(
+            return Message(
+                ControllerAction.Speak,
                 "LINEUP_ONLY_PENDING_RUNWAY_CHECK",
                 text,
+                "La demande combinée est reconnue, mais le décollage n'est pas autorisé avant confirmation de l'alignement.",
                 this.session.AssignedTaxiRoute,
-                0.9,
-                "La demande combinée est reconnue, mais le décollage n'est pas autorisé avant confirmation de l'alignement.");
+                0.9);
         }
 
-        return Decision(
+        return Message(
             ControllerAction.RequestClarification,
             "UNHANDLED_INTENT",
             $"{CurrentCallsign(spokenFull, spokenShort)}, précisez votre demande.",
             "Intention reconnue mais non traitée dans cet état.",
-            stateBefore,
-            this.session.State,
             null,
             0.4);
 
-        ControllerDecision Speak(
+        ControllerDecision Message(
+            ControllerAction action,
             string reason,
             string text,
+            string system,
             TaxiRoute? route,
-            double confidence,
-            string? system = null)
+            double confidence)
         {
-            this.session.LastControllerInstruction = text;
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                this.session.LastControllerInstruction = text;
+            }
+
             return Decision(
-                ControllerAction.Speak,
+                action,
                 reason,
                 text,
-                system ?? string.Empty,
+                system,
                 stateBefore,
                 this.session.State,
                 route,
-                confidence);
+                confidence,
+                requiresAcknowledgement && !string.IsNullOrWhiteSpace(text));
         }
 
         ControllerDecision Unable(string reason, string detail)
         {
             var text = $"{CurrentCallsign(spokenFull, spokenShort)}, impossible, {detail}";
-            return Decision(
-                ControllerAction.Unable,
-                reason,
-                text,
-                detail,
-                stateBefore,
-                this.session.State,
-                null,
-                0.3);
+            return Message(ControllerAction.Unable, reason, text, detail, null, 0.3);
         }
 
         ControllerDecision Incompatible(string reason, string detail)
         {
             var text = $"{CurrentCallsign(spokenFull, spokenShort)}, impossible, {detail}";
-            return Decision(
-                ControllerAction.Unable,
-                reason,
-                text,
-                detail,
-                stateBefore,
-                this.session.State,
-                null,
-                0.5);
+            return Message(ControllerAction.Unable, reason, text, detail, null, 0.5);
         }
     }
 
-    public void Observe(AirportGroundModel? airport, AircraftGroundObservation? observation)
+    public void Observe(
+        AirportGroundModel? airport,
+        AircraftGroundObservation? observation,
+        AirportOperationalProfile? profile = null)
     {
         if (airport is null || observation is null)
         {
@@ -361,10 +515,67 @@ public sealed class GroundOperationsEngine
         }
 
         var location = GroundLocator.Locate(airport, observation);
-        this.UpdateObservedState(location, observation);
+        this.UpdateObservedState(location, observation, profile, airport);
     }
 
-    private void UpdateObservedState(GroundLocation location, AircraftGroundObservation observation)
+    public void ArmPilotAcknowledgement(DateTimeOffset now, TimeSpan? timeout = null)
+    {
+        this.session.AwaitingPilotAcknowledgement = true;
+        this.session.AcknowledgementDeadline = now + (timeout ?? AcknowledgementReminderInterval);
+        this.session.AcknowledgementReminderCount = 0;
+    }
+
+    public bool AcknowledgePilotPtt()
+    {
+        if (!this.session.AwaitingPilotAcknowledgement)
+        {
+            return false;
+        }
+
+        this.session.AwaitingPilotAcknowledgement = false;
+        this.session.AcknowledgementDeadline = null;
+        this.session.AcknowledgementReminderCount = 0;
+        return true;
+    }
+
+    public ControllerDecision? PollAcknowledgement(DateTimeOffset now)
+    {
+        if (!this.session.AwaitingPilotAcknowledgement
+            || !this.session.AcknowledgementDeadline.HasValue
+            || now < this.session.AcknowledgementDeadline.Value)
+        {
+            return null;
+        }
+
+        this.session.AcknowledgementReminderCount++;
+        this.session.AcknowledgementDeadline = now + AcknowledgementReminderInterval;
+        var callsign = CallsignFormatter.SpeakShort(this.session.FullCallsign);
+        if (string.IsNullOrWhiteSpace(callsign))
+        {
+            callsign = CallsignFormatter.SpeakFull(this.session.FullCallsign);
+        }
+
+        var text = this.session.AcknowledgementReminderCount == 1
+            ? $"{callsign}, collationnez."
+            : $"{callsign}, accusez réception.";
+        this.session.LastControllerInstruction = text;
+        return Decision(
+            ControllerAction.Speak,
+            "ACKNOWLEDGEMENT_REMINDER",
+            text,
+            $"Aucun PTT reçu après le message précédent - relance {this.session.AcknowledgementReminderCount}.",
+            this.session.State,
+            this.session.State,
+            this.session.AssignedTaxiRoute,
+            1,
+            false);
+    }
+
+    private void UpdateObservedState(
+        GroundLocation location,
+        AircraftGroundObservation observation,
+        AirportOperationalProfile? profile,
+        AirportGroundModel airport)
     {
         if (!observation.IsOnGround || location.Kind == GroundPositionKind.Airborne)
         {
@@ -388,18 +599,72 @@ public sealed class GroundOperationsEngine
                 }
                 break;
             case GroundPositionKind.HoldShort:
-                if (this.session.State is GroundSessionState.TaxiClearanceIssued or GroundSessionState.Taxiing)
+                var resolutions = OperationalPointResolver.Resolve(airport, profile);
+                var resolution = location.NodeId is null ? null : resolutions.GetValueOrDefault(location.NodeId);
+                if (resolution?.Role == OperationalPointRole.IntermediateHoldingPoint)
+                {
+                    this.session.State = GroundSessionState.AtIntermediateHoldingPoint;
+                }
+                else if (this.session.AssignedHoldShort is null
+                    || string.Equals(location.NodeId, this.session.AssignedHoldShort.NodeId, StringComparison.Ordinal))
                 {
                     this.session.State = GroundSessionState.AtHoldShort;
                 }
                 break;
             case GroundPositionKind.Runway:
-                if (this.session.State == GroundSessionState.LineUpCleared)
+                if (this.session.State == GroundSessionState.BacktrackCleared)
+                {
+                    this.session.State = GroundSessionState.Backtracking;
+                }
+                else if (this.session.State is GroundSessionState.LineUpCleared or GroundSessionState.EnteringRunway)
                 {
                     this.session.State = GroundSessionState.LinedUp;
                 }
                 break;
         }
+    }
+
+    private bool IsAtAssignedDeparturePoint(GroundLocation location, string? reportedPoint)
+    {
+        if (location.Kind != GroundPositionKind.HoldShort
+            || this.session.AssignedHoldShort is null
+            || !string.Equals(location.NodeId, this.session.AssignedHoldShort.NodeId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(reportedPoint)
+            || this.session.AssignedOperationalPoint?.HasReliableRadioLabel != true)
+        {
+            return true;
+        }
+
+        return string.Equals(
+            NormalizePoint(reportedPoint),
+            NormalizePoint(this.session.AssignedOperationalPoint.RadioLabel),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string BuildReadyPositionMismatch(GroundLocation location, string? reportedPoint)
+    {
+        var expected = this.session.AssignedOperationalPoint?.HasReliableRadioLabel == true
+            ? $"point {this.session.AssignedOperationalPoint.RadioLabel}"
+            : "point d'attente attribué";
+        var reported = string.IsNullOrWhiteSpace(reportedPoint) ? string.Empty : $" annoncé {reportedPoint},";
+        return $"position{reported} non confirmée au {expected} ; maintenez et confirmez votre position.";
+    }
+
+    private static bool IsRunwayOccupied(
+        AirportGroundModel airport,
+        RunwayEnd runway,
+        GroundOccupancySnapshot occupancy)
+    {
+        var runwayEdgeIds = airport.Edges
+            .Where(item => item.IsRunway
+                && (item.RunwayNumber == runway.Number || item.RunwayNumber is null))
+            .Select(item => item.SourceIndex)
+            .ToHashSet();
+        return occupancy.OccupiedEdgeIds.Any(runwayEdgeIds.Contains);
     }
 
     private void EstablishContact(string instruction)
@@ -423,7 +688,8 @@ public sealed class GroundOperationsEngine
         GroundSessionState before,
         GroundSessionState after,
         TaxiRoute? route,
-        double confidence) =>
+        double confidence,
+        bool requiresAcknowledgement) =>
         new(
             action,
             reason,
@@ -434,7 +700,51 @@ public sealed class GroundOperationsEngine
             route,
             this.session.FullCallsign,
             this.session.AuthorizedShortCallsign,
-            confidence);
+            confidence,
+            requiresAcknowledgement);
+
+    private static string BuildHoldingPointPhrase(TaxiRoute route, RunwayEnd runway)
+    {
+        if (route.OperationalPoint?.HasReliableRadioLabel == true)
+        {
+            return $"point d'attente {SpeakTaxiway(route.OperationalPoint.RadioLabel)}";
+        }
+
+        return $"point d'attente piste {SpeakRunway(runway.Designator)}";
+    }
+
+    private static string BuildWindAndQnh(double direction, double speed, double qnh)
+    {
+        var parts = new List<string>();
+        if (double.IsFinite(direction) && double.IsFinite(speed))
+        {
+            parts.Add($"vent {SpeakWind(direction, speed)}");
+        }
+
+        if (double.IsFinite(qnh) && qnh is > 850 and < 1100)
+        {
+            parts.Add($"QNH {SpeakInteger((int)Math.Round(qnh))}");
+        }
+
+        return parts.Count == 0 ? "paramètres indisponibles" : string.Join(", ", parts);
+    }
+
+    private static string SpeakWind(double direction, double speed)
+    {
+        if (!double.IsFinite(direction) || !double.IsFinite(speed))
+        {
+            return "indisponible";
+        }
+
+        var roundedDirection = ((int)Math.Round(direction / 10.0) * 10) % 360;
+        if (roundedDirection == 0)
+        {
+            roundedDirection = 360;
+        }
+
+        var roundedSpeed = Math.Max(0, (int)Math.Round(speed));
+        return $"{SpeakInteger(roundedDirection)} degrés, {SpeakInteger(roundedSpeed)} nœuds";
+    }
 
     private static string JoinFrench(IReadOnlyList<string> names)
     {
@@ -492,6 +802,19 @@ public sealed class GroundOperationsEngine
         };
         return string.Join(" ", digits) + (string.IsNullOrWhiteSpace(suffix) ? string.Empty : $" {suffix}");
     }
+
+    private static string SpeakInteger(int value)
+    {
+        if (value == 0)
+        {
+            return "zéro";
+        }
+
+        return string.Join(" ", Math.Abs(value).ToString().Select(SpeakDigit));
+    }
+
+    private static string NormalizePoint(string value) =>
+        new(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 
     private static string SpeakDigit(char digit) => digit switch
     {

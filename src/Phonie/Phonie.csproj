@@ -10,10 +10,10 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AssemblyName>PHONIE</AssemblyName>
     <RootNamespace>Phonie</RootNamespace>
-    <Version>0.4.0.4</Version>
-    <AssemblyVersion>0.4.0.4</AssemblyVersion>
-    <FileVersion>0.4.0.4</FileVersion>
-    <InformationalVersion>DEV0.4.0.4</InformationalVersion>
+    <Version>0.4.0.5</Version>
+    <AssemblyVersion>0.4.0.5</AssemblyVersion>
+    <FileVersion>0.4.0.5</FileVersion>
+    <InformationalVersion>DEV0.4.0.5</InformationalVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\Phonie.ico</ApplicationIcon>
     <SelfContained>true</SelfContained>
@@ -41,4 +41,13 @@
     <Resource Include="Assets\PhonieIcon.png" />
     <Resource Include="Assets\Phonie.ico" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\data\airports\**\*.json">
+      <Link>data\airports\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

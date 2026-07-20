@@ -38,9 +38,15 @@ public enum GroundSessionState
     ReadyToTaxi,
     TaxiClearanceIssued,
     Taxiing,
+    AtIntermediateHoldingPoint,
     AtHoldShort,
+    RunUpInProgress,
     ReadyForDeparture,
+    IntersectionDepartureRequested,
     LineUpCleared,
+    EnteringRunway,
+    BacktrackCleared,
+    Backtracking,
     LinedUp,
     TakeoffCleared,
     Airborne,
@@ -53,9 +59,11 @@ public enum PilotIntent
     StartupRequest,
     TaxiRequest,
     ReadyAtHoldShort,
+    ReadyForIntersectionDeparture,
     LineUpRequest,
     TakeoffRequest,
     LineUpAndTakeoffRequest,
+    BacktrackRequest,
     RepeatRequest,
     Readback,
 }
@@ -82,6 +90,30 @@ public enum OccupancyKnowledge
 {
     Unknown,
     Available,
+}
+
+public enum OperationalPointRole
+{
+    Unknown,
+    IntermediateHoldingPoint,
+    DepartureHoldingPoint,
+    RunwayEntry,
+}
+
+public enum OperationalLabelConfidence
+{
+    None = 0,
+    Low = 1,
+    Medium = 2,
+    High = 3,
+    Official = 4,
+}
+
+public enum DepartureHandling
+{
+    ControllerChoice,
+    IntersectionPreferred,
+    BacktrackRequired,
 }
 
 public sealed record FacilityRunway(
@@ -185,6 +217,48 @@ public sealed record HoldShortPoint(
     int? NearestRunwayNumber,
     double DistanceToRunwayMeters);
 
+public sealed record OperationalPointDefinition(
+    string Id,
+    string Label,
+    OperationalPointRole Role,
+    double Latitude,
+    double Longitude,
+    IReadOnlyList<string> Runways,
+    double MatchRadiusMeters,
+    DepartureHandling DepartureHandling = DepartureHandling.ControllerChoice,
+    string? RunwayEntryId = null);
+
+public sealed record AirportOperationalProfile(
+    string Icao,
+    string Revision,
+    string Source,
+    string? PreferredRunway,
+    double CalmWindMaxKnots,
+    bool SpeakViaTaxiways,
+    bool IncludeRunwayInTaxiClearance,
+    IReadOnlyList<OperationalPointDefinition> Points);
+
+public sealed record OperationalPointResolution(
+    string NodeId,
+    string FacilityLabel,
+    string RadioLabel,
+    OperationalPointRole Role,
+    OperationalLabelConfidence Confidence,
+    string Source,
+    string? ProfilePointId,
+    DepartureHandling DepartureHandling,
+    string? RunwayEntryId)
+{
+    public bool HasReliableRadioLabel => !string.IsNullOrWhiteSpace(this.RadioLabel)
+        && this.Confidence >= OperationalLabelConfidence.Medium;
+}
+
+public sealed record PilotIntentDetails(
+    PilotIntent Intent,
+    string? ReportedPoint,
+    bool MentionsIntersection,
+    bool MentionsBacktrack);
+
 public sealed record AirportGroundModel(
     string Icao,
     string Name,
@@ -262,7 +336,10 @@ public sealed record TaxiRoute(
     IReadOnlyList<GroundEdge> Edges,
     IReadOnlyList<string> TaxiwayNames,
     double TotalDistanceMeters,
-    double Confidence);
+    double Confidence,
+    OperationalPointResolution? OperationalPoint = null,
+    OperationalPointResolution? RunwayEntry = null,
+    bool IncludeViaInSpeech = false);
 
 public sealed record RadioContext(
     ServiceCapability Capability,
@@ -280,7 +357,8 @@ public sealed record ControllerDecision(
     TaxiRoute? TaxiRoute,
     string FullCallsign,
     string ShortCallsign,
-    double Confidence);
+    double Confidence,
+    bool RequiresAcknowledgement = false);
 
 public sealed class GroundSession
 {
@@ -301,4 +379,14 @@ public sealed class GroundSession
     public HoldShortPoint? AssignedHoldShort { get; set; }
 
     public TaxiRoute? AssignedTaxiRoute { get; set; }
+
+    public OperationalPointResolution? AssignedOperationalPoint { get; set; }
+
+    public OperationalPointResolution? AssignedRunwayEntry { get; set; }
+
+    public bool AwaitingPilotAcknowledgement { get; set; }
+
+    public DateTimeOffset? AcknowledgementDeadline { get; set; }
+
+    public int AcknowledgementReminderCount { get; set; }
 }

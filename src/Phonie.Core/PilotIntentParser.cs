@@ -6,58 +6,117 @@ namespace Phonie.Core;
 
 public static partial class PilotIntentParser
 {
-    public static PilotIntent Parse(string? text)
+    public static PilotIntent Parse(string? text) => ParseDetailed(text).Intent;
+
+    public static PilotIntentDetails ParseDetailed(string? text)
     {
         var normalized = Normalize(text);
         if (string.IsNullOrWhiteSpace(normalized))
         {
-            return PilotIntent.Unknown;
+            return new PilotIntentDetails(PilotIntent.Unknown, null, false, false);
         }
+
+        var reportedPoint = ExtractReportedPoint(normalized);
+        var mentionsIntersection = ContainsAny(normalized, "intersection", "bretelle intermediaire", "depart intersection");
+        var mentionsBacktrack = ContainsAny(normalized, "remontee de piste", "remonter la piste", "backtrack");
 
         if (ContainsAny(normalized, "repetez", "repeter", "say again", "de nouveau"))
         {
-            return PilotIntent.RepeatRequest;
+            return Details(PilotIntent.RepeatRequest);
         }
 
-        var lineUp = ContainsAny(normalized, "alignement", "m aligner", "nous aligner", "aligner");
+        if (mentionsBacktrack && ContainsAny(normalized, "demande", "pret", "pouvons"))
+        {
+            return Details(PilotIntent.BacktrackRequest);
+        }
+
+        var lineUp = ContainsAny(normalized, "alignement", "m aligner", "nous aligner", "aligner", "aligne pret");
         var takeoff = ContainsAny(normalized, "decollage", "decoller", "depart immediat", "autorisation de depart");
         if (lineUp && takeoff)
         {
-            return PilotIntent.LineUpAndTakeoffRequest;
+            return Details(PilotIntent.LineUpAndTakeoffRequest);
         }
 
-        if (ContainsAny(normalized, "pret au point d attente", "au point d attente", "pret au depart"))
+        var ready = ContainsAny(
+                normalized,
+                "pret au point d attente",
+                "au point d attente",
+                "pret au depart",
+                "pret pour un depart",
+                "pret pour depart")
+            || (normalized.Contains("pret", StringComparison.Ordinal)
+                && reportedPoint is not null);
+        if (ready && mentionsIntersection)
         {
-            return PilotIntent.ReadyAtHoldShort;
+            return Details(PilotIntent.ReadyForIntersectionDeparture);
+        }
+
+        if (ready)
+        {
+            return Details(PilotIntent.ReadyAtHoldShort);
         }
 
         if (lineUp)
         {
-            return PilotIntent.LineUpRequest;
+            return Details(PilotIntent.LineUpRequest);
         }
 
         if (takeoff)
         {
-            return PilotIntent.TakeoffRequest;
+            return Details(PilotIntent.TakeoffRequest);
         }
 
-
-        if (ContainsAny(normalized, "roulage", "rouler", "pret a rouler", "pret au roulage"))
+        if (ContainsAny(normalized, "roulage", "rouler", "pret a rouler", "pret au roulage", "consigne de roulage"))
         {
-            return PilotIntent.TaxiRequest;
+            return Details(PilotIntent.TaxiRequest);
         }
 
         if (ContainsAny(normalized, "mise en route", "demarrage", "demarrer moteur"))
         {
-            return PilotIntent.StartupRequest;
+            return Details(PilotIntent.StartupRequest);
         }
 
         if (ContainsAny(normalized, "bonjour", "premier contact", "au parking", "avec information"))
         {
-            return PilotIntent.InitialContact;
+            return Details(PilotIntent.InitialContact);
         }
 
-        return PilotIntent.Unknown;
+        if (ContainsAny(normalized, "roger", "recu", "je roule", "je maintiens", "je rappelle", "wilco"))
+        {
+            return Details(PilotIntent.Readback);
+        }
+
+        return Details(PilotIntent.Unknown);
+
+        PilotIntentDetails Details(PilotIntent intent) =>
+            new(intent, reportedPoint, mentionsIntersection, mentionsBacktrack);
+    }
+
+    private static string? ExtractReportedPoint(string text)
+    {
+        var match = ContextualPointRegex().Match(text);
+        if (!match.Success)
+        {
+            match = NumberedPointRegex().Match(text);
+        }
+
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var letter = match.Groups["letter"].Value switch
+        {
+            "alpha" => "A",
+            "bravo" => "B",
+            "charlie" => "C",
+            "delta" => "D",
+            "echo" => "E",
+            "foxtrot" => "F",
+            _ => match.Groups["letter"].Value.ToUpperInvariant(),
+        };
+        var number = match.Groups["number"].Value;
+        return string.IsNullOrWhiteSpace(number) ? letter : letter + number;
     }
 
     private static bool ContainsAny(string text, params string[] needles) =>
@@ -82,6 +141,12 @@ public static partial class PilotIntentParser
 
         return MultipleSpacesRegex().Replace(builder.ToString(), " ").Trim();
     }
+
+    [GeneratedRegex(@"\b(?:pret\s+(?:en|a)|point\s+d\s+attente|intersection)\s+(?<letter>alpha|bravo|charlie|delta|echo|foxtrot|[a-f])\s*(?<number>[0-9]{0,2})\b", RegexOptions.CultureInvariant)]
+    private static partial Regex ContextualPointRegex();
+
+    [GeneratedRegex(@"\b(?<letter>alpha|bravo|charlie|delta|echo|foxtrot|[a-f])\s*(?<number>[0-9]{1,2})\b", RegexOptions.CultureInvariant)]
+    private static partial Regex NumberedPointRegex();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex MultipleSpacesRegex();

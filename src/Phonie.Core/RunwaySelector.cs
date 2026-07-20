@@ -2,7 +2,11 @@ namespace Phonie.Core;
 
 public static class RunwaySelector
 {
-    public static RunwaySelection Select(AirportGroundModel model, double windFromDegrees, double windSpeedKnots)
+    public static RunwaySelection Select(
+        AirportGroundModel model,
+        double windFromDegrees,
+        double windSpeedKnots,
+        AirportOperationalProfile? profile = null)
     {
         ArgumentNullException.ThrowIfNull(model);
 
@@ -21,8 +25,22 @@ public static class RunwaySelector
             return new RunwaySelection(false, null, "Vent indisponible : piste en service indéterminée.", 0);
         }
 
-        if (windSpeedKnots < 3.0)
+        var calmLimit = profile is null ? 3.0 : Math.Max(0, profile.CalmWindMaxKnots);
+        if (windSpeedKnots < calmLimit)
         {
+            var preferred = profile is null || string.IsNullOrWhiteSpace(profile.PreferredRunway)
+                ? null
+                : candidates.FirstOrDefault(item =>
+                    string.Equals(item.Designator, profile.PreferredRunway, StringComparison.OrdinalIgnoreCase));
+            if (preferred is not null)
+            {
+                return new RunwaySelection(
+                    true,
+                    preferred,
+                    $"Vent faible : QFU préférentiel {preferred.Designator} issu du profil opérationnel.",
+                    0.9);
+            }
+
             var calm = candidates
                 .OrderBy(item => item.RunwayIndex)
                 .ThenBy(item => item.Number)

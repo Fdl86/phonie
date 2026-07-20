@@ -21,12 +21,13 @@ public partial class MainWindow : Window
     private readonly GlobalKeyboardHook keyboardHook = new();
     private readonly JoystickService joystickService = new();
     private readonly DiagnosticsService diagnosticsService = new();
-    private readonly SpeechRecognitionService speechRecognitionService;
+    private SpeechRecognitionService speechRecognitionService;
     private readonly GpuBenchmarkService gpuBenchmarkService = new();
     private readonly AtisService atisService = new();
     private readonly GroundOperationsCoordinator groundOperationsCoordinator = new();
-    private readonly ControllerSpeechService controllerSpeechService;
+    private ControllerSpeechService controllerSpeechService;
     private readonly DispatcherTimer audioMeterTimer = new() { Interval = TimeSpan.FromMilliseconds(125) };
+    private readonly DispatcherTimer acknowledgementTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly HashSet<string> activePttSources = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> activePttSourceLabels = new(StringComparer.Ordinal);
     private AppSettings settings;
@@ -66,9 +67,12 @@ public partial class MainWindow : Window
     private CancellationTokenSource? benchmarkCancellation;
     private Task? turboWarmupTask;
     private Task? benchmarkTask;
+    private Task? controllerSpeechTask;
     private bool transcriptionInProgress;
     private bool benchmarkInProgress;
     private bool pseudoMaximized;
+    private bool currentPttAcknowledgementOnly;
+    private GroundMapSnapshot? latestGroundMap;
     private Rect normalBounds;
 
     public MainWindow()
@@ -105,6 +109,7 @@ public partial class MainWindow : Window
         this.diagnosticsService.SampleAvailable += this.DiagnosticsService_OnSampleAvailable;
         this.speechRecognitionService.StatusChanged += this.WhisperService_OnStatusChanged;
         this.audioMeterTimer.Tick += this.AudioMeterTimer_OnTick;
+        this.acknowledgementTimer.Tick += this.AcknowledgementTimer_OnTick;
 
         this.Loaded += this.MainWindow_OnLoaded;
         this.Closing += this.MainWindow_OnClosing;
@@ -153,6 +158,7 @@ public partial class MainWindow : Window
         this.joystickService.Start();
         this.RefreshFooterState();
         this.audioMeterTimer.Start();
+        this.acknowledgementTimer.Start();
         this.simConnectService.Start();
         this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Log portable : {this.diagnosticsService.SessionFilePath}");
         var startupDefinition = SpeechRecognitionProfiles.Get(this.startupSpeechProfile);
@@ -171,6 +177,7 @@ public partial class MainWindow : Window
         this.closing = true;
         e.Cancel = true;
         this.audioMeterTimer.Stop();
+        this.acknowledgementTimer.Stop();
         this.keyboardHook.Dispose();
         await this.joystickService.DisposeAsync();
         this.transcriptionCancellation?.Cancel();
@@ -179,6 +186,7 @@ public partial class MainWindow : Window
         this.benchmarkCancellation?.Cancel();
         await AwaitQuietlyAsync(this.turboWarmupTask);
         await AwaitQuietlyAsync(this.benchmarkTask);
+        await AwaitQuietlyAsync(this.controllerSpeechTask);
         this.transcriptionCancellation?.Dispose();
         this.speechSynthesisCancellation?.Dispose();
         this.turboWarmupCancellation?.Dispose();
@@ -940,6 +948,14 @@ public partial class MainWindow : Window
         }
 
         this.pttHeld = true;
+        this.currentPttAcknowledgementOnly = this.groundOperationsCoordinator.AcknowledgePilotPtt();
+        if (this.currentPttAcknowledgementOnly)
+        {
+            this.diagnosticsService.WriteEvent("RADIO", "Collationnement/accusé de réception détecté au PTT.");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Collationnement reçu au PTT - contenu non bloquant.");
+            this.UpdateGroundOperationsUi();
+        }
+
         var input = this.InputDeviceComboBox.SelectedItem as AudioDeviceInfo;
         if (this.audioService.StartRecording(input?.Id, this.settings.MicrophoneGainDb))
         {
@@ -950,6 +966,7 @@ public partial class MainWindow : Window
         this.activePttSources.Clear();
         this.activePttSourceLabels.Clear();
         this.pttHeld = false;
+        this.currentPttAcknowledgementOnly = false;
         this.diagnosticsPttSource = "Aucun";
         this.PttStateText.Text = "Micro indisponible";
         this.SetDotResource(this.PttFooterDot, "Danger");
@@ -1010,6 +1027,7 @@ public partial class MainWindow : Window
                 this.SetDotResource(this.PttFooterDot, this.pttReady ? "Success" : "Warning");
                 this.diagnosticsService.WriteEvent("PTT", $"Ignoré - {result.Duration.TotalSeconds:F2} s - seuil 0,25 s");
                 this.AppendLog($"[{DateTime.Now:HH:mm:ss}] PTT ignoré : appui de {result.Duration.TotalSeconds:F2} s.");
+                this.currentPttAcknowledgementOnly = false;
                 return;
             }
 
@@ -1032,18 +1050,48 @@ public partial class MainWindow : Window
                 {
                     this.PilotTranscriptTextBox.Text = "PTT enregistré. Redémarrez PHONIE pour activer le profil ASR sélectionné.";
                     this.ExchangeLatencyText.Text = "REDÉMARRAGE REQUIS";
+                    this.currentPttAcknowledgementOnly = false;
                 }
                 else if (this.speechRecognitionService.IsSelectedModelReady)
                 {
-                    await this.TranscribeAndProcessAsync(result.FilePath, true);
+                    await this.TranscribeAndProcessAsync(
+                        result.FilePath,
+                        true,
+                        this.currentPttAcknowledgementOnly);
+                    this.currentPttAcknowledgementOnly = false;
                 }
                 else
                 {
                     this.PilotTranscriptTextBox.Text = "PTT enregistré. Installez le modèle du profil ASR sélectionné.";
                     this.ExchangeLatencyText.Text = "MODÈLE MANQUANT";
+                    this.currentPttAcknowledgementOnly = false;
                 }
             }
+            else
+            {
+                this.currentPttAcknowledgementOnly = false;
+            }
         });
+    }
+
+    private void AcknowledgementTimer_OnTick(object? sender, EventArgs e)
+    {
+        if (this.pttHeld || this.closing)
+        {
+            return;
+        }
+
+        var reminder = this.groundOperationsCoordinator.PollAcknowledgement(DateTimeOffset.Now);
+        if (reminder is null || string.IsNullOrWhiteSpace(reminder.SpokenText))
+        {
+            return;
+        }
+
+        this.ControllerResponseTextBox.Text = $"PHONIE : {reminder.SpokenText}";
+        this.diagnosticsService.WriteEvent("RADIO", $"Relance collationnement : {reminder.SpokenText}");
+        this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Relance collationnement : {reminder.SpokenText}");
+        this.UpdateGroundOperationsUi();
+        this.StartControllerSpeech(reminder.SpokenText, reminder.RequiresAcknowledgement);
     }
 
     private void AudioMeterTimer_OnTick(object? sender, EventArgs e)
@@ -1268,7 +1316,10 @@ public partial class MainWindow : Window
         this.GpuBenchmarkButton.ToolTip = "Mesure Small Vulkan, Turbo Vulkan et Vosk sur le dernier WAV : GPU, VRAM, RAM, CPU, froid et chaud.";
     }
 
-    private async Task TranscribeAndProcessAsync(string audioPath, bool fromMicrophone)
+    private async Task TranscribeAndProcessAsync(
+        string audioPath,
+        bool fromMicrophone,
+        bool acknowledgementOnly = false)
     {
         if (this.transcriptionInProgress || this.benchmarkInProgress)
         {
@@ -1303,7 +1354,20 @@ public partial class MainWindow : Window
         try
         {
             var result = await this.speechRecognitionService.TranscribeAsync(audioPath, this.transcriptionCancellation.Token);
-            this.ProcessPilotText(result.NormalizedText, fromMicrophone, result.ProcessingTime);
+            if (acknowledgementOnly)
+            {
+                this.PilotTranscriptTextBox.Text = result.NormalizedText;
+                this.ExchangeLatencyText.Text =
+                    $"{result.ProcessingTime.TotalSeconds:F1} S - COLLATIONNEMENT REÇU";
+                this.diagnosticsService.WriteEvent(
+                    "RADIO",
+                    $"Collationnement PTT accepté sans validation sémantique - transcription : {result.NormalizedText}");
+            }
+            else
+            {
+                this.ProcessPilotText(result.NormalizedText, fromMicrophone, result.ProcessingTime);
+            }
+
             this.diagnosticsService.WriteEvent(
                 "ASR",
                 $"{result.ModelName} - inférence {result.ProcessingTime.TotalSeconds:F2} s - chargement {result.ModelLoadTime.TotalSeconds:F2} s - total {result.EndToEndTime.TotalSeconds:F2} s - {result.Segments.Count} segment(s) - {result.NormalizedText}");
@@ -1395,7 +1459,7 @@ public partial class MainWindow : Window
 
         if (decision.Action != ControllerAction.Silent && !string.IsNullOrWhiteSpace(decision.SpokenText))
         {
-            this.StartControllerSpeech(decision.SpokenText);
+            this.StartControllerSpeech(decision.SpokenText, decision.RequiresAcknowledgement);
         }
     }
 
@@ -1452,8 +1516,14 @@ public partial class MainWindow : Window
         var state = this.groundOperationsCoordinator.GetUiState();
         this.GroundOperationsText.Text =
             $"SOL {state.SessionState.ToUpperInvariant()} - {state.Position} - piste {state.Runway} - " +
-            $"attente {state.HoldShort} - route {state.Route} - occupation {state.Occupancy}";
-        this.GroundRoutingDiagnosticTextBox.Text = state.Diagnostic;
+            $"attente {state.HoldShort} - route {state.Route} - occupation {state.Occupancy} - {state.AcknowledgementStatus}";
+        this.GroundRoutingDiagnosticTextBox.Text =
+            $"PROFIL : {state.ProfileStatus}{Environment.NewLine}" +
+            $"COLLATIONNEMENT : {state.AcknowledgementStatus}{Environment.NewLine}{Environment.NewLine}" +
+            state.Diagnostic;
+        this.latestGroundMap = state.Map;
+        this.GroundMapStatusText.Text = state.Map.Status.ToUpperInvariant();
+        this.RenderGroundMap(state.Map);
         this.SetForegroundResource(
             this.GroundOperationsText,
             state.Occupancy.StartsWith("INCONNUE", StringComparison.OrdinalIgnoreCase)
@@ -1463,13 +1533,306 @@ public partial class MainWindow : Window
                     : "MutedText");
     }
 
-    private void StartControllerSpeech(string text)
+
+    private async void RestartAsrButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (this.closing)
+        {
+            return;
+        }
+
+        if (this.speechProfileRestartRequired)
+        {
+            var definition = SpeechRecognitionProfiles.Get(this.selectedSpeechProfile);
+            this.AppendLog(
+                $"[{DateTime.Now:HH:mm:ss}] Redémarrage ASR impossible sans relancer PHONIE : " +
+                $"le passage vers {definition.ShortName} change le runtime CPU/Vulkan.");
+            this.WhisperStatusText.Text = "CHANGEMENT CPU/VULKAN - RELANCE DE PHONIE REQUISE";
+            this.SetForegroundResource(this.WhisperStatusText, "Warning");
+            return;
+        }
+
+        this.RestartAsrButton.IsEnabled = false;
+        try
+        {
+            this.transcriptionCancellation?.Cancel();
+            this.turboWarmupCancellation?.Cancel();
+            this.benchmarkCancellation?.Cancel();
+            await AwaitQuietlyAsync(this.turboWarmupTask);
+            await AwaitQuietlyAsync(this.benchmarkTask);
+
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(4);
+            while ((this.transcriptionInProgress || this.benchmarkInProgress)
+                && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(50);
+            }
+
+            if (this.transcriptionInProgress || this.benchmarkInProgress)
+            {
+                this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Redémarrage ASR reporté : worker encore actif.");
+                return;
+            }
+
+            this.speechRecognitionService.ReleaseAllModels();
+            _ = this.speechRecognitionService.SelectProfile(this.selectedSpeechProfile);
+            this.UpdateWhisperStatus(this.speechRecognitionService.GetSelectedStatus());
+            this.diagnosticsService.WriteEvent(
+                "ASR_RESTART",
+                $"Moteurs libérés et profil {SpeechRecognitionProfiles.Get(this.selectedSpeechProfile).ShortName} réinitialisé.");
+            this.AppendLog(
+                $"[{DateTime.Now:HH:mm:ss}] Moteur ASR redémarré : modèles libérés, " +
+                $"{SpeechRecognitionProfiles.Get(this.selectedSpeechProfile).ShortName} sera rechargé à la prochaine utilisation.");
+            this.ScheduleTurboWarmup("redémarrage ASR demandé");
+        }
+        catch (Exception exception)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Redémarrage ASR impossible : {CleanMessage(exception)}");
+        }
+        finally
+        {
+            this.RestartAsrButton.IsEnabled = true;
+        }
+    }
+
+    private async void RestartControllerVoiceButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (this.closing)
+        {
+            return;
+        }
+
+        this.RestartControllerVoiceButton.IsEnabled = false;
+        try
+        {
+            this.speechSynthesisCancellation?.Cancel();
+            await AwaitQuietlyAsync(this.controllerSpeechTask);
+            this.speechSynthesisCancellation?.Dispose();
+            this.speechSynthesisCancellation = null;
+            this.audioService.StopPlayback();
+
+            this.controllerSpeechService.LogMessage -= this.Service_OnLogMessage;
+            this.controllerSpeechService.Dispose();
+            this.controllerSpeechService = new ControllerSpeechService(this.audioService);
+            this.controllerSpeechService.LogMessage += this.Service_OnLogMessage;
+
+            this.diagnosticsService.WriteEvent("VOICE_RESTART", "Moteur de synthèse contrôleur réinitialisé.");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Moteur vocal contrôleur redémarré.");
+            this.EnsureAtisCacheWhenNeeded();
+        }
+        catch (Exception exception)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Redémarrage de la voix impossible : {CleanMessage(exception)}");
+        }
+        finally
+        {
+            this.RestartControllerVoiceButton.IsEnabled = true;
+        }
+    }
+
+    private void GroundMapCanvas_OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (this.latestGroundMap is not null)
+        {
+            this.RenderGroundMap(this.latestGroundMap);
+        }
+    }
+
+    private void RenderGroundMap(GroundMapSnapshot map)
+    {
+        if (this.GroundMapCanvas is null)
+        {
+            return;
+        }
+
+        this.GroundMapCanvas.Children.Clear();
+        var width = this.GroundMapCanvas.ActualWidth;
+        var height = this.GroundMapCanvas.ActualHeight;
+        if (width < 40 || height < 40 || map.Edges.Count == 0)
+        {
+            return;
+        }
+
+        var points = new List<(double X, double Z)>();
+        points.AddRange(map.Edges.SelectMany(edge => new[]
+        {
+            (edge.FromX, edge.FromZ),
+            (edge.ToX, edge.ToZ),
+        }));
+        points.AddRange(map.Nodes.Select(node => (node.X, node.Z)));
+        points.AddRange(map.Traffic.Select(traffic => (traffic.X, traffic.Z)));
+        if (map.AircraftX.HasValue && map.AircraftZ.HasValue)
+        {
+            points.Add((map.AircraftX.Value, map.AircraftZ.Value));
+        }
+
+        var minX = points.Min(point => point.X);
+        var maxX = points.Max(point => point.X);
+        var minZ = points.Min(point => point.Z);
+        var maxZ = points.Max(point => point.Z);
+        var spanX = Math.Max(1, maxX - minX);
+        var spanZ = Math.Max(1, maxZ - minZ);
+        const double padding = 14;
+        var scale = Math.Min(
+            Math.Max(1, width - (padding * 2)) / spanX,
+            Math.Max(1, height - (padding * 2)) / spanZ);
+
+        Point Project(double x, double z) => new(
+            padding + ((x - minX) * scale),
+            height - padding - ((z - minZ) * scale));
+
+        foreach (var edge in map.Edges
+            .OrderBy(edge => edge.IsRoute)
+            .ThenBy(edge => edge.IsOccupied))
+        {
+            var from = Project(edge.FromX, edge.FromZ);
+            var to = Project(edge.ToX, edge.ToZ);
+            var stroke = edge.IsOccupied
+                ? Brushes.IndianRed
+                : edge.IsRoute
+                    ? Brushes.Gold
+                    : edge.IsRunway
+                        ? Brushes.DimGray
+                        : Brushes.SlateGray;
+            var thickness = edge.IsOccupied
+                ? 5
+                : edge.IsRoute
+                    ? 4
+                    : edge.IsRunway
+                        ? 7
+                        : 1.4;
+            var line = new Line
+            {
+                X1 = from.X,
+                Y1 = from.Y,
+                X2 = to.X,
+                Y2 = to.Y,
+                Stroke = stroke,
+                StrokeThickness = thickness,
+                SnapsToDevicePixels = true,
+                ToolTip =
+                    $"Segment {edge.Id} - {edge.Kind} - {(string.IsNullOrWhiteSpace(edge.Name) ? "sans nom" : edge.Name)}" +
+                    $"{(edge.IsOccupied ? " - OCCUPÉ" : string.Empty)}" +
+                    $"{(edge.IsRoute ? " - ITINÉRAIRE" : string.Empty)}",
+            };
+            this.GroundMapCanvas.Children.Add(line);
+        }
+
+        foreach (var node in map.Nodes.Where(node =>
+            node.IsSelected
+            || node.IsOccupied
+            || node.Kind.Contains("HoldShort", StringComparison.OrdinalIgnoreCase)
+            || node.Kind.Contains("RunwayEntry", StringComparison.OrdinalIgnoreCase)))
+        {
+            var point = Project(node.X, node.Z);
+            var radius = node.IsSelected ? 6.5 : 4.5;
+            var fill = node.IsOccupied
+                ? Brushes.IndianRed
+                : node.IsSelected
+                    ? Brushes.LimeGreen
+                    : node.Kind.Contains("RunwayEntry", StringComparison.OrdinalIgnoreCase)
+                        ? Brushes.DeepSkyBlue
+                        : Brushes.DarkOrange;
+            var ellipse = new Ellipse
+            {
+                Width = radius * 2,
+                Height = radius * 2,
+                Fill = fill,
+                Stroke = Brushes.Black,
+                StrokeThickness = 1,
+                ToolTip =
+                    $"{node.Id} - {node.Kind} - {(string.IsNullOrWhiteSpace(node.Label) ? "sans nom" : node.Label)}" +
+                    $"{(node.IsSelected ? " - SÉLECTIONNÉ" : string.Empty)}",
+            };
+            Canvas.SetLeft(ellipse, point.X - radius);
+            Canvas.SetTop(ellipse, point.Y - radius);
+            this.GroundMapCanvas.Children.Add(ellipse);
+
+            if (!string.IsNullOrWhiteSpace(node.Label))
+            {
+                var label = new TextBlock
+                {
+                    Text = node.Label,
+                    Foreground = Brushes.White,
+                    Background = new SolidColorBrush(Color.FromArgb(150, 0, 0, 0)),
+                    FontSize = 9,
+                    Padding = new Thickness(2, 0, 2, 0),
+                    ToolTip = node.Id,
+                };
+                Canvas.SetLeft(label, point.X + 6);
+                Canvas.SetTop(label, point.Y - 11);
+                this.GroundMapCanvas.Children.Add(label);
+            }
+        }
+
+        foreach (var traffic in map.Traffic)
+        {
+            var point = Project(traffic.X, traffic.Z);
+            var marker = new Ellipse
+            {
+                Width = 8,
+                Height = 8,
+                Fill = traffic.Classification.Contains("IGNORED", StringComparison.OrdinalIgnoreCase)
+                    ? Brushes.LightCoral
+                    : Brushes.OrangeRed,
+                Stroke = Brushes.Black,
+                StrokeThickness = 1,
+                ToolTip =
+                    $"Objet {traffic.ObjectId} - {traffic.Callsign} - {traffic.Classification}",
+            };
+            Canvas.SetLeft(marker, point.X - 4);
+            Canvas.SetTop(marker, point.Y - 4);
+            this.GroundMapCanvas.Children.Add(marker);
+        }
+
+        if (map.AircraftX.HasValue && map.AircraftZ.HasValue)
+        {
+            var centre = Project(map.AircraftX.Value, map.AircraftZ.Value);
+            var heading = map.AircraftHeadingDegrees * Math.PI / 180.0;
+            Point Rotate(double localX, double localY)
+            {
+                var rotatedX = (localX * Math.Cos(heading)) - (localY * Math.Sin(heading));
+                var rotatedY = (localX * Math.Sin(heading)) + (localY * Math.Cos(heading));
+                return new Point(centre.X + rotatedX, centre.Y - rotatedY);
+            }
+
+            var aircraft = new Polygon
+            {
+                Points = new PointCollection
+                {
+                    Rotate(0, 10),
+                    Rotate(-6, -7),
+                    Rotate(0, -4),
+                    Rotate(6, -7),
+                },
+                Fill = Brushes.DodgerBlue,
+                Stroke = Brushes.White,
+                StrokeThickness = 1,
+                ToolTip = "Avion utilisateur",
+            };
+            this.GroundMapCanvas.Children.Add(aircraft);
+        }
+
+        var legend = new TextBlock
+        {
+            Text = "JAUNE route  |  VERT attente  |  ORANGE candidats  |  CYAN entrée piste  |  ROUGE occupation  |  BLEU avion",
+            Foreground = Brushes.White,
+            Background = new SolidColorBrush(Color.FromArgb(175, 0, 0, 0)),
+            FontSize = 8,
+            Padding = new Thickness(3, 1, 3, 1),
+        };
+        Canvas.SetLeft(legend, 5);
+        Canvas.SetTop(legend, 5);
+        this.GroundMapCanvas.Children.Add(legend);
+    }
+
+    private void StartControllerSpeech(string text, bool requiresAcknowledgement = false)
     {
         this.speechSynthesisCancellation?.Cancel();
         this.speechSynthesisCancellation?.Dispose();
         this.speechSynthesisCancellation = new CancellationTokenSource();
         var token = this.speechSynthesisCancellation.Token;
-        _ = Task.Run(async () =>
+        this.controllerSpeechTask = Task.Run(async () =>
         {
             try
             {
@@ -1478,6 +1841,14 @@ public partial class MainWindow : Window
                     this.currentOperationalFrequency.ServiceName,
                     this.settings.OutputDeviceId,
                     token).ConfigureAwait(false);
+                if (requiresAcknowledgement && !token.IsCancellationRequested)
+                {
+                    await this.Dispatcher.InvokeAsync(() =>
+                    {
+                        this.groundOperationsCoordinator.ArmAcknowledgement(DateTimeOffset.Now);
+                        this.UpdateGroundOperationsUi();
+                    });
+                }
             }
             catch (OperationCanceledException)
             {

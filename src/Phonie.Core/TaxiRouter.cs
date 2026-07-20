@@ -6,7 +6,15 @@ public static class TaxiRouter
         AirportGroundModel model,
         GroundLocation start,
         RunwayEnd runway,
-        GroundOccupancySnapshot occupancy)
+        GroundOccupancySnapshot occupancy) =>
+        RouteToNearestAvailableHoldShort(model, start, runway, occupancy, null);
+
+    public static TaxiRoute RouteToNearestAvailableHoldShort(
+        AirportGroundModel model,
+        GroundLocation start,
+        RunwayEnd runway,
+        GroundOccupancySnapshot occupancy,
+        AirportOperationalProfile? profile)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(start);
@@ -19,13 +27,19 @@ public static class TaxiRouter
             return Failure("Position de départ non raccordée à un nœud taxi.");
         }
 
-        var candidates = model.HoldShortPoints
+        var resolutions = OperationalPointResolver.Resolve(model, profile);
+        var allCandidates = model.HoldShortPoints
             .Where(item => item.AssociatedRunwayIndex == runway.RunwayIndex)
-            .Where(item => !string.IsNullOrWhiteSpace(item.Label))
             .Where(item => !occupancy.OccupiedNodeIds.Contains(item.NodeId))
+            .Select(item => new
+            {
+                Hold = item,
+                Operational = resolutions.GetValueOrDefault(item.NodeId),
+            })
+            .Where(item => item.Operational?.Role != OperationalPointRole.IntermediateHoldingPoint)
             .ToArray();
 
-        if (candidates.Length == 0)
+        if (allCandidates.Length == 0)
         {
             var runwayHolds = model.HoldShortPoints
                 .Where(item => item.AssociatedRunwayIndex == runway.RunwayIndex)
@@ -35,25 +49,33 @@ public static class TaxiRouter
                 return Failure($"Aucun point d'attente associé à la piste {runway.Designator}.");
             }
 
-            if (runwayHolds.All(item => string.IsNullOrWhiteSpace(item.Label)))
-            {
-                return Failure("Aucun point d'attente ne possède un nom radio fiable.");
-            }
-
-            return Failure("Tous les points d'attente nommés associés sont occupés.");
+            return Failure("Tous les points d'attente de départ sont occupés ou classés intermédiaires.");
         }
+
+        var preferred = allCandidates
+            .Where(item => item.Operational?.Role == OperationalPointRole.DepartureHoldingPoint)
+            .ToArray();
+        var candidates = preferred.Length > 0 ? preferred : allCandidates;
 
         TaxiRoute? best = null;
         foreach (var candidate in candidates)
         {
-            var route = FindRoute(model, startNodeId, candidate.NodeId, runway, candidate, occupancy);
+            var route = FindRoute(
+                model,
+                startNodeId,
+                candidate.Hold.NodeId,
+                runway,
+                candidate.Hold,
+                candidate.Operational,
+                occupancy,
+                profile);
             if (route.Success && (best is null || route.TotalDistanceMeters < best.TotalDistanceMeters))
             {
                 best = route;
             }
         }
 
-        return best ?? Failure("Aucun itinéraire accessible vers un point d'attente libre.");
+        return best ?? Failure("Aucun itinéraire accessible vers un point d'attente de départ libre.");
 
         TaxiRoute Failure(string reason) => new(
             false,
@@ -73,7 +95,9 @@ public static class TaxiRouter
         string targetNodeId,
         RunwayEnd runway,
         HoldShortPoint hold,
-        GroundOccupancySnapshot occupancy)
+        OperationalPointResolution? operationalPoint,
+        GroundOccupancySnapshot occupancy,
+        AirportOperationalProfile? profile)
     {
         var adjacency = new Dictionary<string, List<GroundEdge>>(StringComparer.Ordinal);
         foreach (var edge in model.Edges)
@@ -146,7 +170,8 @@ public static class TaxiRouter
                 Array.Empty<GroundEdge>(),
                 Array.Empty<string>(),
                 0,
-                0);
+                0,
+                operationalPoint);
         }
 
         var reversed = new List<GroundEdge>();
@@ -164,7 +189,8 @@ public static class TaxiRouter
                     Array.Empty<GroundEdge>(),
                     Array.Empty<string>(),
                     0,
-                    0);
+                    0,
+                    operationalPoint);
             }
 
             reversed.Add(edge);
@@ -173,21 +199,23 @@ public static class TaxiRouter
 
         reversed.Reverse();
         var names = CollapseTaxiwayNames(reversed);
+        var radioLabel = operationalPoint?.RadioLabel ?? hold.Label;
         if (names.Count > 0
-            && !string.IsNullOrWhiteSpace(hold.Label)
-            && string.Equals(names[^1], hold.Label, StringComparison.OrdinalIgnoreCase))
+            && !string.IsNullOrWhiteSpace(radioLabel)
+            && string.Equals(names[^1], radioLabel, StringComparison.OrdinalIgnoreCase))
         {
-            // Le dernier embranchement nommé comme le point d'attente est annoncé
-            // dans « point d'attente D1 » et n'est pas répété dans « via Delta ».
             names = names.Take(names.Count - 1).ToArray();
         }
 
         var total = reversed.Sum(item => item.LengthMeters);
         var confidence = Math.Clamp(
             Math.Min(1.0, hold.DistanceToRunwayMeters <= 100 ? 0.95 : 0.8)
-            * (occupancy.Knowledge == OccupancyKnowledge.Available ? 1.0 : 0.75),
+            * (occupancy.Knowledge == OccupancyKnowledge.Available ? 1.0 : 0.75)
+            * ((operationalPoint?.Confidence ?? OperationalLabelConfidence.Low) >= OperationalLabelConfidence.Medium ? 1.0 : 0.8),
             0,
             1);
+        var runwayEntry = OperationalPointResolver.ResolveRunwayEntry(model, profile, operationalPoint, runway);
+        var includeVia = profile?.SpeakViaTaxiways ?? names.Count is > 0 and <= 2;
 
         return new TaxiRoute(
             true,
@@ -198,7 +226,10 @@ public static class TaxiRouter
             reversed,
             names,
             total,
-            confidence);
+            confidence,
+            operationalPoint,
+            runwayEntry,
+            includeVia);
 
         void Add(string nodeId, GroundEdge edge)
         {
@@ -216,7 +247,8 @@ public static class TaxiRouter
         AirportGroundModel model,
         GroundLocation start,
         RunwayEnd runway,
-        GroundOccupancySnapshot occupancy)
+        GroundOccupancySnapshot occupancy,
+        AirportOperationalProfile? profile = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(start);
@@ -229,11 +261,13 @@ public static class TaxiRouter
             return "Départ : aucun nœud taxi raccordé à la position avion.";
         }
 
+        var resolutions = OperationalPointResolver.Resolve(model, profile);
         var lines = new List<string>
         {
             $"Départ : {startNodeId} - {start.Description}",
             $"Piste analysée : {runway.Designator}",
             $"Occupation appliquée : {occupancy.OccupiedNodeIds.Count} nœud(s), {occupancy.OccupiedEdgeIds.Count} segment(s).",
+            OperationalPointResolver.BuildDiagnostic(model, profile, resolutions),
         };
 
         var emptyOccupancy = new GroundOccupancySnapshot(
@@ -244,7 +278,7 @@ public static class TaxiRouter
             "Diagnostic sans occupation.");
         var candidates = model.HoldShortPoints
             .Where(item => item.AssociatedRunwayIndex == runway.RunwayIndex)
-            .OrderBy(item => item.Label, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(item => item.NodeId, StringComparer.Ordinal)
             .ToArray();
 
         if (candidates.Length == 0)
@@ -255,32 +289,38 @@ public static class TaxiRouter
 
         foreach (var candidate in candidates)
         {
-            if (string.IsNullOrWhiteSpace(candidate.Label))
+            var resolution = resolutions.GetValueOrDefault(candidate.NodeId);
+            var displayLabel = resolution?.HasReliableRadioLabel == true
+                ? resolution.RadioLabel
+                : "point générique";
+            if (resolution?.Role == OperationalPointRole.IntermediateHoldingPoint)
             {
-                lines.Add($"Candidat {candidate.NodeId} : rejeté, nom radio absent.");
+                lines.Add($"Candidat {displayLabel} ({candidate.NodeId}) : exclu, point intermédiaire.");
                 continue;
             }
 
             if (occupancy.OccupiedNodeIds.Contains(candidate.NodeId))
             {
-                lines.Add($"Candidat {candidate.Label} ({candidate.NodeId}) : rejeté, point d'attente occupé.");
+                lines.Add($"Candidat {displayLabel} ({candidate.NodeId}) : rejeté, point d'attente occupé.");
                 continue;
             }
 
-            var route = FindRoute(model, startNodeId, candidate.NodeId, runway, candidate, occupancy);
+            var route = FindRoute(model, startNodeId, candidate.NodeId, runway, candidate, resolution, occupancy, profile);
             if (route.Success)
             {
                 var via = route.TaxiwayNames.Count == 0
                     ? "sans nom de voie"
                     : string.Join(" - ", route.TaxiwayNames);
-                lines.Add($"Candidat {candidate.Label} ({candidate.NodeId}) : ACCESSIBLE, {route.TotalDistanceMeters:F0} m, via {via}.");
+                lines.Add(
+                    $"Candidat {displayLabel} ({candidate.NodeId}) : ACCESSIBLE, {route.TotalDistanceMeters:F0} m, via {via}, " +
+                    $"rôle {resolution?.Role}, confiance {resolution?.Confidence}.");
                 continue;
             }
 
-            var baseline = FindRoute(model, startNodeId, candidate.NodeId, runway, candidate, emptyOccupancy);
+            var baseline = FindRoute(model, startNodeId, candidate.NodeId, runway, candidate, resolution, emptyOccupancy, profile);
             if (!baseline.Success)
             {
-                lines.Add($"Candidat {candidate.Label} ({candidate.NodeId}) : réseau de base déconnecté.");
+                lines.Add($"Candidat {displayLabel} ({candidate.NodeId}) : réseau de base déconnecté.");
                 continue;
             }
 
@@ -309,8 +349,8 @@ public static class TaxiRouter
 
             lines.Add(
                 blockers.Count == 0
-                    ? $"Candidat {candidate.Label} ({candidate.NodeId}) : inaccessible malgré un chemin de base ; diagnostic approfondi requis."
-                    : $"Candidat {candidate.Label} ({candidate.NodeId}) : chemin de base {baseline.TotalDistanceMeters:F0} m bloqué par {string.Join(" et ", blockers)}.");
+                    ? $"Candidat {displayLabel} ({candidate.NodeId}) : inaccessible malgré un chemin de base ; diagnostic approfondi requis."
+                    : $"Candidat {displayLabel} ({candidate.NodeId}) : chemin de base {baseline.TotalDistanceMeters:F0} m bloqué par {string.Join(" et ", blockers)}.");
         }
 
         return string.Join(Environment.NewLine, lines);
@@ -328,7 +368,9 @@ public static class TaxiRouter
             var edge = model.Edges.FirstOrDefault(item => item.SourceIndex == location.EdgeId.Value);
             if (edge is not null)
             {
-                return edge.FromNodeId;
+                var from = model.Nodes[edge.FromNodeId];
+                var to = model.Nodes[edge.ToNodeId];
+                return location.DistanceMeters <= edge.LengthMeters / 2.0 ? from.Id : to.Id;
             }
         }
 

@@ -1,0 +1,44 @@
+{
+  "icao": "LFBI",
+  "revision": "2026-02-19",
+  "source": "VAC LFBI AD 2 LFBI APDC 01 et phraséologie locale Aéroclub du Poitou",
+  "preferredRunway": "21",
+  "calmWindMaxKnots": 5.0,
+  "speakViaTaxiways": false,
+  "includeRunwayInTaxiClearance": false,
+  "points": [
+    {
+      "id": "LFBI-A3",
+      "label": "A3",
+      "role": "IntermediateHoldingPoint",
+      "latitude": 46.5857814630,
+      "longitude": 0.3088165993,
+      "runways": ["03", "21"],
+      "matchRadiusMeters": 30.0,
+      "departureHandling": "ControllerChoice",
+      "runwayEntryId": null
+    },
+    {
+      "id": "LFBI-A2",
+      "label": "A2",
+      "role": "DepartureHoldingPoint",
+      "latitude": 46.5863925087,
+      "longitude": 0.3089542280,
+      "runways": ["03", "21"],
+      "matchRadiusMeters": 30.0,
+      "departureHandling": "IntersectionPreferred",
+      "runwayEntryId": "LFBI-A"
+    },
+    {
+      "id": "LFBI-A",
+      "label": "A",
+      "role": "RunwayEntry",
+      "latitude": 46.5871788329,
+      "longitude": 0.3072940162,
+      "runways": ["03", "21"],
+      "matchRadiusMeters": 45.0,
+      "departureHandling": "ControllerChoice",
+      "runwayEntryId": null
+    }
+  ]
+}

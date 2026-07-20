@@ -10,7 +10,9 @@ public sealed class GroundOperationsCoordinator
     private const double OwnAircraftFallbackRadiusMeters = 20.0;
     private readonly object sync = new();
     private readonly GroundOperationsEngine engine = new();
+    private readonly AirportOperationalProfileService profileService = new();
     private AirportGroundModel? airport;
+    private AirportOperationalProfile? profile;
     private AircraftGroundObservation? aircraft;
     private GroundTrafficSnapshot traffic = new(
         DateTimeOffset.MinValue,
@@ -109,12 +111,13 @@ public sealed class GroundOperationsCoordinator
                 report.TaxiNames.Select(item => new FacilityTaxiName(item.Index, item.Name)).ToArray());
 
             this.airport = AirportGroundModelBuilder.Build(snapshot);
+            this.profile = this.profileService.Load(this.airport.Icao);
             this.RecomputeDerivedStateLocked();
             this.UpdateTrafficLocked(this.traffic, this.ownCallsign);
             message =
                 $"Moteur sol {this.airport.Icao} : {this.airport.Nodes.Count} nœud(s), " +
                 $"{this.airport.Edges.Count} segment(s), {this.airport.HoldShortPoints.Count} point(s) d'attente, " +
-                $"{this.airport.Warnings.Count} avertissement(s).";
+                $"profil opérationnel {(this.profile is null ? "absent" : $"{this.profile.Revision} chargé")}.";
         }
 
         this.PublishLog(message);
@@ -148,20 +151,7 @@ public sealed class GroundOperationsCoordinator
         ControllerDecision decision;
         lock (this.sync)
         {
-            var radio = new RadioContext(
-                frequency.Kind switch
-                {
-                    OperationalRadioKind.Controlled => ServiceCapability.Controlled,
-                    OperationalRadioKind.InformationService => ServiceCapability.InformationOnly,
-                    OperationalRadioKind.AutomaticBroadcast => ServiceCapability.AutomaticBroadcast,
-                    OperationalRadioKind.RecordedMessage => ServiceCapability.RecordedMessage,
-                    OperationalRadioKind.SelfInformation => ServiceCapability.SelfInformation,
-                    _ => ServiceCapability.Unknown,
-                },
-                frequency.ServiceName,
-                frequency.DialogueAllowed,
-                frequency.Source);
-
+            var radio = BuildRadioContext(frequency);
             if (snapshot is not null)
             {
                 this.UpdateSnapshotLocked(snapshot);
@@ -175,11 +165,49 @@ public sealed class GroundOperationsCoordinator
                 this.aircraft,
                 this.occupancy,
                 snapshot?.WindDirectionTrueDegrees ?? double.NaN,
-                snapshot?.WindVelocityKnots ?? double.NaN);
+                snapshot?.WindVelocityKnots ?? double.NaN,
+                this.profile,
+                snapshot?.QnhHpa ?? double.NaN);
             this.lastDecision = decision;
         }
 
         this.SaveDecision(decision);
+        return decision;
+    }
+
+    public void ArmAcknowledgement(DateTimeOffset now)
+    {
+        lock (this.sync)
+        {
+            this.engine.ArmPilotAcknowledgement(now);
+        }
+    }
+
+    public bool AcknowledgePilotPtt()
+    {
+        lock (this.sync)
+        {
+            return this.engine.AcknowledgePilotPtt();
+        }
+    }
+
+    public ControllerDecision? PollAcknowledgement(DateTimeOffset now)
+    {
+        ControllerDecision? decision;
+        lock (this.sync)
+        {
+            decision = this.engine.PollAcknowledgement(now);
+            if (decision is not null)
+            {
+                this.lastDecision = decision;
+            }
+        }
+
+        if (decision is not null)
+        {
+            this.SaveDecision(decision);
+        }
+
         return decision;
     }
 
@@ -197,6 +225,18 @@ public sealed class GroundOperationsCoordinator
             var occupancyText = this.occupancy.Knowledge == OccupancyKnowledge.Available
                 ? $"{this.occupancy.OccupiedNodeIds.Count} nœud(s), {this.occupancy.OccupiedEdgeIds.Count} segment(s) occupé(s)"
                 : "INCONNUE - aucune clairance de roulage";
+            var operationalPoint = this.engine.Session.AssignedOperationalPoint;
+            var holdText = operationalPoint?.HasReliableRadioLabel == true
+                ? operationalPoint.RadioLabel
+                : this.engine.Session.AssignedHoldShort is null
+                    ? "-"
+                    : "générique";
+            var profileStatus = this.profile is null
+                ? "Aucun profil - noms Facilities contrôlés ou formulation générique"
+                : $"{this.profile.Icao} {this.profile.Revision} - {this.profile.Source}";
+            var acknowledgementStatus = this.engine.Session.AwaitingPilotAcknowledgement
+                ? $"PTT attendu - relance {this.engine.Session.AcknowledgementReminderCount}"
+                : "Aucun collationnement en attente";
 
             return new GroundOperationsUiState(
                 this.airport?.Icao ?? "-",
@@ -208,14 +248,17 @@ public sealed class GroundOperationsCoordinator
                 this.location?.Description ?? "Position en attente",
                 this.engine.Session.State.ToString(),
                 this.runway.RunwayEnd?.Designator ?? "-",
-                this.engine.Session.AssignedHoldShort?.Label ?? "-",
+                holdText,
                 routeText,
                 occupancyText,
                 this.lastDecision?.Confidence ?? this.location?.Confidence ?? 0,
                 this.lastDecision is null
                     ? "Aucune décision"
                     : $"{this.lastDecision.ReasonCode} - {this.lastDecision.SystemMessage}".TrimEnd(' ', '-'),
-                this.BuildGroundDiagnosticLocked());
+                this.BuildGroundDiagnosticLocked(),
+                profileStatus,
+                acknowledgementStatus,
+                this.BuildMapLocked());
         }
     }
 
@@ -234,7 +277,7 @@ public sealed class GroundOperationsCoordinator
         this.ownCallsign = CallsignFormatter.Normalize(snapshot.AircraftAtcId);
         this.RecomputeDerivedStateLocked(snapshot.WindDirectionTrueDegrees, snapshot.WindVelocityKnots);
         this.UpdateTrafficLocked(this.traffic, this.ownCallsign);
-        this.engine.Observe(this.airport, this.aircraft);
+        this.engine.Observe(this.airport, this.aircraft, this.profile);
     }
 
     private void UpdateTrafficLocked(GroundTrafficSnapshot snapshot, string ownCallsign)
@@ -277,7 +320,6 @@ public sealed class GroundOperationsCoordinator
 
     private bool IsOwnAircraft(GroundTrafficContactData contact, string normalizedOwn)
     {
-        // Valeur officielle SimConnect pour l'objet utilisateur.
         if (contact.ObjectId == 0)
         {
             return true;
@@ -306,9 +348,6 @@ public sealed class GroundOperationsCoordinator
             return false;
         }
 
-        // Secours pour les paquets dont l'ATC ID est vide ou transitoirement
-        // différent. La vitesse proche évite d'exclure arbitrairement un trafic
-        // réellement voisin sur l'aire de stationnement.
         var ownSpeed = this.aircraft?.GroundSpeedKnots ?? double.NaN;
         return !double.IsFinite(ownSpeed)
             || Math.Abs(ownSpeed - contact.GroundSpeedKnots) <= 2.0;
@@ -328,7 +367,7 @@ public sealed class GroundOperationsCoordinator
 
         if (double.IsFinite(windDirection) && double.IsFinite(windSpeed))
         {
-            this.runway = RunwaySelector.Select(this.airport, windDirection, windSpeed);
+            this.runway = RunwaySelector.Select(this.airport, windDirection, windSpeed, this.profile);
         }
     }
 
@@ -336,8 +375,10 @@ public sealed class GroundOperationsCoordinator
     {
         var builder = new StringBuilder();
         builder.AppendLine($"Aérodrome : {this.airport?.Icao ?? "-"}");
+        builder.AppendLine($"Profil : {(this.profile is null ? "absent" : $"{this.profile.Revision} - {this.profile.Source}")}");
         builder.AppendLine($"Avion : {this.location?.Description ?? "position inconnue"} - nœud {this.location?.NodeId ?? "-"} - segment {this.location?.EdgeId?.ToString() ?? "-"}");
         builder.AppendLine($"Piste : {this.runway.RunwayEnd?.Designator ?? "-"} - {this.runway.Reason}");
+        builder.AppendLine($"Session : {this.engine.Session.State} - {BuildAcknowledgementStatus()}");
         builder.AppendLine($"Trafic brut : {this.traffic.Status}");
         builder.AppendLine($"Occupation retenue : {this.occupancy.OccupiedNodeIds.Count} nœud(s), {this.occupancy.OccupiedEdgeIds.Count} segment(s) - {this.occupancy.Source}");
 
@@ -373,7 +414,12 @@ public sealed class GroundOperationsCoordinator
             && this.runway.RunwayEnd is not null)
         {
             builder.AppendLine("Itinéraires candidats :");
-            builder.AppendLine(TaxiRouter.BuildDiagnostic(this.airport, this.location, this.runway.RunwayEnd, this.occupancy));
+            builder.AppendLine(TaxiRouter.BuildDiagnostic(
+                this.airport,
+                this.location,
+                this.runway.RunwayEnd,
+                this.occupancy,
+                this.profile));
         }
         else
         {
@@ -387,6 +433,113 @@ public sealed class GroundOperationsCoordinator
 
         return builder.ToString().TrimEnd();
     }
+
+    private GroundMapSnapshot BuildMapLocked()
+    {
+        if (this.airport is null)
+        {
+            return new GroundMapSnapshot(
+                "-",
+                Array.Empty<GroundMapNodeData>(),
+                Array.Empty<GroundMapEdgeData>(),
+                Array.Empty<GroundMapTrafficData>(),
+                null,
+                null,
+                0,
+                "Graphe en attente.");
+        }
+
+        var routeEdgeIds = this.engine.Session.AssignedTaxiRoute?.Edges
+            .Select(item => item.SourceIndex)
+            .ToHashSet() ?? new HashSet<uint>();
+        var selectedNodeId = this.engine.Session.AssignedHoldShort?.NodeId;
+        var selectedRunwayEntry = this.engine.Session.AssignedRunwayEntry;
+        var resolutions = OperationalPointResolver.Resolve(this.airport, this.profile);
+        var nodes = this.airport.Nodes.Values.Select(item =>
+        {
+            var resolution = resolutions.GetValueOrDefault(item.Id);
+            var isRunwayEntry = selectedRunwayEntry is not null
+                && string.Equals(item.Id, selectedRunwayEntry.NodeId, StringComparison.Ordinal);
+            var label = isRunwayEntry && selectedRunwayEntry?.HasReliableRadioLabel == true
+                ? selectedRunwayEntry.RadioLabel
+                : resolution?.HasReliableRadioLabel == true
+                    ? resolution.RadioLabel
+                    : item.Label;
+            return new GroundMapNodeData(
+                item.Id,
+                item.X,
+                item.Z,
+                isRunwayEntry ? "RunwayEntry" : item.Kind.ToString(),
+                label,
+                string.Equals(item.Id, selectedNodeId, StringComparison.Ordinal),
+                this.occupancy.OccupiedNodeIds.Contains(item.Id),
+                string.Equals(item.Id, this.location?.NodeId, StringComparison.Ordinal));
+        }).ToArray();
+        var edges = this.airport.Edges.Select(item =>
+        {
+            var from = this.airport.Nodes[item.FromNodeId];
+            var to = this.airport.Nodes[item.ToNodeId];
+            return new GroundMapEdgeData(
+                item.SourceIndex,
+                from.X,
+                from.Z,
+                to.X,
+                to.Z,
+                item.Kind.ToString(),
+                item.TaxiwayName,
+                routeEdgeIds.Contains(item.SourceIndex),
+                this.occupancy.OccupiedEdgeIds.Contains(item.SourceIndex),
+                item.IsRunway);
+        }).ToArray();
+        var contactsById = this.traffic.Contacts
+            .GroupBy(item => item.ObjectId)
+            .ToDictionary(group => group.Key, group => group.Last());
+        var traffic = this.occupancyDiagnostics
+            .Where(item => contactsById.ContainsKey(item.ObjectId))
+            .Select(item =>
+            {
+                var contact = contactsById[item.ObjectId];
+                var (x, z) = Geometry.ProjectLocal(
+                    this.airport.Latitude,
+                    this.airport.Longitude,
+                    contact.Latitude,
+                    contact.Longitude);
+                return new GroundMapTrafficData(
+                    item.ObjectId,
+                    contact.Callsign,
+                    x,
+                    z,
+                    item.Classification);
+            })
+            .ToArray();
+        double? aircraftX = null;
+        double? aircraftZ = null;
+        if (this.aircraft is not null)
+        {
+            var projected = Geometry.ProjectLocal(
+                this.airport.Latitude,
+                this.airport.Longitude,
+                this.aircraft.Latitude,
+                this.aircraft.Longitude);
+            aircraftX = projected.X;
+            aircraftZ = projected.Z;
+        }
+
+        return new GroundMapSnapshot(
+            this.airport.Icao,
+            nodes,
+            edges,
+            traffic,
+            aircraftX,
+            aircraftZ,
+            this.aircraft?.HeadingDegrees ?? 0,
+            $"{edges.Length} segments - route {routeEdgeIds.Count} - trafic {traffic.Length}");
+    }
+
+    private string BuildAcknowledgementStatus() =>
+        this.engine.Session.AwaitingPilotAcknowledgement
+            ? $"collationnement PTT attendu, relance {this.engine.Session.AcknowledgementReminderCount}"
+            : "aucun collationnement en attente";
 
     private void SaveDecision(ControllerDecision decision)
     {
@@ -420,8 +573,13 @@ public sealed class GroundOperationsCoordinator
                 decision.FullCallsign,
                 decision.ShortCallsign,
                 decision.Confidence,
+                decision.RequiresAcknowledgement,
                 Runway = decision.TaxiRoute?.Runway?.Designator,
-                HoldShort = decision.TaxiRoute?.HoldShort?.Label,
+                HoldShortFacilities = decision.TaxiRoute?.HoldShort?.Label,
+                HoldShortOperational = decision.TaxiRoute?.OperationalPoint?.RadioLabel,
+                HoldShortRole = decision.TaxiRoute?.OperationalPoint?.Role.ToString(),
+                HoldShortSource = decision.TaxiRoute?.OperationalPoint?.Source,
+                RunwayEntry = decision.TaxiRoute?.RunwayEntry?.RadioLabel,
                 Taxiways = decision.TaxiRoute?.TaxiwayNames,
                 DistanceMeters = decision.TaxiRoute?.TotalDistanceMeters,
                 PositionKind = location?.Kind.ToString(),
@@ -435,6 +593,7 @@ public sealed class GroundOperationsCoordinator
                 OccupiedEdges = occupancy.OccupiedEdgeIds.OrderBy(item => item).ToArray(),
                 OccupancySource = occupancy.Source,
                 TrafficDiagnostics = trafficDiagnostics,
+                Profile = this.profile,
                 RoutingDiagnostic = routingDiagnostic,
             });
             File.AppendAllText(path, line + Environment.NewLine);
@@ -444,6 +603,21 @@ public sealed class GroundOperationsCoordinator
             this.PublishLog($"Journal moteur sol impossible : {CleanMessage(exception)}");
         }
     }
+
+    private static RadioContext BuildRadioContext(OperationalFrequency frequency) =>
+        new(
+            frequency.Kind switch
+            {
+                OperationalRadioKind.Controlled => ServiceCapability.Controlled,
+                OperationalRadioKind.InformationService => ServiceCapability.InformationOnly,
+                OperationalRadioKind.AutomaticBroadcast => ServiceCapability.AutomaticBroadcast,
+                OperationalRadioKind.RecordedMessage => ServiceCapability.RecordedMessage,
+                OperationalRadioKind.SelfInformation => ServiceCapability.SelfInformation,
+                _ => ServiceCapability.Unknown,
+            },
+            frequency.ServiceName,
+            frequency.DialogueAllowed,
+            frequency.Source);
 
     private void PublishLog(string message) => this.LogMessage?.Invoke(this, message);
 

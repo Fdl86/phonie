@@ -7,6 +7,11 @@ var tests = new List<(string Name, Action Test)>
     ("capture LFBI MSFS 2024 exploitable", TestLfbiMsfs2024Fixture),
     ("tous parkings LFBI reliés à une attente", TestLfbiAllParkingsReachHold),
     ("capture LFBI MSFS 2020 normalisée", TestLfbiMsfs2020Fixture),
+    ("profil LFBI résout A3 intermédiaire et A2 départ", TestLfbiOperationalProfile),
+    ("phraséologie LFBI concise vers Alpha 2", TestLfbiConciseTaxiPhraseology),
+    ("départ intersection LFBI depuis Alpha 2", TestLfbiIntersectionDeparture),
+    ("AFIS informe sans clairance de contrôle", TestAfisInformationOnly),
+    ("collationnement PTT et relance", TestAcknowledgementLifecycle),
     ("chemin parking vers attente", TestParkingToHoldRoute),
     ("attente libre la plus proche", TestNearestAvailableHold),
     ("attente occupée exclue", TestOccupiedHoldExcluded),
@@ -17,6 +22,9 @@ var tests = new List<(string Name, Action Test)>
     ("trafic immobile sur taxiway reste bloquant", TestStationaryTrafficOnTaxiwayRemainsBlocking),
     ("demande roulage reconnue", () => Assert(PilotIntentParser.Parse("demande roulage") == PilotIntent.TaxiRequest)),
     ("prêt au départ reconnu au point d'attente", () => Assert(PilotIntentParser.Parse("Fox Novembre Yankee prêt au départ") == PilotIntent.ReadyAtHoldShort)),
+    ("A2 prêt depuis intersection reconnu", () => Assert(PilotIntentParser.Parse("Fox Novembre Yankee A2 prêt pour un départ depuis l'intersection") == PilotIntent.ReadyForIntersectionDeparture)),
+    ("prêt en point alphanumérique générique reconnu", () => Assert(PilotIntentParser.ParseDetailed("Fox Novembre Yankee prêt en E4").ReportedPoint == "E4")),
+    ("lettre d'indicatif non prise pour un point", () => Assert(PilotIntentParser.ParseDetailed("Fox Alpha Bravo Charlie Delta prêt au départ").ReportedPoint is null)),
     ("alignement et décollage distinct", () => Assert(PilotIntentParser.Parse("demande alignement et décollage") == PilotIntent.LineUpAndTakeoffRequest)),
     ("décollage parking refusé", TestTakeoffFromParkingRefused),
     ("indicatif complet premier contact", TestFullCallsignInitialContact),
@@ -92,6 +100,160 @@ static void TestLfbiAllParkingsReachHold()
             AvailableOccupancy());
         Assert(route.Success, $"Parking P:{parkingIndex} - {route.FailureReason}");
     }
+}
+
+
+static void TestLfbiOperationalProfile()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var profile = BuildLfbiProfile();
+    var runway21 = model.RunwayEnds.Single(item => item.Designator == "21");
+    var route = TaxiRouter.RouteToNearestAvailableHoldShort(
+        model,
+        new GroundLocation(GroundPositionKind.Parking, "P:12", null, 0, 1, "Parking S6"),
+        runway21,
+        AvailableOccupancy(),
+        profile);
+
+    Assert(route.Success, route.FailureReason);
+    Assert(route.HoldShort?.NodeId == "T:17", $"attente={route.HoldShort?.NodeId}");
+    Assert(route.OperationalPoint?.RadioLabel == "A2", $"radio={route.OperationalPoint?.RadioLabel}");
+    Assert(route.OperationalPoint?.Role == OperationalPointRole.DepartureHoldingPoint);
+    Assert(route.RunwayEntry?.RadioLabel == "A", $"entrée={route.RunwayEntry?.RadioLabel}");
+    Assert(!route.IncludeViaInSpeech);
+    var resolutions = OperationalPointResolver.Resolve(model, profile);
+    Assert(resolutions["T:99"].Role == OperationalPointRole.IntermediateHoldingPoint);
+    Assert(resolutions["T:99"].RadioLabel == "A3");
+}
+
+static void TestLfbiConciseTaxiPhraseology()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var profile = BuildLfbiProfile();
+    var engine = new GroundOperationsEngine();
+    _ = engine.Process(
+        "Poitiers Tour bonjour au parking",
+        "F-HNNY",
+        ControlledRadio(),
+        model,
+        ObservationAtNode(model, "P:12"),
+        AvailableOccupancy(),
+        210,
+        10,
+        profile,
+        1015);
+    var decision = engine.Process(
+        "prêt au roulage",
+        "F-HNNY",
+        ControlledRadio(),
+        model,
+        ObservationAtNode(model, "P:12"),
+        AvailableOccupancy(),
+        210,
+        10,
+        profile,
+        1015);
+
+    Assert(decision.Action == ControllerAction.Speak, decision.SystemMessage);
+    Assert(decision.SpokenText.Contains("point d'attente Alpha 2", StringComparison.Ordinal), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("via ", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("Delta", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(decision.RequiresAcknowledgement);
+}
+
+static void TestLfbiIntersectionDeparture()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var profile = BuildLfbiProfile();
+    var engine = new GroundOperationsEngine();
+    _ = engine.Process(
+        "Poitiers Tour bonjour au parking",
+        "F-HNNY",
+        ControlledRadio(),
+        model,
+        ObservationAtNode(model, "P:12"),
+        AvailableOccupancy(),
+        210,
+        10,
+        profile,
+        1015);
+    _ = engine.Process(
+        "prêt au roulage",
+        "F-HNNY",
+        ControlledRadio(),
+        model,
+        ObservationAtNode(model, "P:12"),
+        AvailableOccupancy(),
+        210,
+        10,
+        profile,
+        1015);
+    var decision = engine.Process(
+        "Fox Novembre Yankee prêt en Alpha 2",
+        "F-HNNY",
+        ControlledRadio(),
+        model,
+        ObservationAtNode(model, "T:17"),
+        AvailableOccupancy(),
+        210,
+        10,
+        profile,
+        1015);
+
+    Assert(decision.Action == ControllerAction.Speak, decision.SystemMessage);
+    Assert(decision.ReasonCode == "INTERSECTION_TAKEOFF_CLEARED", decision.ReasonCode);
+    Assert(decision.SpokenText.Contains("intersection Alpha", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.SpokenText.Contains("autorisé décollage", StringComparison.Ordinal), decision.SpokenText);
+}
+
+static void TestAfisInformationOnly()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var profile = BuildLfbiProfile();
+    var decision = new GroundOperationsEngine().Process(
+        "prêt au roulage",
+        "F-HNNY",
+        new RadioContext(ServiceCapability.InformationOnly, "Terrain AFIS", true, "test"),
+        model,
+        ObservationAtNode(model, "P:12"),
+        AvailableOccupancy(),
+        210,
+        10,
+        profile,
+        1015);
+
+    Assert(decision.Action == ControllerAction.Speak, decision.SystemMessage);
+    Assert(decision.ReasonCode == "AFIS_TAXI_INFORMATION");
+    Assert(!decision.SpokenText.Contains("roulez", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("autorisé", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(decision.SpokenText.Contains("point d'attente Alpha 2", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.RequiresAcknowledgement);
+}
+
+static void TestAcknowledgementLifecycle()
+{
+    var engine = new GroundOperationsEngine();
+    var decision = engine.Process(
+        "Poitiers Tour bonjour au parking",
+        "F-HNNY",
+        ControlledRadio(),
+        BuildAirport(),
+        ParkingObservation(),
+        AvailableOccupancy(),
+        210,
+        10);
+    Assert(decision.RequiresAcknowledgement);
+
+    var now = DateTimeOffset.UtcNow;
+    engine.ArmPilotAcknowledgement(now, TimeSpan.FromSeconds(1));
+    Assert(engine.Session.AwaitingPilotAcknowledgement);
+    Assert(engine.PollAcknowledgement(now + TimeSpan.FromMilliseconds(500)) is null);
+    var reminder = engine.PollAcknowledgement(now + TimeSpan.FromSeconds(2));
+    Assert(reminder is not null);
+    Assert(reminder.ReasonCode == "ACKNOWLEDGEMENT_REMINDER");
+    Assert(!reminder.RequiresAcknowledgement, "La relance ne doit pas réarmer et remettre le compteur à zéro.");
+    Assert(engine.AcknowledgePilotPtt());
+    Assert(!engine.Session.AwaitingPilotAcknowledgement);
 }
 
 static void TestLfbiMsfs2020Fixture()
@@ -450,6 +612,65 @@ static void TestNonRunwayGarbageIgnored()
     var model = AirportGroundModelBuilder.Build(snapshot with { TaxiPaths = paths });
     Assert(model.Edges.Where(edge => edge.Kind == TaxiPathKind.Taxi).All(edge => edge.RunwayNumber is null));
     Assert(model.Edges.Where(edge => edge.Kind == TaxiPathKind.Runway).All(edge => edge.RunwayNumber == 21));
+}
+
+
+static AirportOperationalProfile BuildLfbiProfile() => new(
+    "LFBI",
+    "2026-02-19",
+    "VAC LFBI et phraséologie locale",
+    "21",
+    5,
+    false,
+    false,
+    new[]
+    {
+        new OperationalPointDefinition(
+            "LFBI-A3",
+            "A3",
+            OperationalPointRole.IntermediateHoldingPoint,
+            46.5857814630,
+            0.3088165993,
+            new[] { "03", "21" },
+            30),
+        new OperationalPointDefinition(
+            "LFBI-A2",
+            "A2",
+            OperationalPointRole.DepartureHoldingPoint,
+            46.5863925087,
+            0.3089542280,
+            new[] { "03", "21" },
+            30,
+            DepartureHandling.IntersectionPreferred,
+            "LFBI-A"),
+        new OperationalPointDefinition(
+            "LFBI-A",
+            "A",
+            OperationalPointRole.RunwayEntry,
+            46.5871788329,
+            0.3072940162,
+            new[] { "03", "21" },
+            45),
+    });
+
+static AircraftGroundObservation ObservationAtNode(
+    AirportGroundModel model,
+    string nodeId,
+    double speedKnots = 0,
+    double headingDegrees = 0)
+{
+    var node = model.Nodes[nodeId];
+    const double earthRadius = 6_371_000.0;
+    var latitude = model.Latitude + (node.Z / earthRadius * 180.0 / Math.PI);
+    var meanLatitude = (model.Latitude + latitude) / 2.0 * Math.PI / 180.0;
+    var longitude = model.Longitude + (node.X / (earthRadius * Math.Cos(meanLatitude)) * 180.0 / Math.PI);
+    return new AircraftGroundObservation(
+        DateTimeOffset.UtcNow,
+        latitude,
+        longitude,
+        speedKnots,
+        true,
+        headingDegrees);
 }
 
 static AirportGroundModel BuildAirport() => AirportGroundModelBuilder.Build(BuildSnapshot());

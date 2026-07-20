@@ -1,0 +1,33 @@
+PHONIE DEV0.4.0.5 - GROUND OPERATIONS FINAL RC
+VALIDATION STATIQUE DU ZIP SOURCE
+Date: 2026-07-20
+
+Résultat: 26 contrôles réussis sur 26.
+
+- 54 fichiers C# analysés avec tree-sitter C#: aucune erreur syntaxique détectée.
+- 8 fichiers XML/XAML analysés: valides.
+- 30 gestionnaires XAML référencés: tous présents.
+- 4 fichiers JSON analysés: valides.
+- Workflow GitHub Actions YAML: valide.
+- Artefact Windows configuré pour une seule décompression, sans ZIP imbriqué.
+- Profil opérationnel LFBI embarqué et vérifié.
+- Version visible et projet: DEV0.4.0.5 / 0.4.0.5.
+- Association géométrique LFBI vérifiée:
+  * A3 -> nœud Facilities T:99, rôle intermédiaire.
+  * A2 -> nœud Facilities T:17, point d'attente de départ.
+  * A -> nœud Facilities T:18, entrée de piste.
+- Itinéraire parking S6 (P:12) vers A2 disponible: environ 322,28 m.
+- A3 est géométriquement plus proche mais correctement exclu comme destination finale.
+- Phraséologie courte pilotée par profil.
+- AFIS sans clairance de contrôle.
+- Attente et relance de collationnement par PTT.
+- Une relance ne réarme pas indéfiniment son propre délai.
+- Reconnaissance de « A2 prêt pour un départ depuis l'intersection ».
+- Carte vectorielle WPF du réseau et du trajet.
+- Redémarrage ASR et voix contrôleur depuis l'interface.
+- Un PTT de collationnement n'est pas retraité comme nouvelle intention.
+- Aucun répertoire ou fichier de build interdit: bin, obj, dist, node_modules, .git, .vs.
+
+LIMITATION DE CETTE VALIDATION
+
+Le SDK .NET 8 et la chaîne WPF Windows ne sont pas disponibles dans l'environnement de génération utilisé ici. La compilation réelle, les tests exécutables et la publication Windows x64 sont donc obligatoirement validés par GitHub Actions. Le workflow ne publie aucun artefact si la restauration, la compilation ou un test échoue.
