@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import string
 import sys
 import tempfile
 import unicodedata
@@ -28,13 +29,15 @@ from typing import Iterable
 import xml.etree.ElementTree as ET
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
-VERSION = "DEV0.4.1.0"
+VERSION = "DEV0.4.1.1"
 AIM_CATALOG = "https://www.sia.aviation-civile.gouv.fr/produits-numeriques-en-libre-disposition/les-bases-de-donnees-sia.html"
 VAC_SEARCH = "https://www.sia.aviation-civile.gouv.fr/catalogsearch/result/"
-SESSION_HEADERS = {"User-Agent": "PHONIE-SIA-Radio-Builder/0.4.1.0 (+https://github.com/Fdl86/phonie)"}
+SESSION_HEADERS = {"User-Agent": "PHONIE-SIA-Radio-Builder/0.4.1.1 (+https://github.com/Fdl86/phonie)"}
 FREQ_RE = re.compile(r"(?<!\d)(1(?:1[89]|2\d|3[0-6]))[\.,](\d{2,3})(?!\d)")
 ICAO_RE = re.compile(r"\b(?:LF|TF|FM|NT|NW)[A-Z0-9]{2}\b")
 PDF_ICAO_RE = re.compile(r"AD[-_ ]?2[._-](LF[A-Z0-9]{2})\.PDF", re.I)
@@ -78,6 +81,26 @@ def iso(value: dt.datetime | dt.date) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=dt.timezone.utc)
     return value.astimezone(dt.timezone.utc).isoformat()
+
+
+def create_session() -> requests.Session:
+    """Create a resilient read-only session for official SIA publications."""
+    retry = Retry(
+        total=4,
+        connect=4,
+        read=4,
+        status=4,
+        backoff_factor=1.0,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET"}),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=16, pool_maxsize=16)
+    session = requests.Session()
+    session.headers.update(SESSION_HEADERS)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
 
 
 def get(session: requests.Session, url: str, *, timeout: int = 45) -> requests.Response:
@@ -313,57 +336,111 @@ def parse_aixm(xml_bytes: bytes, cycle: Cycle, source_url: str) -> list[dict]:
 
 
 def cycle_path_tokens(cycle: Cycle) -> tuple[str, str]:
-    month = cycle.start.strftime("%b").upper()
+    # SIA DVD paths always use English three-letter month tokens. Avoid the
+    # runner locale because `%b` can yield values such as JUIL. on Windows.
+    months = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+    month = months[cycle.start.month - 1]
     dvd = f"eAIP_{cycle.start.day:02d}_{month}_{cycle.start.year}"
     airac = f"AIRAC-{cycle.start:%Y-%m-%d}"
     return dvd, airac
 
 
-def discover_vac_documents(session: requests.Session, cycle: Cycle, max_pages: int) -> list[PdfDocument]:
-    """Discover the official VAC set from the SIA eAIP AD 0.6 index.
+def atlas_vac_directory(cycle: Cycle) -> str:
+    dvd, _ = cycle_path_tokens(cycle)
+    return f"https://www.sia.aviation-civile.gouv.fr/media/dvd/{dvd}/Atlas-VAC/PDF_AIPparSSection/VAC/AD"
 
-    The catalogue search is kept only as a secondary discovery path because its
-    HTML and pagination change more often than the stable eAIP publication tree.
-    """
-    dvd, airac = cycle_path_tokens(cycle)
-    root = f"https://www.sia.aviation-civile.gouv.fr/media/dvd/{dvd}"
-    index_url = f"{root}/FRANCE/{airac}/pdf/FR-AD-0.6-fr-FR.pdf"
+
+def parse_vac_catalog_page(html: str, page_url: str, cycle: Cycle) -> tuple[dict[str, PdfDocument], str]:
+    """Extract Atlas VAC ICAO codes and the official next-page URL from SIA HTML."""
+    soup = BeautifulSoup(html, "html.parser")
+    atlas_root = atlas_vac_directory(cycle)
     found: dict[str, PdfDocument] = {}
-    try:
-        index_pdf = get(session, index_url, timeout=90).content
-        if index_pdf.startswith(b"%PDF"):
-            index_text = extract_pdf_text(index_pdf, max_pages=200)
-            for icao in sorted(set(ICAO_RE.findall(upper_ascii(index_text)))):
-                pdf_url = f"{root}/Atlas-VAC/PDF_AIPparSSection/VAC/AD/AD-2.{icao}.pdf"
-                found[icao] = PdfDocument(icao, pdf_url)
-    except Exception as exc:
-        print(f"Index officiel AD 0.6 indisponible: {exc}", file=sys.stderr)
-
-    if len(found) >= 100:
-        return sorted(found.values(), key=lambda d: d.icao)
-
-    empty = 0
-    for page in range(1, max_pages + 1):
-        params = {"c": "8", "format": "pdf", "q": "AD-2.LF", "limit": "50", "p": str(page)}
-        url = VAC_SEARCH + "?" + urllib.parse.urlencode(params)
-        html = get(session, url).text
-        soup = BeautifulSoup(html, "html.parser")
-        before = len(found)
-        for anchor in soup.select("a[href]"):
-            label = norm_text(anchor.get_text(" "))
-            href = urllib.parse.urljoin(url, anchor.get("href", ""))
-            combined = f"{label} {href}"
-            match = PDF_ICAO_RE.search(combined)
-            if not match:
-                continue
+    for anchor in soup.select("a[href]"):
+        label = norm_text(anchor.get_text(" "))
+        href = urllib.parse.urljoin(page_url, anchor.get("href", ""))
+        match = PDF_ICAO_RE.search(f"{label} {href}")
+        if match:
             icao = match.group(1).upper()
-            found[icao] = PdfDocument(icao, href)
-        empty = empty + 1 if len(found) == before else 0
-        if empty >= 2:
+            # Pin downloads to the selected immutable AIRAC DVD instead of the
+            # moving /documents/download endpoint exposed by catalogue results.
+            found[icao] = PdfDocument(icao, f"{atlas_root}/AD-2.{icao}.pdf")
+
+    next_url = ""
+    for anchor in soup.select("a[href]"):
+        text = upper_ascii(norm_text(anchor.get_text(" ")))
+        rel = {upper_ascii(str(value)) for value in anchor.get("rel", [])}
+        if "NEXT" in rel or "PAGE SUIVANT" in text or text == "SUIVANT":
+            next_url = urllib.parse.urljoin(page_url, anchor.get("href", ""))
             break
+    return found, next_url
+
+
+def discover_vac_catalog_query(
+    session: requests.Session,
+    cycle: Cycle,
+    query: str,
+    max_pages: int,
+) -> dict[str, PdfDocument]:
+    """Walk one server-rendered SIA catalogue query without assuming its pager key."""
+    first_url = VAC_SEARCH + "?" + urllib.parse.urlencode(
+        {"c": "8", "format": "pdf", "q": query, "limit": "50"}
+    )
+    url = first_url
+    visited: set[str] = set()
+    found: dict[str, PdfDocument] = {}
+    empty_pages = 0
+
+    for page_number in range(1, max_pages + 1):
+        if not url or url in visited:
+            break
+        visited.add(url)
+        html = get(session, url).text
+        page_found, next_url = parse_vac_catalog_page(html, url, cycle)
+        before = len(found)
+        found.update(page_found)
+        empty_pages = empty_pages + 1 if len(found) == before else 0
+        if empty_pages >= 2:
+            break
+        if next_url and next_url not in visited:
+            url = next_url
+            continue
+
+        # Current SIA information-search pages use `page`; old Magento pages
+        # used `p`. The explicit fallback keeps the builder compatible when the
+        # next-page anchor is omitted by a template change.
+        parsed = urllib.parse.urlsplit(first_url)
+        params = urllib.parse.parse_qs(parsed.query)
+        params["page"] = [str(page_number + 1)]
+        query_string = urllib.parse.urlencode(params, doseq=True)
+        url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query_string, parsed.fragment))
+    return found
+
+
+def discover_vac_documents(session: requests.Session, cycle: Cycle, max_pages: int) -> list[PdfDocument]:
+    """Discover the official Atlas VAC set through the current SIA catalogue.
+
+    Since July 2026 the catalogue exposes current PDFs through moving
+    /documents/download links and paginates information results with `page`,
+    while immutable cycle PDFs remain under media/dvd/eAIP_DD_MMM_YYYY.
+    Discovery therefore reads ICAOs from the catalogue and pins every document
+    to the selected AIRAC DVD.
+    """
+    found = discover_vac_catalog_query(session, cycle, "AD-2", max_pages)
+
+    # Some catalogue deployments cap broad searches. Shard by the first ICAO
+    # suffix character only when needed; no aerodrome or frequency is hardcoded.
+    if len(found) < 200:
+        for suffix in string.ascii_uppercase:
+            found.update(discover_vac_catalog_query(session, cycle, f"AD-2.LF{suffix}", min(max_pages, 5)))
+            if len(found) >= 300:
+                break
+
     if len(found) < 100:
-        raise RuntimeError(f"Catalogue VAC incomplet: seulement {len(found)} documents AD-2 détectés.")
-    return sorted(found.values(), key=lambda d: d.icao)
+        raise RuntimeError(
+            f"Catalogue VAC incomplet: seulement {len(found)} documents AD-2 détectés "
+            "après pagination et recherche segmentée."
+        )
+    return sorted(found.values(), key=lambda document: document.icao)
 
 
 def extract_pdf_text(content: bytes, max_pages: int = 5) -> str:
@@ -478,7 +555,7 @@ def build_from_vac(session: requests.Session, cycle: Cycle, workers: int, max_pa
     print(f"SIA VAC: {len(documents)} documents détectés.")
     airports=[]; errors=[]
     def task(doc:PdfDocument):
-        local=requests.Session(); local.headers.update(SESSION_HEADERS)
+        local=create_session()
         return parse_vac_document(local,doc)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         future_map={executor.submit(task,doc):doc for doc in documents}
@@ -567,7 +644,7 @@ def main()->int:
     parser.add_argument("--min-frequencies",type=int,default=150)
     args=parser.parse_args()
     today=dt.date.fromisoformat(args.today) if args.today else dt.datetime.now(dt.timezone.utc).date()
-    session=requests.Session(); session.headers.update(SESSION_HEADERS)
+    session=create_session()
     cycles=discover_cycles(session); cycle=choose_cycle(cycles,args.cycle,today)
     archive_url=args.source_url or try_discover_archive_url(session,cycle)
     archive_bytes=extract_archive_bytes(session,args.source_archive,archive_url)
@@ -578,7 +655,7 @@ def main()->int:
     else:
         source_kind="SIA Atlas VAC officiel (secours lorsque l'export XML direct n'est pas accessible)"
         airports=build_from_vac(session,cycle,args.workers,args.max_pages)
-        source_url=VAC_SEARCH
+        source_url=atlas_vac_directory(cycle)
     write_database(Path(args.output),cycle,airports,source_kind,source_url,args.slot,args.min_airports,args.min_frequencies)
     return 0
 

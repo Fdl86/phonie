@@ -39,4 +39,42 @@ with tempfile.TemporaryDirectory() as temporary:
     third=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
     assert third["previous"] and third["previous"]["relativePath"]=="previous/airports-fr.json"
     assert (root/"previous"/"airports-fr.json").exists()
+
+# Regression: current SIA catalogue uses moving download links and `page`
+# pagination, while the builder must pin documents to the selected AIRAC DVD.
+class FakeResponse:
+    def __init__(self, text: str, url: str):
+        self.text = text
+        self.url = url
+        self.content = text.encode("utf-8")
+
+    def raise_for_status(self) -> None:
+        return None
+
+
+class FakeSession:
+    def __init__(self) -> None:
+        self.urls: list[str] = []
+
+    def get(self, url: str, **_: object) -> FakeResponse:
+        self.urls.append(url)
+        if "page=2" in url:
+            html = '<a href="/documents/download/2/">AIP - AD-2.LFAB.pdf</a>'
+        elif "page=" in url:
+            html = "<html><body>Aucun autre résultat</body></html>"
+        else:
+            html = (
+                '<a href="/documents/download/1/">AIP - AD-2.LFAA.pdf</a>'
+                '<a href="/catalogsearch/result/?c=8&amp;format=pdf&amp;q=AD-2&amp;page=2">Page Suivant</a>'
+            )
+        return FakeResponse(html, url)
+
+
+assert b.cycle_path_tokens(cycle)[0] == "eAIP_09_JUL_2026"
+fake = FakeSession()
+documents = b.discover_vac_catalog_query(fake, cycle, "AD-2", 4)
+assert sorted(documents) == ["LFAA", "LFAB"]
+assert documents["LFAA"].url.endswith("/eAIP_09_JUL_2026/Atlas-VAC/PDF_AIPparSSection/VAC/AD/AD-2.LFAA.pdf")
+assert any("page=2" in url for url in fake.urls)
+
 print("Tests générateur SIA OK")

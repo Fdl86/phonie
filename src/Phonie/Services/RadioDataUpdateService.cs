@@ -25,7 +25,7 @@ public sealed class RadioDataUpdateService : IDisposable
         {
             Timeout = TimeSpan.FromSeconds(45),
         };
-        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("PHONIE", "0.4.1.0"));
+        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("PHONIE", "0.4.1.1"));
     }
 
     public event EventHandler<string>? LogMessage;

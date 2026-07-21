@@ -7,7 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 
 CATALOG = "https://www.sia.aviation-civile.gouv.fr/produits-numeriques-en-libre-disposition/les-bases-de-donnees-sia.html"
-HEADERS = {"User-Agent": "PHONIE-SIA-Radio-Probe/0.4.1.0 (+https://github.com/Fdl86/phonie)"}
+HEADERS = {"User-Agent": "PHONIE-SIA-Radio-Probe/0.4.1.1 (+https://github.com/Fdl86/phonie)"}
 
 def snapshot() -> dict:
     r=requests.get(CATALOG,headers=HEADERS,timeout=30); r.raise_for_status()

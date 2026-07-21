@@ -1,8 +1,14 @@
-# PHONIE DEV0.4.1.0 - SIA RADIO & CONTROLLER VOICES
+# PHONIE DEV0.4.1.1 - SIA CATALOG HOTFIX & CONTROLLER VOICES
 
 Application ATC VFR locale, portable et sans installation pour MSFS 2020 et MSFS 2024.
 
-## Nouveautés principales
+## Correctif DEV0.4.1.1
+
+- Découverte du catalogue Atlas VAC compatible avec la pagination SIA actuelle.
+- Téléchargements épinglés sur le DVD immuable du cycle AIRAC sélectionné.
+- Reprises réseau et génération indépendante de la langue du runner Windows.
+
+## Fonctionnalités principales
 
 - Détection dynamique des aérodromes conservée depuis DEV0.4.0.9.
 - Base radio France générée exclusivement depuis les publications officielles du SIA.
@@ -22,7 +28,7 @@ Aucune version ne doit être considérée comme testable avant que le workflow c
 
 ## Test
 
-Commencer par `TEST-DEV0.4.1.0.md`.
+Commencer par `TEST-DEV0.4.1.1.md`.
 
 ## Stockage portable
 

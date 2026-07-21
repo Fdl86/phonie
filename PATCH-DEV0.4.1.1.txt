@@ -1,0 +1,11 @@
+PHONIE DEV0.4.1.1 - SIA CATALOG DISCOVERY HOTFIX
+
+Base attendue : DEV0.4.1.0.
+Cette livraison est un ZIP source complet à copier à la racine du dépôt en conservant uniquement le dossier .git avant remplacement.
+
+Correctif principal : génération SIA compatible avec le catalogue et les chemins Atlas VAC de juillet 2026.
+
+Commit conseillé :
+PHONIE DEV0.4.1.1 - SIA catalog discovery hotfix
+
+Statut : candidate CI jusqu'à réussite complète du workflow GitHub Actions.
