@@ -100,7 +100,7 @@ public static class OperationalRadioService
             .Where(item => Matches(item.FrequencyMhz, frequency))
             .OrderBy(item => Math.Abs(item.FrequencyMhz - frequency))
             .FirstOrDefault();
-        if (facilityFrequency is not null)
+        if (facilityFrequency is not null && airportReport is not null)
         {
             return ResolveFacilityFrequency(facilityFrequency, airportReport, resolvedIcao);
         }

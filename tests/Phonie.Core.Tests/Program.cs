@@ -7,7 +7,7 @@ var tests = new List<(string Name, Action Test)>
     ("capture LFBI MSFS 2024 exploitable", TestLfbiMsfs2024Fixture),
     ("tous parkings LFBI reliés à une attente", TestLfbiAllParkingsReachHold),
     ("capture LFBI MSFS 2020 normalisée", TestLfbiMsfs2020Fixture),
-    ("profil LFBI résout A3 intermédiaire et A2 départ", TestLfbiOperationalProfile),
+    ("profil LFBI enrichit A2 et A3 sans piloter le routage", TestLfbiOperationalProfile),
     ("phraséologie LFBI générique vers le point d'attente", TestLfbiConciseTaxiPhraseology),
     ("prêt au point d'attente donne alignement et décollage", TestLfbiDirectTakeoffFromHold),
     ("nom de point annoncé ne pilote pas la clairance", TestReportedPointDoesNotDriveClearance),
@@ -267,14 +267,15 @@ static void TestLfbiOperationalProfile()
         profile);
 
     Assert(route.Success, route.FailureReason);
-    Assert(route.HoldShort?.NodeId == "T:17", $"attente={route.HoldShort?.NodeId}");
-    Assert(route.OperationalPoint?.RadioLabel == "A2", $"radio={route.OperationalPoint?.RadioLabel}");
-    Assert(route.OperationalPoint?.Role == OperationalPointRole.DepartureHoldingPoint);
-    Assert(route.RunwayEntry?.RadioLabel == "A", $"entrée={route.RunwayEntry?.RadioLabel}");
+    Assert(route.HoldShort is not null);
     Assert(!route.IncludeViaInSpeech);
     var resolutions = OperationalPointResolver.Resolve(model, profile);
+    Assert(resolutions["T:17"].Role == OperationalPointRole.DepartureHoldingPoint);
+    Assert(resolutions["T:17"].RadioLabel == "A2");
     Assert(resolutions["T:99"].Role == OperationalPointRole.IntermediateHoldingPoint);
     Assert(resolutions["T:99"].RadioLabel == "A3");
+    Assert(route.OperationalPoint?.RadioLabel == "A3", $"point choisi={route.OperationalPoint?.RadioLabel}");
+    Assert(route.RunwayEntry?.RadioLabel == "A", $"entrée={route.RunwayEntry?.RadioLabel}");
 }
 
 static void TestLfbiConciseTaxiPhraseology()
@@ -311,7 +312,7 @@ static void TestLfbiConciseTaxiPhraseology()
     Assert(!decision.SpokenText.Contains("Alpha", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
     Assert(!decision.SpokenText.Contains("Delta", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
     Assert(!decision.SpokenText.Contains("via ", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
-    Assert(decision.SystemMessage.Contains("A2", StringComparison.Ordinal), decision.SystemMessage);
+    Assert(decision.SystemMessage.Contains("Itinéraire interne calculé", StringComparison.Ordinal), decision.SystemMessage);
     Assert(decision.RequiresAcknowledgement);
 }
 
