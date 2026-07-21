@@ -7,6 +7,24 @@ public sealed class GroundOperationsEngine
 
     public GroundSession Session => this.session;
 
+    public void Reset()
+    {
+        this.session.FullCallsign = string.Empty;
+        this.session.AuthorizedShortCallsign = string.Empty;
+        this.session.ContactEstablished = false;
+        this.session.State = GroundSessionState.Unknown;
+        this.session.LastPilotRequest = string.Empty;
+        this.session.LastControllerInstruction = string.Empty;
+        this.session.AssignedRunway = null;
+        this.session.AssignedHoldShort = null;
+        this.session.AssignedTaxiRoute = null;
+        this.session.AssignedOperationalPoint = null;
+        this.session.AssignedRunwayEntry = null;
+        this.session.AwaitingPilotAcknowledgement = false;
+        this.session.AcknowledgementDeadline = null;
+        this.session.AcknowledgementReminderCount = 0;
+    }
+
     public ControllerDecision Process(
         string pilotText,
         string? simulatorCallsign,
@@ -596,17 +614,8 @@ public sealed class GroundOperationsEngine
                 }
                 break;
             case GroundPositionKind.HoldShort:
-                var resolutions = OperationalPointResolver.Resolve(airport, profile);
-                var resolution = location.NodeId is null ? null : resolutions.GetValueOrDefault(location.NodeId);
-                if (resolution?.Role == OperationalPointRole.IntermediateHoldingPoint)
-                {
-                    this.session.State = GroundSessionState.AtIntermediateHoldingPoint;
-                }
-                else if (this.session.AssignedHoldShort is null
-                    || string.Equals(location.NodeId, this.session.AssignedHoldShort.NodeId, StringComparison.Ordinal))
-                {
-                    this.session.State = GroundSessionState.AtHoldShort;
-                }
+                // Any genuine Facilities HOLD_SHORT is valid. Profile roles are diagnostic only.
+                this.session.State = GroundSessionState.AtHoldShort;
                 break;
             case GroundPositionKind.Runway:
                 if (this.session.State == GroundSessionState.BacktrackCleared)
@@ -626,36 +635,20 @@ public sealed class GroundOperationsEngine
         GroundLocation location,
         AirportOperationalProfile? profile)
     {
+        _ = profile; // Profiles never authorize or reject a departure point.
         if (location.Kind != GroundPositionKind.HoldShort
-            || string.IsNullOrWhiteSpace(location.NodeId)
-            || this.session.AssignedRunway is null)
+            || string.IsNullOrWhiteSpace(location.NodeId))
         {
             return false;
         }
 
-        var holdShort = airport.HoldShortPoints.FirstOrDefault(item =>
+        // The geometry is authoritative: every node built as HOLD_SHORT is acceptable.
+        return airport.HoldShortPoints.Any(item =>
             string.Equals(item.NodeId, location.NodeId, StringComparison.Ordinal));
-        if (holdShort is null)
-        {
-            return false;
-        }
-
-        var resolutions = OperationalPointResolver.Resolve(airport, profile);
-        var resolution = resolutions.GetValueOrDefault(location.NodeId);
-        if (resolution?.Role == OperationalPointRole.IntermediateHoldingPoint)
-        {
-            return false;
-        }
-
-        var isAssignedNode = this.session.AssignedHoldShort is not null
-            && string.Equals(location.NodeId, this.session.AssignedHoldShort.NodeId, StringComparison.Ordinal);
-        var isAssociatedRunway = holdShort.AssociatedRunwayIndex == this.session.AssignedRunway.RunwayIndex
-            || holdShort.NearestRunwayNumber == this.session.AssignedRunway.Number;
-        return isAssignedNode || isAssociatedRunway;
     }
 
     private static string BuildReadyPositionMismatch(GroundLocation location) =>
-        $"position actuelle {location.Description} non confirmée à un point d'attente de départ lié à la piste attribuée ; maintenez et rappelez prêt au point d'attente.";
+        $"position actuelle {location.Description} non confirmée à un vrai point d'attente Facilities ; maintenez et rappelez prêt au point d'attente.";
 
     private static bool IsRunwayOccupied(
         AirportGroundModel airport,

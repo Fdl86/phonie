@@ -1,4 +1,4 @@
-name: Build PHONIE DEV0.4.0.6 - Hold Short Flow
+name: Build PHONIE DEV0.4.0.7 - Dynamic Airport and Radio Context
 
 on:
   workflow_dispatch:
@@ -34,19 +34,23 @@ jobs:
           $required = @(
             "src/Phonie/Phonie.csproj",
             "src/Phonie.Core/Phonie.Core.csproj",
+            "src/Phonie.Core/AirportContextResolver.cs",
+            "src/Phonie/Models/AirportContextModels.cs",
+            "src/Phonie/Services/NearbyAirportService.cs",
             "tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj",
             "tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj",
             "tests/Phonie.Core.Tests/Fixtures/LFBI-MSFS2020-ground.json",
             "tests/Phonie.Core.Tests/Fixtures/LFBI-MSFS2024-ground.json",
             "data/airports/LFBI.json",
             "README.md",
-            "TEST-DEV0.4.0.6.md",
-            "GROUND-OPERATIONS-DEV0.4.0.6.md",
-            "FACILITIES-NORMALIZATION-DEV0.4.0.6.md",
-            "CALLSIGN-RULES-DEV0.4.0.6.md",
-            "CHANGELOG-DEV0.4.0.6.md",
-            "STATIC-VALIDATION-DEV0.4.0.6.txt",
-            "OPERATIONAL-PROFILES-DEV0.4.0.6.md"
+            "TEST-DEV0.4.0.7.md",
+            "GROUND-OPERATIONS-DEV0.4.0.7.md",
+            "FACILITIES-NORMALIZATION-DEV0.4.0.7.md",
+            "CALLSIGN-RULES-DEV0.4.0.7.md",
+            "CHANGELOG-DEV0.4.0.7.md",
+            "STATIC-VALIDATION-DEV0.4.0.7.txt",
+            "OPERATIONAL-PROFILES-DEV0.4.0.7.md",
+            "AIRPORT-RADIO-CONTEXT-DEV0.4.0.7.md"
           )
           $missing = @($required | Where-Object { -not (Test-Path $_) })
           if ($missing.Count -gt 0) {
@@ -99,7 +103,7 @@ jobs:
           --runtime win-x64
           --self-contained true
           --no-restore
-          --output dist/PHONIE-DEV0.4.0.6-win-x64
+          --output dist/PHONIE-DEV0.4.0.7-win-x64
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
@@ -111,19 +115,20 @@ jobs:
         run: |
           $commit = "${{ github.sha }}".Substring(0, 7)
           @"
-          PHONIE DEV0.4.0.6 - HOLD SHORT FLOW
+          PHONIE DEV0.4.0.7 - DYNAMIC AIRPORT & RADIO CONTEXT
           Commit: $commit
           Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
           Runtime: Windows x64 autonome
-          Noyau: routage interne, phraséologie générique point d'attente, position réelle, contrôle trafic piste et mémoire indicatif
-          Sécurité: aucune clairance décollage hors point d'attente de départ, avec trafic piste ou état trafic inconnu
+          Noyau: contextes géographique et radio séparés, détection dynamique de tout aérodrome, Facilities et fréquences rechargées
+          Sol: phraséologie générique, tout vrai HOLD_SHORT Facilities accepté, contrôle trafic piste avant décollage
+          Sécurité: aucune clairance décollage hors point d'attente, avec trafic piste ou état trafic inconnu
           Base préservée: DEV0.3.0.5 - SimConnect, PTT, enregistrement, ASR CPU/Vulkan/Turbo/Vosk et télémétrie GPU
-          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.4.0.6-win-x64/BUILD-INFO.txt
+          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.4.0.7-win-x64/BUILD-INFO.txt
 
       - name: Create portable folders and documentation
         shell: pwsh
         run: |
-          $root = "dist/PHONIE-DEV0.4.0.6-win-x64"
+          $root = "dist/PHONIE-DEV0.4.0.7-win-x64"
           $folders = @(
             "config",
             "logs",
@@ -159,13 +164,14 @@ jobs:
           Le modèle est enregistré dans models\vosk et vérifié par SHA-256 avant extraction.
           "@ | Set-Content -Encoding UTF8 "$root/models/vosk/LISEZ-MOI.txt"
           Copy-Item README.md "$root/README.md"
-          Copy-Item TEST-DEV0.4.0.6.md "$root/TEST-DEV0.4.0.6.md"
-          Copy-Item GROUND-OPERATIONS-DEV0.4.0.6.md "$root/GROUND-OPERATIONS-DEV0.4.0.6.md"
-          Copy-Item FACILITIES-NORMALIZATION-DEV0.4.0.6.md "$root/FACILITIES-NORMALIZATION-DEV0.4.0.6.md"
-          Copy-Item CALLSIGN-RULES-DEV0.4.0.6.md "$root/CALLSIGN-RULES-DEV0.4.0.6.md"
-          Copy-Item CHANGELOG-DEV0.4.0.6.md "$root/CHANGELOG-DEV0.4.0.6.md"
-          Copy-Item STATIC-VALIDATION-DEV0.4.0.6.txt "$root/STATIC-VALIDATION-DEV0.4.0.6.txt"
-          Copy-Item OPERATIONAL-PROFILES-DEV0.4.0.6.md "$root/OPERATIONAL-PROFILES-DEV0.4.0.6.md"
+          Copy-Item TEST-DEV0.4.0.7.md "$root/TEST-DEV0.4.0.7.md"
+          Copy-Item GROUND-OPERATIONS-DEV0.4.0.7.md "$root/GROUND-OPERATIONS-DEV0.4.0.7.md"
+          Copy-Item FACILITIES-NORMALIZATION-DEV0.4.0.7.md "$root/FACILITIES-NORMALIZATION-DEV0.4.0.7.md"
+          Copy-Item CALLSIGN-RULES-DEV0.4.0.7.md "$root/CALLSIGN-RULES-DEV0.4.0.7.md"
+          Copy-Item CHANGELOG-DEV0.4.0.7.md "$root/CHANGELOG-DEV0.4.0.7.md"
+          Copy-Item STATIC-VALIDATION-DEV0.4.0.7.txt "$root/STATIC-VALIDATION-DEV0.4.0.7.txt"
+          Copy-Item OPERATIONAL-PROFILES-DEV0.4.0.7.md "$root/OPERATIONAL-PROFILES-DEV0.4.0.7.md"
+          Copy-Item AIRPORT-RADIO-CONTEXT-DEV0.4.0.7.md "$root/AIRPORT-RADIO-CONTEXT-DEV0.4.0.7.md"
           Copy-Item ASR-PROFILES-DEV0.3.0.5.md "$root/ASR-PROFILES-DEV0.3.0.5.md"
           Copy-Item TURBO-PROFILE-DEV0.3.0.5.md "$root/TURBO-PROFILE-DEV0.3.0.5.md"
           Copy-Item GPU-BENCHMARK-DEV0.3.0.5.md "$root/GPU-BENCHMARK-DEV0.3.0.5.md"
@@ -175,7 +181,7 @@ jobs:
       - name: Verify portable storage layout
         shell: pwsh
         run: |
-          $root = "dist/PHONIE-DEV0.4.0.6-win-x64"
+          $root = "dist/PHONIE-DEV0.4.0.7-win-x64"
           $required = @(
             "$root/PHONIE.exe",
             "$root/config",
@@ -198,7 +204,7 @@ jobs:
       - name: Upload portable artifact - single extraction
         uses: actions/upload-artifact@v4
         with:
-          name: PHONIE-DEV0.4.0.6-win-x64
-          path: dist/PHONIE-DEV0.4.0.6-win-x64/**
+          name: PHONIE-DEV0.4.0.7-win-x64
+          path: dist/PHONIE-DEV0.4.0.7-win-x64/**
           if-no-files-found: error
           retention-days: 14

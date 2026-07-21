@@ -3,7 +3,7 @@ namespace Phonie.Core;
 public static class GroundLocator
 {
     private const double ParkingSnapMeters = 45.0;
-    private const double HoldShortSnapMeters = 35.0;
+    private const double HoldShortSnapMeters = 55.0;
     private const double TaxiwaySnapMeters = 60.0;
     private const double RunwaySnapMeters = 70.0;
 

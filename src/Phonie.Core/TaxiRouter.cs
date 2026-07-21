@@ -28,37 +28,36 @@ public static class TaxiRouter
         }
 
         var resolutions = OperationalPointResolver.Resolve(model, profile);
-        var allCandidates = model.HoldShortPoints
+        // Every genuine Facilities HOLD_SHORT is operationally acceptable. When the scenery
+        // exposes a reliable runway association, those points are preferred. If the association
+        // metadata is missing or corrupt, PHONIE falls back to all genuine HOLD_SHORT nodes.
+        var associatedHolds = model.HoldShortPoints
             .Where(item => item.AssociatedRunwayIndex == runway.RunwayIndex)
+            .ToArray();
+        var routingHolds = associatedHolds.Length > 0
+            ? associatedHolds
+            : model.HoldShortPoints.ToArray();
+        var allCandidates = routingHolds
             .Where(item => !occupancy.OccupiedNodeIds.Contains(item.NodeId))
             .Select(item => new
             {
                 Hold = item,
                 Operational = resolutions.GetValueOrDefault(item.NodeId),
             })
-            .Where(item => item.Operational?.Role != OperationalPointRole.IntermediateHoldingPoint)
             .ToArray();
 
         if (allCandidates.Length == 0)
         {
-            var runwayHolds = model.HoldShortPoints
-                .Where(item => item.AssociatedRunwayIndex == runway.RunwayIndex)
-                .ToArray();
-            if (runwayHolds.Length == 0)
+            if (routingHolds.Length == 0)
             {
-                return Failure($"Aucun point d'attente associé à la piste {runway.Designator}.");
+                return Failure("Aucun vrai point d'attente Facilities détecté sur cet aérodrome.");
             }
 
-            return Failure("Tous les points d'attente de départ sont occupés ou classés intermédiaires.");
+            return Failure("Tous les points d'attente détectés sont occupés.");
         }
 
-        var preferred = allCandidates
-            .Where(item => item.Operational?.Role == OperationalPointRole.DepartureHoldingPoint)
-            .ToArray();
-        var candidates = preferred.Length > 0 ? preferred : allCandidates;
-
         TaxiRoute? best = null;
-        foreach (var candidate in candidates)
+        foreach (var candidate in allCandidates)
         {
             var route = FindRoute(
                 model,
@@ -75,7 +74,7 @@ public static class TaxiRouter
             }
         }
 
-        return best ?? Failure("Aucun itinéraire accessible vers un point d'attente de départ libre.");
+        return best ?? Failure("Aucun itinéraire accessible vers un point d'attente libre.");
 
         TaxiRoute Failure(string reason) => new(
             false,
@@ -293,12 +292,6 @@ public static class TaxiRouter
             var displayLabel = resolution?.HasReliableRadioLabel == true
                 ? resolution.RadioLabel
                 : "point générique";
-            if (resolution?.Role == OperationalPointRole.IntermediateHoldingPoint)
-            {
-                lines.Add($"Candidat {displayLabel} ({candidate.NodeId}) : exclu, point intermédiaire.");
-                continue;
-            }
-
             if (occupancy.OccupiedNodeIds.Contains(candidate.NodeId))
             {
                 lines.Add($"Candidat {displayLabel} ({candidate.NodeId}) : rejeté, point d'attente occupé.");

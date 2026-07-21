@@ -1,15 +1,12 @@
 using System.Collections.Concurrent;
+using Phonie.Core;
 using Phonie.Models;
-using Phonie.Utilities;
 using SimConnect.NET;
 
 namespace Phonie.Services;
 
 public sealed class SimConnectService : IAsyncDisposable
 {
-    // LFBI ARP: 46°35'16"N 000°18'24"E.
-    private const double LfbiLatitude = 46.587778;
-    private const double LfbiLongitude = 0.306667;
     private static readonly TimeSpan OptionalRetryDelay = TimeSpan.FromSeconds(30);
 
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
@@ -17,7 +14,9 @@ public sealed class SimConnectService : IAsyncDisposable
     private readonly ConcurrentDictionary<string, DateTimeOffset> optionalRetryAfter = new(StringComparer.Ordinal);
     private readonly AirportFacilityService airportFacilityService = new();
     private readonly GroundTrafficService groundTrafficService = new();
-    private readonly ConcurrentDictionary<string, byte> automaticAirportRequests = new(StringComparer.OrdinalIgnoreCase);
+    private readonly NearbyAirportService nearbyAirportService = new();
+    private readonly ConcurrentDictionary<string, DateTimeOffset> automaticAirportRequests = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, AirportFacilityReport> airportReports = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? cancellation;
     private Task? worker;
     private SimConnectClient? client;
@@ -27,6 +26,10 @@ public sealed class SimConnectService : IAsyncDisposable
     private DateTimeOffset lastWeatherRefresh = DateTimeOffset.MinValue;
     private DateTimeOffset lastGroundTrafficRequest = DateTimeOffset.MinValue;
     private WeatherSnapshot cachedWeather = WeatherSnapshot.Empty;
+    private SimulatorSnapshot? previousSnapshot;
+    private string currentGeographicIcao = string.Empty;
+    private string currentRadioIcao = string.Empty;
+    private string currentRadioSource = "Station radio non résolue";
     private bool disposed;
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -39,12 +42,15 @@ public sealed class SimConnectService : IAsyncDisposable
 
     public event EventHandler<GroundTrafficSnapshot>? GroundTrafficReceived;
 
+    public event EventHandler<AirportContextChanged>? AirportContextChanged;
+
     public SimConnectService()
     {
         this.airportFacilityService.LogMessage += (_, message) => this.LogMessage?.Invoke(this, message);
-        this.airportFacilityService.ReportCompleted += (_, report) => this.AirportDataReceived?.Invoke(this, report);
+        this.airportFacilityService.ReportCompleted += this.AirportFacilityService_OnReportCompleted;
         this.groundTrafficService.LogMessage += (_, message) => this.LogMessage?.Invoke(this, message);
         this.groundTrafficService.SnapshotReceived += (_, snapshot) => this.GroundTrafficReceived?.Invoke(this, snapshot);
+        this.nearbyAirportService.LogMessage += (_, message) => this.LogMessage?.Invoke(this, message);
     }
 
     public void Start()
@@ -74,7 +80,7 @@ public sealed class SimConnectService : IAsyncDisposable
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         this.PublishStatus(ConnectionState.Waiting, "En attente de Microsoft Flight Simulator");
-        this.PublishLog("PHONIE DEV0.4.0.6 démarrée. Recherche locale de SimConnect.");
+        this.PublishLog("PHONIE DEV0.4.0.7 démarrée. Détection dynamique des contextes aérodrome et radio.");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -88,8 +94,12 @@ public sealed class SimConnectService : IAsyncDisposable
                 if (this.client is { IsConnected: true } connectedClient)
                 {
                     var snapshot = await this.ReadSnapshotAsync(connectedClient, cancellationToken).ConfigureAwait(false);
+                    var teleported = this.IsTeleport(snapshot);
+                    _ = this.nearbyAirportService.RequestRefresh(teleported || this.previousSnapshot is null);
+                    snapshot = this.ResolveAirportContexts(snapshot);
                     this.TryRequestAirportDataAutomatically(snapshot);
                     this.TryRequestGroundTraffic(snapshot);
+                    this.previousSnapshot = snapshot;
                     this.SnapshotReceived?.Invoke(this, snapshot);
                     await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
                 }
@@ -129,7 +139,7 @@ public sealed class SimConnectService : IAsyncDisposable
     {
         this.PublishStatus(ConnectionState.Connecting, "Connexion à SimConnect...");
 
-        var newClient = new SimConnectClient("PHONIE DEV0.4.0.6")
+        var newClient = new SimConnectClient("PHONIE DEV0.4.0.7")
         {
             AutoReconnectEnabled = false,
         };
@@ -153,6 +163,11 @@ public sealed class SimConnectService : IAsyncDisposable
                 this.cachedWeather = WeatherSnapshot.Empty;
                 this.lastGroundTrafficRequest = DateTimeOffset.MinValue;
                 this.automaticAirportRequests.Clear();
+                this.airportReports.Clear();
+                this.previousSnapshot = null;
+                this.currentGeographicIcao = string.Empty;
+                this.currentRadioIcao = string.Empty;
+                this.currentRadioSource = "Station radio non résolue";
             }
             finally
             {
@@ -173,6 +188,16 @@ public sealed class SimConnectService : IAsyncDisposable
             catch (Exception exception)
             {
                 this.PublishLog($"Airport Data indisponible : {CleanMessage(exception)}");
+            }
+
+            try
+            {
+                this.nearbyAirportService.Attach(newClient);
+                _ = this.nearbyAirportService.RequestRefresh(force: true);
+            }
+            catch (Exception exception)
+            {
+                this.PublishLog($"Détection aérodrome indisponible : {CleanMessage(exception)}");
             }
 
             try
@@ -214,21 +239,169 @@ public sealed class SimConnectService : IAsyncDisposable
         }
     }
 
-    private void TryRequestAirportDataAutomatically(SimulatorSnapshot snapshot)
+
+    public bool TryGetAirportReport(string? icao, out AirportFacilityReport? report)
     {
-        string? candidate = null;
-        var station = snapshot.Com1StationIdent.Trim().ToUpperInvariant();
-        if (station.Length == 4 && station.All(char.IsAsciiLetterOrDigit))
+        var normalized = NormalizeIcao(icao);
+        if (string.IsNullOrWhiteSpace(normalized))
         {
-            candidate = station;
-        }
-        else if (snapshot.DistanceToLfbiNm <= 30.0)
-        {
-            // LFBI is only the geographic first-test target. Its frequencies are never hardcoded.
-            candidate = "LFBI";
+            report = null;
+            return false;
         }
 
-        if (candidate is null || this.automaticAirportRequests.ContainsKey(candidate))
+        if (this.airportReports.TryGetValue(normalized, out var found))
+        {
+            report = found;
+            return true;
+        }
+
+        report = null;
+        return false;
+    }
+
+    private void AirportFacilityService_OnReportCompleted(object? sender, AirportFacilityReport report)
+    {
+        var icao = NormalizeIcao(string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao);
+        if (!string.IsNullOrWhiteSpace(icao))
+        {
+            this.airportReports[icao] = report;
+        }
+
+        this.AirportDataReceived?.Invoke(this, report);
+    }
+
+    private SimulatorSnapshot ResolveAirportContexts(SimulatorSnapshot snapshot)
+    {
+        var nearby = this.nearbyAirportService.Latest.Airports;
+        var candidates = nearby.Select(item =>
+        {
+            var frequencies = this.airportReports.TryGetValue(item.Icao, out var report)
+                ? report.Frequencies.Select(frequency => frequency.FrequencyMhz).ToArray()
+                : Array.Empty<double>();
+            return new NearbyAirportCandidate(
+                item.Icao,
+                item.Region,
+                item.Latitude,
+                item.Longitude,
+                item.AltitudeMeters,
+                frequencies);
+        }).ToArray();
+
+        var stationPosition = AirportContextResolver.ProjectStationPosition(
+            snapshot.Latitude,
+            snapshot.Longitude,
+            snapshot.Com1StationBearingDegrees,
+            snapshot.Com1StationDistanceMeters);
+        var selection = AirportContextResolver.Resolve(
+            candidates,
+            snapshot.Latitude,
+            snapshot.Longitude,
+            snapshot.IsOnGround,
+            this.currentGeographicIcao,
+            snapshot.Com1StationIdent,
+            snapshot.Com1ActiveMhz,
+            stationPosition?.Latitude,
+            stationPosition?.Longitude);
+
+        var geographicChanged = !string.Equals(
+            selection.GeographicIcao,
+            this.currentGeographicIcao,
+            StringComparison.OrdinalIgnoreCase);
+        var radioChanged = !string.Equals(
+            selection.RadioIcao,
+            this.currentRadioIcao,
+            StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(selection.RadioSource, this.currentRadioSource, StringComparison.Ordinal);
+
+        if (geographicChanged)
+        {
+            var previous = string.IsNullOrWhiteSpace(this.currentGeographicIcao) ? "aucun" : this.currentGeographicIcao;
+            var next = string.IsNullOrWhiteSpace(selection.GeographicIcao) ? "aucun" : selection.GeographicIcao;
+            this.PublishLog($"Contexte géographique : {previous} -> {next}.");
+            this.lastGroundTrafficRequest = DateTimeOffset.MinValue;
+            this.lastWeatherRefresh = DateTimeOffset.MinValue;
+            if (!string.IsNullOrWhiteSpace(selection.GeographicIcao))
+            {
+                this.automaticAirportRequests.TryRemove(selection.GeographicIcao, out _);
+            }
+        }
+
+        if (radioChanged)
+        {
+            var previous = string.IsNullOrWhiteSpace(this.currentRadioIcao) ? "aucun" : this.currentRadioIcao;
+            var next = string.IsNullOrWhiteSpace(selection.RadioIcao) ? "aucun" : selection.RadioIcao;
+            this.PublishLog($"Contexte radio : {previous} -> {next} ({selection.RadioSource}).");
+            this.lastWeatherRefresh = DateTimeOffset.MinValue;
+            if (!string.IsNullOrWhiteSpace(selection.RadioIcao))
+            {
+                this.automaticAirportRequests.TryRemove(selection.RadioIcao, out _);
+            }
+        }
+
+        this.currentGeographicIcao = selection.GeographicIcao;
+        this.currentRadioIcao = selection.RadioIcao;
+        this.currentRadioSource = selection.RadioSource;
+
+        var resolved = snapshot with
+        {
+            GeographicAirportIcao = selection.GeographicIcao,
+            GeographicAirportDistanceNm = selection.GeographicDistanceNm,
+            RadioAirportIcao = selection.RadioIcao,
+            RadioContextSource = selection.RadioSource,
+        };
+
+        if (geographicChanged || radioChanged)
+        {
+            this.AirportContextChanged?.Invoke(this, new AirportContextChanged(
+                DateTimeOffset.UtcNow,
+                selection.GeographicIcao,
+                selection.GeographicDistanceNm,
+                selection.RadioIcao,
+                selection.RadioSource,
+                nearby));
+        }
+
+        return resolved;
+    }
+
+    private bool IsTeleport(SimulatorSnapshot snapshot)
+    {
+        if (this.previousSnapshot is null)
+        {
+            return true;
+        }
+
+        var distance = AirportContextResolver.DistanceNm(
+            this.previousSnapshot.Latitude,
+            this.previousSnapshot.Longitude,
+            snapshot.Latitude,
+            snapshot.Longitude);
+        return double.IsFinite(distance) && distance >= 20.0;
+    }
+
+    private void TryRequestAirportDataAutomatically(SimulatorSnapshot snapshot)
+    {
+        this.TryRequestAirportReport(snapshot.GeographicAirportIcao, "géographique");
+        if (!string.Equals(
+                snapshot.RadioAirportIcao,
+                snapshot.GeographicAirportIcao,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            this.TryRequestAirportReport(snapshot.RadioAirportIcao, "radio");
+        }
+    }
+
+    private void TryRequestAirportReport(string? icao, string role)
+    {
+        var candidate = NormalizeIcao(icao);
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (this.automaticAirportRequests.TryGetValue(candidate, out var previousRequest)
+            && now - previousRequest < TimeSpan.FromMinutes(10))
         {
             return;
         }
@@ -237,19 +410,28 @@ public sealed class SimConnectService : IAsyncDisposable
         {
             if (this.airportFacilityService.RequestAirport(candidate))
             {
-                this.automaticAirportRequests.TryAdd(candidate, 0);
+                this.automaticAirportRequests[candidate] = now;
+                this.PublishLog($"Contexte {role} : rechargement Facilities {candidate}.");
+            }
+            else
+            {
+                this.automaticAirportRequests[candidate] = now - TimeSpan.FromMinutes(9.8);
+                this.PublishLog($"Contexte {role} : demande Facilities {candidate} reportée, nouvelle tentative proche.");
             }
         }
         catch (Exception exception)
         {
+            this.automaticAirportRequests[candidate] = now - TimeSpan.FromMinutes(9.8);
             this.PublishLog($"Airport Data automatique {candidate} : {CleanMessage(exception)}");
-            this.automaticAirportRequests.TryAdd(candidate, 0);
         }
     }
 
     private void TryRequestGroundTraffic(SimulatorSnapshot snapshot)
     {
-        if (!snapshot.IsOnGround || snapshot.DistanceToLfbiNm > 30.0)
+        if (!snapshot.IsOnGround
+            || string.IsNullOrWhiteSpace(snapshot.GeographicAirportIcao)
+            || !double.IsFinite(snapshot.GeographicAirportDistanceNm)
+            || snapshot.GeographicAirportDistanceNm > 10.0)
         {
             return;
         }
@@ -296,7 +478,6 @@ public sealed class SimConnectService : IAsyncDisposable
 
         var latitude = await latitudeTask.ConfigureAwait(false);
         var longitude = await longitudeTask.ConfigureAwait(false);
-        var distance = GeoMath.DistanceNm(latitude, longitude, LfbiLatitude, LfbiLongitude);
 
         // Enriched variables are optional and independently cooled down after a failure.
         var aircraftAtcIdTask = this.GetOptionalAsync(connectedClient, "ATC ID", string.Empty, string.Empty, cancellationToken);
@@ -305,6 +486,8 @@ public sealed class SimConnectService : IAsyncDisposable
         var spacingTask = this.GetOptionalAsync(connectedClient, "COM SPACING MODE:1", "enum", 0, cancellationToken);
         var receiveTask = this.GetOptionalAsync(connectedClient, "COM RECEIVE:1", "bool", 1, cancellationToken);
         var comStatusTask = this.GetOptionalAsync(connectedClient, "COM STATUS:1", "enum", 0, cancellationToken);
+        var stationBearingTask = this.GetOptionalAsync(connectedClient, "COM ACTIVE BEARING:1", "degrees", double.NaN, cancellationToken);
+        var stationDistanceTask = this.GetOptionalAsync(connectedClient, "COM ACTIVE DISTANCE:1", "meters", double.NaN, cancellationToken);
         var weatherTask = this.ReadWeatherWhenDueAsync(connectedClient, cancellationToken);
 
         await Task.WhenAll(
@@ -314,6 +497,8 @@ public sealed class SimConnectService : IAsyncDisposable
             spacingTask,
             receiveTask,
             comStatusTask,
+            stationBearingTask,
+            stationDistanceTask,
             weatherTask).ConfigureAwait(false);
 
         var weather = await weatherTask.ConfigureAwait(false);
@@ -337,8 +522,13 @@ public sealed class SimConnectService : IAsyncDisposable
             await spacingTask.ConfigureAwait(false),
             await receiveTask.ConfigureAwait(false) != 0,
             await comStatusTask.ConfigureAwait(false),
+            await stationBearingTask.ConfigureAwait(false),
+            await stationDistanceTask.ConfigureAwait(false),
             DecodeBco16(await transponderTask.ConfigureAwait(false)),
-            distance,
+            string.Empty,
+            double.NaN,
+            string.Empty,
+            "Station radio non résolue",
             NormalizeHeading(weather.WindDirectionTrueDegrees),
             weather.WindVelocityKnots,
             weather.QnhHpa,
@@ -436,7 +626,16 @@ public sealed class SimConnectService : IAsyncDisposable
             this.client = null;
             this.airportFacilityService.Detach();
             this.groundTrafficService.Detach();
+            this.nearbyAirportService.Detach();
             this.automaticAirportRequests.Clear();
+            this.airportReports.Clear();
+            this.previousSnapshot = null;
+            this.currentGeographicIcao = string.Empty;
+            this.currentRadioIcao = string.Empty;
+            this.currentRadioSource = "Station radio non résolue";
+            this.cachedWeather = WeatherSnapshot.Empty;
+            this.lastWeatherRefresh = DateTimeOffset.MinValue;
+            this.lastGroundTrafficRequest = DateTimeOffset.MinValue;
 
             try
             {
@@ -465,6 +664,14 @@ public sealed class SimConnectService : IAsyncDisposable
         this.lastErrorMessage = message;
         this.lastRepeatedErrorLog = now;
         this.PublishLog($"SimConnect indisponible : {message}");
+    }
+
+    private static string NormalizeIcao(string? value)
+    {
+        var normalized = (value ?? string.Empty).Trim().ToUpperInvariant();
+        return normalized.Length == 4 && normalized.All(char.IsAsciiLetterOrDigit)
+            ? normalized
+            : string.Empty;
     }
 
     private static string NormalizeAtcId(string? value)
@@ -558,6 +765,7 @@ public sealed class SimConnectService : IAsyncDisposable
 
         this.airportFacilityService.Dispose();
         this.groundTrafficService.Dispose();
+        this.nearbyAirportService.Dispose();
         this.cancellation?.Dispose();
         this.lifecycleGate.Dispose();
     }

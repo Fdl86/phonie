@@ -56,6 +56,31 @@ public sealed class GroundOperationsCoordinator
         }
     }
 
+    public void ClearAirport(string reason)
+    {
+        lock (this.sync)
+        {
+            this.airport = null;
+            this.profile = null;
+            this.aircraft = null;
+            this.location = null;
+            this.runway = new RunwaySelection(false, null, "Piste en attente.", 0);
+            this.lastDecision = null;
+            this.traffic = new GroundTrafficSnapshot(
+                DateTimeOffset.UtcNow,
+                false,
+                Array.Empty<GroundTrafficContactData>(),
+                "Trafic en attente du nouvel aérodrome.");
+            this.occupancy = GroundOccupancySnapshot.Unknown(
+                DateTimeOffset.UtcNow,
+                "Graphe du nouvel aérodrome en attente.");
+            this.occupancyDiagnostics = Array.Empty<GroundTrafficOccupancyDiagnostic>();
+            this.engine.Reset();
+        }
+
+        this.PublishLog($"Moteur sol réinitialisé : {reason}");
+    }
+
     public void UpdateAirport(AirportFacilityReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -63,6 +88,14 @@ public sealed class GroundOperationsCoordinator
         string message;
         lock (this.sync)
         {
+            var incomingIcao = string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao;
+            if (this.airport is not null
+                && !string.Equals(this.airport.Icao, incomingIcao, StringComparison.OrdinalIgnoreCase))
+            {
+                this.engine.Reset();
+                this.lastDecision = null;
+            }
+
             var snapshot = new FacilityAirportSnapshot(
                 string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao,
                 report.Name,

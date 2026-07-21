@@ -11,7 +11,7 @@ var tests = new List<(string Name, Action Test)>
     ("phraséologie LFBI générique vers le point d'attente", TestLfbiConciseTaxiPhraseology),
     ("prêt au point d'attente donne alignement et décollage", TestLfbiDirectTakeoffFromHold),
     ("nom de point annoncé ne pilote pas la clairance", TestReportedPointDoesNotDriveClearance),
-    ("point intermédiaire ne donne pas la clairance décollage", TestIntermediateHoldDoesNotClearTakeoff),
+    ("tout vrai point d'attente donne accès à la séquence départ", TestAnyFacilitiesHoldClearsTakeoff),
     ("piste occupée bloque la clairance décollage", TestOccupiedRunwayBlocksTakeoff),
     ("trafic inconnu bloque la clairance décollage", TestUnknownTrafficBlocksTakeoff),
     ("AFIS informe sans clairance de contrôle", TestAfisInformationOnly),
@@ -38,6 +38,13 @@ var tests = new List<(string Name, Action Test)>
     ("CTAF sans dialogue", TestCtafSilent),
     ("station inconnue sans clairance", TestUnknownStationSilent),
     ("TaxiPath non-piste ignore piste corrompue", TestNonRunwayGarbageIgnored),
+    ("contexte géographique suit le nouvel aérodrome", TestGeographicAirportSelection),
+    ("téléportation abandonne l'ancien aérodrome", TestTeleportAirportSelection),
+    ("contexte radio peut viser un autre aérodrome", TestRadioContextByStationIdent),
+    ("position station COM résout l'aérodrome radio", TestRadioContextByStationPosition),
+    ("fréquence Facilities résout l'aérodrome radio", TestRadioContextByFrequency),
+    ("station COM proche secourt la détection au sol", TestOnGroundStationFallback),
+    ("routage secourt les associations piste absentes", TestHoldRoutingWithoutRunwayAssociation),
 };
 
 var failures = new List<string>();
@@ -63,6 +70,145 @@ if (failures.Count > 0)
 
 Console.WriteLine($"PHONIE Core tests OK - {tests.Count}/{tests.Count}");
 
+
+static void TestGeographicAirportSelection()
+{
+    var selection = AirportContextResolver.Resolve(
+        BuildAirportCandidates(),
+        47.0810,
+        -0.8770,
+        true,
+        "LFBI",
+        string.Empty,
+        0,
+        null,
+        null);
+
+    Assert(selection.GeographicIcao == "LFOU", selection.GeographicIcao);
+    Assert(double.IsFinite(selection.GeographicDistanceNm));
+}
+
+static void TestTeleportAirportSelection()
+{
+    var airports = BuildAirportCandidates();
+    var before = AirportContextResolver.Resolve(
+        airports,
+        46.5870,
+        0.3070,
+        true,
+        string.Empty,
+        string.Empty,
+        0,
+        null,
+        null);
+    var after = AirportContextResolver.Resolve(
+        airports,
+        47.0810,
+        -0.8770,
+        true,
+        before.GeographicIcao,
+        string.Empty,
+        0,
+        null,
+        null);
+
+    Assert(before.GeographicIcao == "LFBI", before.GeographicIcao);
+    Assert(after.GeographicIcao == "LFOU", after.GeographicIcao);
+}
+
+static void TestRadioContextByStationIdent()
+{
+    var selection = AirportContextResolver.Resolve(
+        BuildAirportCandidates(),
+        47.0810,
+        -0.8770,
+        false,
+        "LFOU",
+        "LFBI",
+        134.100,
+        null,
+        null);
+
+    Assert(selection.GeographicIcao == "LFOU", selection.GeographicIcao);
+    Assert(selection.RadioIcao == "LFBI", selection.RadioIcao);
+    Assert(selection.RadioSource.Contains("Identifiant COM", StringComparison.Ordinal));
+}
+
+static void TestRadioContextByStationPosition()
+{
+    var selection = AirportContextResolver.Resolve(
+        BuildAirportCandidates(),
+        47.0810,
+        -0.8770,
+        false,
+        "LFOU",
+        string.Empty,
+        134.100,
+        46.5870,
+        0.3070);
+
+    Assert(selection.GeographicIcao == "LFOU", selection.GeographicIcao);
+    Assert(selection.RadioIcao == "LFBI", selection.RadioIcao);
+    Assert(selection.RadioSource.Contains("Position", StringComparison.Ordinal));
+}
+
+static void TestRadioContextByFrequency()
+{
+    var selection = AirportContextResolver.Resolve(
+        BuildAirportCandidates(),
+        47.0810,
+        -0.8770,
+        false,
+        "LFOU",
+        string.Empty,
+        134.100,
+        null,
+        null);
+
+    Assert(selection.GeographicIcao == "LFOU", selection.GeographicIcao);
+    Assert(selection.RadioIcao == "LFBI", selection.RadioIcao);
+    Assert(selection.RadioSource.Contains("Fréquence", StringComparison.Ordinal));
+}
+
+static void TestOnGroundStationFallback()
+{
+    var selection = AirportContextResolver.Resolve(
+        Array.Empty<NearbyAirportCandidate>(),
+        47.0810,
+        -0.8770,
+        true,
+        string.Empty,
+        "LFOU",
+        120.400,
+        47.0811,
+        -0.8771);
+
+    Assert(selection.GeographicIcao == "LFOU", selection.GeographicIcao);
+    Assert(selection.RadioIcao == "LFOU", selection.RadioIcao);
+}
+
+static void TestHoldRoutingWithoutRunwayAssociation()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var runway = model.RunwayEnds.Single(item => item.Designator == "03") with
+    {
+        RunwayIndex = 999,
+    };
+    var route = TaxiRouter.RouteToNearestAvailableHoldShort(
+        model,
+        new GroundLocation(GroundPositionKind.Parking, "P:12", null, 0, 1, "Parking S6"),
+        runway,
+        AvailableOccupancy());
+
+    Assert(route.Success, route.FailureReason);
+    Assert(route.HoldShort is not null);
+}
+
+static IReadOnlyList<NearbyAirportCandidate> BuildAirportCandidates() => new[]
+{
+    new NearbyAirportCandidate("LFBI", "LF", 46.5870, 0.3070, 129, new[] { 118.505, 121.780, 134.100 }),
+    new NearbyAirportCandidate("LFOU", "LF", 47.0810, -0.8770, 135, new[] { 120.400 }),
+};
 
 static void TestLfbiMsfs2024Fixture()
 {
@@ -239,7 +385,7 @@ static void TestReportedPointDoesNotDriveClearance()
     Assert(!decision.SpokenText.Contains("Bravo", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
 }
 
-static void TestIntermediateHoldDoesNotClearTakeoff()
+static void TestAnyFacilitiesHoldClearsTakeoff()
 {
     var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
     var profile = BuildLfbiProfile();
@@ -256,9 +402,9 @@ static void TestIntermediateHoldDoesNotClearTakeoff()
         profile,
         1015);
 
-    Assert(decision.Action == ControllerAction.Unable, decision.SpokenText);
-    Assert(decision.ReasonCode == "READY_NOT_AT_DEPARTURE_HOLD", decision.ReasonCode);
-    Assert(!decision.SpokenText.Contains("autorisé décollage", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(decision.Action == ControllerAction.Speak, decision.SpokenText);
+    Assert(decision.ReasonCode == "LINEUP_TAKEOFF_CLEARED_FROM_HOLD", decision.ReasonCode);
+    Assert(decision.SpokenText.Contains("autorisé décollage", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
 }
 
 static void TestOccupiedRunwayBlocksTakeoff()

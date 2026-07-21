@@ -18,6 +18,13 @@ public sealed class AtisService
 
     public AtisInformation? Current => this.current;
 
+    public void Reset()
+    {
+        this.letterIndex = 0;
+        this.lastSignature = null;
+        this.current = null;
+    }
+
     public AtisInformation? Update(
         SimulatorSnapshot snapshot,
         AirportFacilityReport? report,

@@ -1,65 +1,56 @@
-# PHONIE DEV0.4.0.6 - HOLD SHORT FLOW
+# PHONIE DEV0.4.0.7 - DYNAMIC AIRPORT & RADIO CONTEXT
 
 PHONIE est une application Windows x64 portable en C# / .NET 8 / WPF destinée aux communications ATC VFR locales avec Microsoft Flight Simulator 2020 et 2024.
 
-DEV0.4.0.6 simplifie la fin du chantier Ground Operations avant DEV0.5. Le moteur continue de calculer le trajet exact avec les données Facilities, mais les noms locaux de points d'attente ne sont plus nécessaires dans la phraséologie pilote-contrôleur.
+DEV0.4.0.7 corrige les deux limites majeures constatées en DEV0.4.0.6 : le contexte ne reste plus attaché à LFBI après un spawn ou une téléportation, et la séquence de départ n'exige plus un point local particulier comme A2.
 
-## Roulage contrôlé
+## Détection dynamique de l'aérodrome
 
-Après une demande de roulage, PHONIE détermine la piste, calcule un itinéraire accessible et répond :
+PHONIE recherche automatiquement l'aérodrome correspondant à la position réelle de l'avion. Lors d'un spawn, d'une téléportation ou d'un déplacement vers un nouveau terrain, il invalide l'ancien contexte et recharge :
+
+- les pistes et seuils ;
+- les parkings, taxiways et points d'attente ;
+- les fréquences et leurs types de service ;
+- la station radio active ;
+- le trafic au sol ;
+- la piste probable en service ;
+- la carte Diagnostic ;
+- l'éventuel profil local disponible.
+
+Aucun aérodrome ne doit être préparé ou codé à l'avance pour être détecté. Une liste Facilities proche est interrogée régulièrement. Une liste mondiale est utilisée comme secours lorsque l'interface Facilities étendue n'est pas disponible.
+
+## Contextes géographique et radio séparés
+
+Le contexte géographique décrit le terrain autour de l'avion. Le contexte radio décrit la station accordée sur COM1.
+
+En vol, PHONIE peut donc conserver le terrain situé sous l'avion comme contexte géographique tout en basculant le contexte radio vers l'aérodrome d'arrivée ou sa station d'approche. La résolution radio utilise en priorité l'identifiant et la position de la station COM active, puis la fréquence dans les Facilities déjà chargées.
+
+## Roulage et départ génériques
+
+Après une demande de roulage sur une fréquence contrôlée :
 
 `Fox Novembre Yankee, roulez au point d'attente et rappelez prêt.`
 
-Les appellations A, A2, A3, D1 et les segments internes restent visibles dans le diagnostic et sur la carte, mais ne sont plus prononcés. Une mauvaise appellation de scène ou une transcription approximative ne pilote donc plus la clairance.
+Les noms locaux A, A2, A3, D1 et les segments internes ne sont pas nécessaires dans la phrase radio. Ils restent disponibles dans le diagnostic lorsqu'ils sont fiables.
 
-## Prêt au point d'attente
+Tout véritable nœud `HOLD_SHORT` Facilities est valable pour l'annonce prêt au départ. Le profil local ne peut ni autoriser ni interdire le départ. Les associations de piste fiables sont préférées pour le routage ; si la scène les renseigne mal, PHONIE se replie sur les autres vrais points d'attente accessibles.
 
-Au prochain appel, PHONIE vérifie la position réelle. La clairance combinée n'est donnée que lorsque :
-
-- l'avion est sur un vrai point d'attente de départ lié à la piste attribuée ;
-- un point intermédiaire n'est pas confondu avec le point de départ ;
-- le trafic disponible est connu ;
-- aucun segment de la piste attribuée n'est occupé.
-
-Réponse Tour attendue lorsque la piste est libre :
+Piste libre et trafic connu :
 
 `Fox Novembre Yankee, alignez-vous piste deux un, vent deux un zéro degrés, un zéro nœuds, autorisé décollage.`
 
-Si la piste est occupée ou si l'état du trafic est indisponible, PHONIE maintient l'avion au point d'attente.
+Piste occupée ou trafic indisponible : maintien au point d'attente.
 
-## AFIS
+## AFIS et collationnement
 
-Le moteur géométrique et le diagnostic restent disponibles, mais l'AFIS transmet uniquement la piste, le vent, le QNH et les renseignements de trafic disponibles. Il ne dit jamais `roulez`, `alignez-vous` ou `autorisé décollage`.
+Sur une fréquence AFIS, PHONIE transmet uniquement les informations disponibles. Il ne donne jamais d'autorisation de roulage, d'alignement ou de décollage.
 
-## Diagnostic graphique
+Après chaque message opérationnel Tour ou AFIS, une émission PTT pilote est attendue. Le contenu exact n'est pas bloquant dans cette version. En l'absence de PTT, PHONIE relance.
 
-`Diagnostic > Carte du roulage` conserve :
-
-- le réseau Facilities ;
-- la piste et les points d'attente ;
-- l'itinéraire interne attribué ;
-- les noms Facilities et opérationnels ;
-- les segments occupés ;
-- l'avion et les trafics analysés.
-
-Le profil LFBI reste présent pour comprendre et vérifier A3, A2 et A, mais ces noms ne conditionnent plus la phrase radio.
-
-## Collationnement
-
-Après chaque message opérationnel Tour ou AFIS, une émission PTT est attendue. Son contenu n'est pas bloquant dans cette version. En l'absence de PTT, PHONIE relance avec `collationnez`, puis `accusez réception`.
-
-## Redémarrage vocal
-
-Les commandes `Redémarrer ASR` et `Redémarrer voix` permettent de relancer séparément la reconnaissance et la synthèse sans fermer PHONIE. Le changement de runtime Whisper CPU/Vulkan demande encore une relance complète.
-
-## Voix réalistes
-
-La refonte complète des voix ATC est prévue dans DEV0.8 - ATC Voice. Les versions DEV0.4 à DEV0.7 stabilisent d'abord la logique opérationnelle, les circuits, le trafic et le moteur multi-aérodromes afin que les nouvelles voix reposent sur un dialogue fiable.
-
-## Stockage et livraison
+## Portabilité
 
 Toutes les données restent sous le dossier PHONIE : `config`, `data`, `logs`, `recordings`, `cache` et `models`.
 
-Le workflow compile, teste et publie un artefact Windows x64 à décompression unique. Une seule extraction donne directement accès à `PHONIE.exe`.
+Le workflow compile, teste et publie un dossier Windows x64 directement dans l'artefact GitHub. Une seule extraction donne accès à `PHONIE.exe`.
 
-Commencer les essais avec `TEST-DEV0.4.0.6.md`.
+Commencer les essais avec `TEST-DEV0.4.0.7.md`.

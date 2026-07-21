@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -50,7 +51,12 @@ public partial class MainWindow : Window
     private string diagnosticsSimulator = "-";
     private string diagnosticsStation = "-";
     private double diagnosticsCom1;
-    private AirportFacilityReport? latestAirportReport;
+    private readonly ConcurrentDictionary<string, AirportFacilityReport> airportReports = new(StringComparer.OrdinalIgnoreCase);
+    private AirportFacilityReport? latestGroundAirportReport;
+    private AirportFacilityReport? latestRadioAirportReport;
+    private string currentGeographicIcao = string.Empty;
+    private string currentRadioIcao = string.Empty;
+    private string currentRadioContextSource = "Station radio non résolue";
     private SimulatorSnapshot? latestSnapshot;
     private AtisInformation? currentAtis;
     private OperationalFrequency currentOperationalFrequency = new(
@@ -92,6 +98,7 @@ public partial class MainWindow : Window
         this.simConnectService.LogMessage += this.Service_OnLogMessage;
         this.simConnectService.AirportDataReceived += this.SimConnectService_OnAirportDataReceived;
         this.simConnectService.GroundTrafficReceived += this.SimConnectService_OnGroundTrafficReceived;
+        this.simConnectService.AirportContextChanged += this.SimConnectService_OnAirportContextChanged;
 
         this.audioService.LogMessage += this.Service_OnLogMessage;
         this.audioService.RecordingStateChanged += this.AudioService_OnRecordingStateChanged;
@@ -371,11 +378,23 @@ public partial class MainWindow : Window
 
     private void RequestLfbiAirportDataButton_OnClick(object sender, RoutedEventArgs e)
     {
-        this.AirportDataText.Text = "Facilities : capture binaire LFBI...";
-        if (!this.simConnectService.RequestAirportData("LFBI"))
+        var icao = !string.IsNullOrWhiteSpace(this.currentGeographicIcao)
+            ? this.currentGeographicIcao
+            : !string.IsNullOrWhiteSpace(this.currentRadioIcao)
+                ? this.currentRadioIcao
+                : NormalizeIcao(this.settings.PreferredAirportIcao);
+        if (string.IsNullOrWhiteSpace(icao))
+        {
+            this.AirportDataText.Text = "Facilities : aucun aérodrome résolu";
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Airport Data : aucun ICAO disponible à recharger.");
+            return;
+        }
+
+        this.AirportDataText.Text = $"Facilities : rechargement {icao}...";
+        if (!this.simConnectService.RequestAirportData(icao))
         {
             this.AirportDataText.Text = "Facilities : SimConnect indisponible";
-            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Airport Data LFBI : attendre la connexion au simulateur.");
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Airport Data {icao} : attendre la connexion au simulateur.");
         }
     }
 
@@ -1125,6 +1144,22 @@ public partial class MainWindow : Window
 
     private void SimConnectService_OnStatusChanged(object? sender, ConnectionStatus status)
     {
+        if (status.State is ConnectionState.Disconnected or ConnectionState.Waiting)
+        {
+            this.airportReports.Clear();
+            this.latestGroundAirportReport = null;
+            this.latestRadioAirportReport = null;
+            this.currentGeographicIcao = string.Empty;
+            this.currentRadioIcao = string.Empty;
+            this.currentRadioContextSource = "Station radio non résolue";
+            this.latestSnapshot = null;
+            this.currentAtis = null;
+            this.lastAtisAudioSignature = null;
+            this.lastRadioSignature = null;
+            this.atisService.Reset();
+            this.groundOperationsCoordinator.ClearAirport("connexion SimConnect inactive");
+        }
+
         _ = this.Dispatcher.BeginInvoke(() =>
         {
             this.currentConnectionState = status.State;
@@ -1140,6 +1175,16 @@ public partial class MainWindow : Window
 
             this.SetDotResource(this.StatusDot, resource);
             this.SetDotResource(this.SimFooterDot, resource);
+            if (status.State is ConnectionState.Disconnected or ConnectionState.Waiting)
+            {
+                this.AirportNameText.Text = "Aérodrome - en attente de SimConnect";
+                this.AirportSummaryText.Text = "Contexte géographique réinitialisé.";
+                this.FrequencySummaryText.Text = "Fréquences : en attente de SimConnect.";
+                this.AirportDataText.Text = "Contexte : aucun aérodrome actif";
+                this.UpdateGroundOperationsUi();
+                this.UpdateAtisUi();
+            }
+
             this.RefreshFooterState();
         });
     }
@@ -1148,14 +1193,27 @@ public partial class MainWindow : Window
     {
         this.diagnosticsService.ReportSnapshot();
         this.latestSnapshot = snapshot;
+        this.ApplyAirportContexts(
+            snapshot.GeographicAirportIcao,
+            snapshot.GeographicAirportDistanceNm,
+            snapshot.RadioAirportIcao,
+            snapshot.RadioContextSource);
 
-
-        this.currentOperationalFrequency = OperationalRadioService.Resolve(snapshot, this.latestAirportReport);
+        this.currentOperationalFrequency = OperationalRadioService.Resolve(
+            snapshot,
+            this.latestRadioAirportReport,
+            this.currentRadioIcao);
         this.groundOperationsCoordinator.UpdateSnapshot(snapshot);
+        var runwayForAtis = string.Equals(
+                this.currentRadioIcao,
+                this.currentGeographicIcao,
+                StringComparison.OrdinalIgnoreCase)
+            ? this.groundOperationsCoordinator.CurrentRunwayDesignator
+            : null;
         this.currentAtis = this.atisService.Update(
             snapshot,
-            this.latestAirportReport,
-            this.groundOperationsCoordinator.CurrentRunwayDesignator);
+            this.latestRadioAirportReport,
+            runwayForAtis);
 
         _ = this.Dispatcher.BeginInvoke(() =>
         {
@@ -1172,7 +1230,9 @@ public partial class MainWindow : Window
                 : $"{aircraftTitle} - ATC ID {snapshot.AircraftAtcId}";
 
             this.PositionText.Text = FormatCoordinates(snapshot.Latitude, snapshot.Longitude);
-            this.DistanceText.Text = $"Distance LFBI : {snapshot.DistanceToLfbiNm:F1} NM";
+            this.DistanceText.Text = string.IsNullOrWhiteSpace(snapshot.GeographicAirportIcao)
+                ? "Aérodrome géographique : recherche..."
+                : $"Aérodrome {snapshot.GeographicAirportIcao} : {snapshot.GeographicAirportDistanceNm:F1} NM";
             this.GroundText.Text = snapshot.IsOnGround ? "AU SOL" : "EN VOL";
             this.AltitudeText.Text = $"Altitude : {snapshot.AltitudeFeet:F0} ft";
             this.HeadingText.Text = $"Cap : {snapshot.HeadingMagneticDegrees:000}° M";
@@ -1187,7 +1247,11 @@ public partial class MainWindow : Window
             var spacing = snapshot.Com1SpacingMode == 1 ? "8,33 kHz" : "25 kHz";
             var receive = snapshot.Com1Receiving ? "réception active" : "réception coupée";
             var radioStatus = snapshot.Com1Status == 0 ? string.Empty : $" - statut {snapshot.Com1Status}";
-            this.ComMetaText.Text = $"{stationIdent} - {stationType} - {spacing} - {receive}{radioStatus}";
+            var radioAirport = string.IsNullOrWhiteSpace(snapshot.RadioAirportIcao)
+                ? "contexte radio non résolu"
+                : $"radio {snapshot.RadioAirportIcao}";
+            this.ComMetaText.Text =
+                $"{stationIdent} - {stationType} - {spacing} - {receive}{radioStatus} - {radioAirport} ({snapshot.RadioContextSource})";
             this.UpdateOperationalRadioUi();
 
             this.WeatherPrimaryText.Text = $"Vent {FormatDirection(snapshot.WindDirectionTrueDegrees)} / {FormatWindSpeed(snapshot.WindVelocityKnots)} - QNH {FormatQnh(snapshot.QnhHpa)}";
@@ -1204,7 +1268,7 @@ public partial class MainWindow : Window
             this.UpdateGroundOperationsUi();
             this.EnsureAtisCacheWhenNeeded();
 
-            var radioSignature = $"{snapshot.Com1ActiveMhz:F3}|{this.currentOperationalFrequency.ServiceName}|{this.currentOperationalFrequency.Kind}|{snapshot.Com1SpacingMode}|{snapshot.Com1Receiving}";
+            var radioSignature = $"{snapshot.Com1ActiveMhz:F3}|{this.currentOperationalFrequency.ServiceName}|{this.currentOperationalFrequency.Kind}|{snapshot.Com1SpacingMode}|{snapshot.Com1Receiving}|{snapshot.RadioAirportIcao}";
             if (!string.Equals(radioSignature, this.lastRadioSignature, StringComparison.Ordinal))
             {
                 this.lastRadioSignature = radioSignature;
@@ -1213,31 +1277,187 @@ public partial class MainWindow : Window
         });
     }
 
+    private void SimConnectService_OnAirportContextChanged(object? sender, AirportContextChanged context)
+    {
+        this.ApplyAirportContexts(
+            context.GeographicIcao,
+            context.GeographicDistanceNm,
+            context.RadioIcao,
+            context.RadioSource);
+
+        _ = this.Dispatcher.BeginInvoke(() =>
+        {
+            var geographic = string.IsNullOrWhiteSpace(context.GeographicIcao) ? "aucun" : context.GeographicIcao;
+            var radio = string.IsNullOrWhiteSpace(context.RadioIcao) ? "non résolu" : context.RadioIcao;
+            this.AirportDataText.Text =
+                $"Contexte : sol {geographic} - radio {radio} - {context.NearbyAirports.Count} aérodrome(s) Facilities";
+
+            if (this.latestGroundAirportReport is not null)
+            {
+                this.UpdateAirportUi(this.latestGroundAirportReport);
+            }
+            else if (!string.IsNullOrWhiteSpace(context.GeographicIcao))
+            {
+                this.AirportNameText.Text = $"{context.GeographicIcao} - chargement Facilities";
+                this.AirportSummaryText.Text = "Pistes, parkings, taxiways et points d'attente en cours de rechargement.";
+                this.FrequencySummaryText.Text = "Fréquences : rechargement du nouvel aérodrome.";
+            }
+            else
+            {
+                this.AirportNameText.Text = "Aérodrome - recherche en cours";
+                this.AirportSummaryText.Text = "Aucun contexte géographique confirmé.";
+                this.FrequencySummaryText.Text = "Fréquences : en attente d'un aérodrome ou d'une station radio.";
+            }
+
+            this.UpdateGroundOperationsUi();
+            this.UpdateOperationalRadioUi();
+            this.UpdateAtisUi();
+        });
+    }
+
+    private void ApplyAirportContexts(
+        string? geographicIcao,
+        double geographicDistanceNm,
+        string? radioIcao,
+        string? radioSource)
+    {
+        var geographic = NormalizeIcao(geographicIcao);
+        var radio = NormalizeIcao(radioIcao);
+        var geographicChanged = !string.Equals(
+            geographic,
+            this.currentGeographicIcao,
+            StringComparison.OrdinalIgnoreCase);
+        var radioChanged = !string.Equals(
+            radio,
+            this.currentRadioIcao,
+            StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(
+                radioSource,
+                this.currentRadioContextSource,
+                StringComparison.Ordinal);
+
+        if (geographicChanged)
+        {
+            var previous = string.IsNullOrWhiteSpace(this.currentGeographicIcao) ? "aucun" : this.currentGeographicIcao;
+            this.currentGeographicIcao = geographic;
+            this.latestGroundAirportReport = null;
+            this.groundOperationsCoordinator.ClearAirport(
+                $"changement géographique {previous} -> {(string.IsNullOrWhiteSpace(geographic) ? "aucun" : geographic)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(geographic)
+            && this.latestGroundAirportReport is null
+            && this.TryGetAirportReport(geographic, out var groundReport))
+        {
+            this.latestGroundAirportReport = groundReport;
+            this.groundOperationsCoordinator.UpdateAirport(groundReport);
+        }
+
+        if (radioChanged)
+        {
+            this.currentRadioIcao = radio;
+            this.currentRadioContextSource = string.IsNullOrWhiteSpace(radioSource)
+                ? "Station radio non résolue"
+                : radioSource.Trim();
+            this.latestRadioAirportReport = null;
+            this.currentAtis = null;
+            this.lastAtisAudioSignature = null;
+            this.atisService.Reset();
+        }
+
+        if (!string.IsNullOrWhiteSpace(radio)
+            && this.latestRadioAirportReport is null
+            && this.TryGetAirportReport(radio, out var radioReport))
+        {
+            this.latestRadioAirportReport = radioReport;
+        }
+
+        _ = geographicDistanceNm; // Conservé dans le snapshot et affiché par l'interface.
+    }
+
+    private bool TryGetAirportReport(string icao, out AirportFacilityReport report)
+    {
+        if (this.airportReports.TryGetValue(icao, out var cached))
+        {
+            report = cached;
+            return true;
+        }
+
+        if (this.simConnectService.TryGetAirportReport(icao, out var serviceReport)
+            && serviceReport is not null)
+        {
+            this.airportReports[icao] = serviceReport;
+            report = serviceReport;
+            return true;
+        }
+
+        report = null!;
+        return false;
+    }
+
     private void SimConnectService_OnAirportDataReceived(object? sender, AirportFacilityReport report)
     {
-        this.latestAirportReport = report;
-        this.groundOperationsCoordinator.UpdateAirport(report);
-        if (this.latestSnapshot is not null)
+        var icao = NormalizeIcao(string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao);
+        if (!string.IsNullOrWhiteSpace(icao))
         {
-            this.currentOperationalFrequency = OperationalRadioService.Resolve(this.latestSnapshot, report);
-            this.groundOperationsCoordinator.UpdateSnapshot(this.latestSnapshot);
-            this.currentAtis = this.atisService.Update(
-                this.latestSnapshot,
-                report,
-                this.groundOperationsCoordinator.CurrentRunwayDesignator);
+            this.airportReports[icao] = report;
+        }
+
+        var isGroundContext = !string.IsNullOrWhiteSpace(icao)
+            && string.Equals(icao, this.currentGeographicIcao, StringComparison.OrdinalIgnoreCase);
+        var isRadioContext = !string.IsNullOrWhiteSpace(icao)
+            && string.Equals(icao, this.currentRadioIcao, StringComparison.OrdinalIgnoreCase);
+
+        if (isGroundContext)
+        {
+            this.latestGroundAirportReport = report;
+            this.groundOperationsCoordinator.UpdateAirport(report);
+            if (this.latestSnapshot is not null)
+            {
+                this.groundOperationsCoordinator.UpdateSnapshot(this.latestSnapshot);
+            }
+        }
+
+        if (isRadioContext)
+        {
+            this.latestRadioAirportReport = report;
+            if (this.latestSnapshot is not null)
+            {
+                this.currentOperationalFrequency = OperationalRadioService.Resolve(
+                    this.latestSnapshot,
+                    report,
+                    this.currentRadioIcao);
+                var runwayForAtis = isGroundContext
+                    ? this.groundOperationsCoordinator.CurrentRunwayDesignator
+                    : null;
+                this.currentAtis = this.atisService.Update(
+                    this.latestSnapshot,
+                    report,
+                    runwayForAtis);
+            }
         }
 
         _ = this.Dispatcher.BeginInvoke(() =>
         {
-            var icao = string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao;
-            this.AirportDataText.Text = $"{icao} : {report.Runways.Count} piste(s), {report.Frequencies.Count} fréquence(s)";
-            this.UpdateAirportUi(report);
+            var roles = isGroundContext && isRadioContext
+                ? "sol + radio"
+                : isGroundContext
+                    ? "sol"
+                    : isRadioContext
+                        ? "radio"
+                        : "cache";
+            this.AirportDataText.Text = $"{icao} ({roles}) : {report.Runways.Count} piste(s), {report.Frequencies.Count} fréquence(s)";
+            if (isGroundContext || isRadioContext)
+            {
+                this.UpdateAirportUi(report);
+            }
+
             this.UpdateOperationalRadioUi();
             this.UpdateAtisUi();
             this.UpdateGroundOperationsUi();
             this.EnsureAtisCacheWhenNeeded();
             this.AppendLog(
-                $"[{DateTime.Now:HH:mm:ss}] Airport Data {icao} terminé : " +
+                $"[{DateTime.Now:HH:mm:ss}] Airport Data {icao} terminé ({roles}) : " +
                 $"{report.Runways.Count} piste(s), {report.Frequencies.Count} fréquence(s), " +
                 $"{report.TaxiParkings.Count} parking(s), {report.TaxiPaths.Count} chemin(s), " +
                 $"{report.ParseWarnings.Count} avertissement(s). " +
@@ -1480,22 +1700,75 @@ public partial class MainWindow : Window
 
     private void UpdateAirportUi(AirportFacilityReport report)
     {
-        var icao = string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao;
-        var name = string.IsNullOrWhiteSpace(report.Name) ? "Aérodrome" : report.Name;
-        this.AirportNameText.Text = $"{icao} - {name}";
-        var runwayStarts = report.Starts.Count(item => item.Type == 1 && item.Number is >= 1 and <= 36);
-        var diagnosticState = report.DiagnosticSummary.TaxiPathBinaryLayoutValidated
-            ? "DIAG TAXIPATH COHÉRENT"
-            : "DIAG TAXIPATH À TRANSMETTRE";
-        this.AirportSummaryText.Text =
-            $"{report.Runways.Count} piste(s) - {runwayStarts} seuil(s) - {report.TaxiParkings.Count} parking(s) - {report.TaxiPaths.Count} segment(s) taxi" +
-            $" - {diagnosticState} ({report.DiagnosticSummary.ParsedTaxiPathPacketCount}/{report.DiagnosticSummary.TaxiPathPacketCount})" +
-            (report.ParseWarnings.Count > 0 ? $" - {report.ParseWarnings.Count} avertissement(s)" : string.Empty);
-        this.FrequencySummaryText.Text = "Fréquences : " + string.Join(" | ", report.Frequencies
-            .OrderBy(item => item.FrequencyMhz)
-            .Select(item => $"{item.FrequencyMhz:F3}"));
-        this.SetForegroundResource(this.AirportSummaryText, report.DiagnosticSummary.TaxiPathBinaryLayoutValidated ? "Success" : "Warning");
-        this.SetForegroundResource(this.FrequencySummaryText, report.ParseWarnings.Count > 0 ? "Warning" : "Accent");
+        var groundReport = this.latestGroundAirportReport;
+        var radioReport = this.latestRadioAirportReport;
+        if (groundReport is null
+            && string.Equals(
+                NormalizeIcao(string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao),
+                this.currentGeographicIcao,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            groundReport = report;
+        }
+
+        if (radioReport is null
+            && string.Equals(
+                NormalizeIcao(string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao),
+                this.currentRadioIcao,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            radioReport = report;
+        }
+
+        var geographicLabel = string.IsNullOrWhiteSpace(this.currentGeographicIcao)
+            ? "SOL NON RÉSOLU"
+            : groundReport is null
+                ? $"SOL {this.currentGeographicIcao}"
+                : $"{this.currentGeographicIcao} - {(string.IsNullOrWhiteSpace(groundReport.Name) ? "Aérodrome" : groundReport.Name)}";
+        this.AirportNameText.Text = !string.IsNullOrWhiteSpace(this.currentRadioIcao)
+            && !string.Equals(this.currentRadioIcao, this.currentGeographicIcao, StringComparison.OrdinalIgnoreCase)
+                ? $"{geographicLabel} | RADIO {this.currentRadioIcao}"
+                : geographicLabel;
+
+        if (groundReport is null)
+        {
+            this.AirportSummaryText.Text = "Réseau sol en attente du rapport Facilities géographique.";
+            this.SetForegroundResource(this.AirportSummaryText, "Warning");
+        }
+        else
+        {
+            var runwayStarts = groundReport.Starts.Count(item => item.Type == 1 && item.Number is >= 1 and <= 36);
+            var diagnosticState = groundReport.DiagnosticSummary.TaxiPathBinaryLayoutValidated
+                ? "DIAG TAXIPATH COHÉRENT"
+                : "DIAG TAXIPATH À TRANSMETTRE";
+            this.AirportSummaryText.Text =
+                $"{groundReport.Runways.Count} piste(s) - {runwayStarts} seuil(s) - {groundReport.TaxiParkings.Count} parking(s) - {groundReport.TaxiPaths.Count} segment(s) taxi" +
+                $" - {diagnosticState} ({groundReport.DiagnosticSummary.ParsedTaxiPathPacketCount}/{groundReport.DiagnosticSummary.TaxiPathPacketCount})" +
+                (groundReport.ParseWarnings.Count > 0 ? $" - {groundReport.ParseWarnings.Count} avertissement(s)" : string.Empty);
+            this.SetForegroundResource(
+                this.AirportSummaryText,
+                groundReport.DiagnosticSummary.TaxiPathBinaryLayoutValidated ? "Success" : "Warning");
+        }
+
+        var frequencyReport = radioReport ?? groundReport;
+        if (frequencyReport is null)
+        {
+            this.FrequencySummaryText.Text = "Fréquences : en attente du contexte radio.";
+            this.SetForegroundResource(this.FrequencySummaryText, "Warning");
+        }
+        else
+        {
+            var frequencyIcao = NormalizeIcao(
+                string.IsNullOrWhiteSpace(frequencyReport.Icao)
+                    ? frequencyReport.RequestedIcao
+                    : frequencyReport.Icao);
+            this.FrequencySummaryText.Text = $"Fréquences {frequencyIcao} : " + string.Join(" | ", frequencyReport.Frequencies
+                .OrderBy(item => item.FrequencyMhz)
+                .Select(item => $"{item.FrequencyMhz:F3}"));
+            this.SetForegroundResource(
+                this.FrequencySummaryText,
+                frequencyReport.ParseWarnings.Count > 0 ? "Warning" : "Accent");
+        }
     }
 
     private void UpdateAtisUi()
@@ -1503,7 +1776,7 @@ public partial class MainWindow : Window
         if (this.currentAtis is null)
         {
             this.AtisStateText.Text = "EN ATTENTE";
-            this.AtisTextBox.Text = "L'ATIS sera généré après lecture de LFBI et réception de la météo locale.";
+            this.AtisTextBox.Text = "L'ATIS sera généré après résolution de la station radio et réception des données disponibles.";
             return;
         }
 
@@ -2113,6 +2386,14 @@ public partial class MainWindow : Window
 
     private static bool DeviceExists(IReadOnlyList<AudioDeviceInfo> devices, string? id) =>
         !string.IsNullOrWhiteSpace(id) && devices.Any(device => device.Id == id);
+
+    private static string NormalizeIcao(string? value)
+    {
+        var normalized = (value ?? string.Empty).Trim().ToUpperInvariant();
+        return normalized.Length == 4 && normalized.All(char.IsAsciiLetterOrDigit)
+            ? normalized
+            : string.Empty;
+    }
 
     private static string FriendlyStationType(string? stationType)
     {

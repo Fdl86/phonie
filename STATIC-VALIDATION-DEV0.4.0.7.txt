@@ -1,0 +1,20 @@
+PHONIE DEV0.4.0.7 - VALIDATION STATIQUE
+Date UTC : 2026-07-21
+
+RÉSULTAT : PASS
+
+Contrôles effectués :
+- 18 fichiers requis par la release présents.
+- 4 fichiers JSON analysés sans erreur.
+- 9 fichiers XML, XAML, CSProj et manifest analysés sans erreur.
+- 1 workflow YAML analysé sans erreur.
+- 57 fichiers C# contrôlés pour les délimiteurs, chaînes et commentaires non fermés.
+- 31 gestionnaires déclarés dans le XAML retrouvés dans le code-behind.
+- Version DEV0.4.0.7 présente dans les fichiers actifs de l'application et du workflow.
+- 8 contrôles statiques ciblés validés : contextes géographique/radio séparés, liste Airport Facilities EX1, secours liste mondiale, détection de téléportation, rechargement Facilities sol/radio, invalidation du moteur sol, acceptation de tout HOLD_SHORT réel, secours de routage sans association piste fiable.
+- 42 tests Core déclarés, dont changement LFBI/LFOU, contexte radio distant et tout point d'attente Facilities.
+- Aucun bin, obj, dist, .git, .vs, DLL, EXE, PDB ou ZIP inclus dans la source.
+- Archive source prévue sans dossier enveloppant et sans ZIP imbriqué.
+
+LIMITATION HONNÊTE :
+La compilation .NET 8/WPF et l'exécution des tests ne peuvent pas être lancées dans l'environnement local utilisé pour préparer cette archive, car le SDK .NET Windows n'y est pas installé. GitHub Actions reste le contrôle réel et bloquant : aucun artefact portable n'est publié si la restauration, la compilation, les Smoke Tests, les 42 Core Tests ou la publication échouent.
