@@ -329,6 +329,102 @@ void RunOperationalRadioTests()
     {
         failures.Add("Priorité Approche en absence de Tour non respectée.");
     }
+
+    var lfbiPublished = OfficialRadioCatalogService.GetPublishedFrequencies("LFBI");
+    var lfouPublished = OfficialRadioCatalogService.GetPublishedFrequencies("LFOU");
+    if (!lfbiPublished.Any(value => Math.Abs(value - 118.505) <= 0.001)
+        || !lfbiPublished.Any(value => Math.Abs(value - 134.100) <= 0.001)
+        || !lfouPublished.Any(value => Math.Abs(value - 120.405) <= 0.001))
+    {
+        failures.Add("Catalogue officiel : fréquences LFBI/LFOU absentes ou fichier JSON non chargé.");
+    }
+
+    var lfbiWrongSceneSnapshot = snapshot with
+    {
+        Timestamp = new DateTimeOffset(2026, 7, 21, 8, 0, 0, TimeSpan.Zero),
+        Com1ActiveMhz = 123.500,
+        Com1StationIdent = "LFBI",
+        Com1StationType = "FSS",
+        GeographicAirportIcao = "LFBI",
+        RadioAirportIcao = "LFBI",
+    };
+    var lfbiWrongScene = OperationalRadioService.Resolve(lfbiWrongSceneSnapshot, null, "LFBI");
+    if (lfbiWrongScene.Kind != Phonie.Models.OperationalRadioKind.Unknown
+        || lfbiWrongScene.DialogueAllowed)
+    {
+        failures.Add("LFBI : une fréquence de scène non publiée ne doit jamais devenir dialoguée.");
+    }
+
+    var lfouOpenTime = new DateTimeOffset(2026, 7, 21, 8, 0, 0, TimeSpan.Zero);
+    var lfouOpenSnapshot = snapshot with
+    {
+        Timestamp = lfouOpenTime,
+        Com1ActiveMhz = 120.405,
+        Com1StationIdent = "LFOU",
+        Com1StationType = "FSS",
+        GeographicAirportIcao = "LFOU",
+        RadioAirportIcao = "LFOU",
+    };
+    var lfouOpen = OperationalRadioService.Resolve(lfouOpenSnapshot, null, "LFOU");
+    if (lfouOpen.Kind != Phonie.Models.OperationalRadioKind.InformationService
+        || !lfouOpen.DialogueAllowed
+        || Math.Abs(lfouOpen.FrequencyMhz - 120.405) > 0.001)
+    {
+        failures.Add($"LFOU AFIS ouvert : obtenu {lfouOpen.Kind}, dialogue={lfouOpen.DialogueAllowed}.");
+    }
+
+    var lfouOpenRecommendation = OperationalRadioService.Recommend(
+        null,
+        "LFOU",
+        isOnGround: true,
+        lfouOpenTime);
+    if (lfouOpenRecommendation is null
+        || Math.Abs(lfouOpenRecommendation.FrequencyMhz - 120.405) > 0.001)
+    {
+        failures.Add("LFOU AFIS ouvert : recommandation officielle 120.405 absente.");
+    }
+
+    var lfouClosedTime = new DateTimeOffset(2026, 7, 21, 9, 30, 0, TimeSpan.Zero);
+    var lfouClosedSnapshot = lfouOpenSnapshot with { Timestamp = lfouClosedTime };
+    var lfouClosed = OperationalRadioService.Resolve(lfouClosedSnapshot, null, "LFOU");
+    if (lfouClosed.Kind != Phonie.Models.OperationalRadioKind.SelfInformation
+        || lfouClosed.DialogueAllowed)
+    {
+        failures.Add($"LFOU hors horaires AFIS : A/A silencieuse attendue, obtenu {lfouClosed.Kind}.");
+    }
+
+    var lfouClosedRecommendation = OperationalRadioService.Recommend(
+        null,
+        "LFOU",
+        isOnGround: true,
+        lfouClosedTime);
+    if (lfouClosedRecommendation is not null)
+    {
+        failures.Add("LFOU hors horaires AFIS : aucune fréquence dialoguée ne doit être recommandée.");
+    }
+
+    var lfouSecondPeriodTime = new DateTimeOffset(2026, 7, 21, 11, 0, 0, TimeSpan.Zero);
+    var lfouSecondPeriod = OperationalRadioService.Resolve(
+        lfouOpenSnapshot with { Timestamp = lfouSecondPeriodTime },
+        null,
+        "LFOU");
+    if (lfouSecondPeriod.Kind != Phonie.Models.OperationalRadioKind.InformationService
+        || !lfouSecondPeriod.DialogueAllowed)
+    {
+        failures.Add("LFOU AFIS : deuxième plage horaire été non reconnue.");
+    }
+
+    var lfbiRecommendation = OperationalRadioService.Recommend(
+        null,
+        "LFBI",
+        isOnGround: true,
+        lfouOpenTime);
+    if (lfbiRecommendation is null
+        || Math.Abs(lfbiRecommendation.FrequencyMhz - 118.505) > 0.001
+        || !lfbiRecommendation.ServiceName.Contains("TOUR", StringComparison.OrdinalIgnoreCase))
+    {
+        failures.Add("LFBI : la Tour officielle 118.505 doit être prioritaire sans dépendre des Facilities MSFS.");
+    }
 }
 
 void Check(

@@ -19,45 +19,35 @@ public static class OperationalRadioService
             string.IsNullOrWhiteSpace(radioAirportIcao)
                 ? snapshot.RadioAirportIcao
                 : radioAirportIcao);
-        var isLfbi = string.Equals(resolvedIcao, "LFBI", StringComparison.OrdinalIgnoreCase);
-
-        if (isLfbi)
+        var official = OfficialRadioCatalogService.Resolve(
+            resolvedIcao,
+            frequency,
+            snapshot.Timestamp);
+        if (official.Frequency is not null)
         {
-            if (Matches(frequency, 121.780))
-            {
-                return new OperationalFrequency(frequency, "POITIERS ATIS", OperationalRadioKind.AutomaticBroadcast, false,
-                    "Diffusion automatique. PHONIE ne répond jamais au pilote.", "Profil opérationnel LFBI");
-            }
+            return official.Frequency;
+        }
 
-            if (Matches(frequency, 124.000))
-            {
-                return new OperationalFrequency(frequency, "RÉPONDEUR POITIERS", OperationalRadioKind.RecordedMessage, false,
-                    "Message enregistré réel. Aucun dialogue pilote-contrôleur.", "Profil opérationnel LFBI");
-            }
+        // Compatibilité volontaire avec l'ancienne base radio de MSFS 2020.
+        // Elle ne devient jamais une fréquence officielle ni une recommandation.
+        if (string.Equals(resolvedIcao, "LFBI", StringComparison.OrdinalIgnoreCase)
+            && Matches(frequency, 118.500))
+        {
+            return new OperationalFrequency(
+                frequency,
+                "POITIERS TOUR",
+                OperationalRadioKind.Controlled,
+                true,
+                "Fréquence Tour héritée de MSFS 2020. La fréquence officielle recommandée reste 118.505.",
+                "MSFS 2020 - secours de compatibilité",
+                true);
+        }
 
-            if (Matches(frequency, 134.100))
-            {
-                return new OperationalFrequency(frequency, "POITIERS APPROCHE / SIV", OperationalRadioKind.InformationService, true,
-                    "Service d'information et de contrôle. Dialogue autorisé.", "Profil opérationnel LFBI");
-            }
-
-            if (Matches(frequency, 118.505))
-            {
-                return new OperationalFrequency(frequency, "POITIERS TOUR", OperationalRadioKind.Controlled, true,
-                    "Organisme contrôlé. Dialogue pilote-contrôleur autorisé.", "Fréquence active MSFS 2024");
-            }
-
-            if (Matches(frequency, 118.500))
-            {
-                var duplicate = airportReport?.Frequencies.Any(item => Matches(item.FrequencyMhz, 118.505)) == true;
-                var source = duplicate ? "Entrée héritée ou doublon de scène" : "Fréquence active MSFS 2020";
-                return new OperationalFrequency(frequency, "POITIERS TOUR", OperationalRadioKind.Controlled, true,
-                    duplicate
-                        ? "Tour détectée, avec doublon 118.505 dans la scène ou la base du simulateur."
-                        : "Organisme contrôlé. Dialogue pilote-contrôleur autorisé.",
-                    source,
-                    duplicate);
-            }
+        // Lorsqu'un aérodrome est présent dans le catalogue officiel mais que la fréquence
+        // active n'y figure pas, les fréquences de scène ne doivent pas reprendre autorité.
+        if (official.AirportKnown)
+        {
+            return Unknown(frequency);
         }
 
         var facilityFrequency = airportReport?.Frequencies
@@ -120,14 +110,31 @@ public static class OperationalRadioService
     public static OperationalFrequency? Recommend(
         AirportFacilityReport? airportReport,
         string? resolvedIcao,
-        bool isOnGround)
+        bool isOnGround,
+        DateTimeOffset? timestamp = null)
     {
+        var reportIcao = airportReport is null
+            ? string.Empty
+            : string.IsNullOrWhiteSpace(airportReport.Icao)
+                ? airportReport.RequestedIcao
+                : airportReport.Icao;
+        var normalizedIcao = NormalizeIcao(
+            string.IsNullOrWhiteSpace(resolvedIcao) ? reportIcao : resolvedIcao);
+        var official = OfficialRadioCatalogService.Recommend(
+            normalizedIcao,
+            isOnGround,
+            timestamp ?? DateTimeOffset.UtcNow);
+        if (official.AirportKnown)
+        {
+            return official.Frequency;
+        }
+
         if (airportReport is null || airportReport.Frequencies.Count == 0)
         {
             return null;
         }
 
-        var normalizedIcao = NormalizeIcao(
+        normalizedIcao = NormalizeIcao(
             string.IsNullOrWhiteSpace(resolvedIcao)
                 ? (string.IsNullOrWhiteSpace(airportReport.Icao) ? airportReport.RequestedIcao : airportReport.Icao)
                 : resolvedIcao);

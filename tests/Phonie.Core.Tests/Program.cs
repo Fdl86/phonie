@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+using System.Text;
 using System.Text.Json;
 using Phonie.Core;
 
@@ -38,6 +40,7 @@ var tests = new List<(string Name, Action Test)>
     ("CTAF sans dialogue", TestCtafSilent),
     ("station inconnue sans clairance", TestUnknownStationSilent),
     ("TaxiPath non-piste ignore piste corrompue", TestNonRunwayGarbageIgnored),
+    ("AirportList MSFS 2024 accepte l'emplacement de compatibilité", TestAirportListMsfs2024CompatibilitySlot),
     ("contexte géographique suit le nouvel aérodrome", TestGeographicAirportSelection),
     ("téléportation abandonne l'ancien aérodrome", TestTeleportAirportSelection),
     ("contexte radio peut viser un autre aérodrome", TestRadioContextByStationIdent),
@@ -73,6 +76,78 @@ if (failures.Count > 0)
 
 Console.WriteLine($"PHONIE Core tests OK - {tests.Count}/{tests.Count}");
 
+
+
+static void TestAirportListMsfs2024CompatibilitySlot()
+{
+    foreach (var declaredCount in new[] { 161, 204 })
+    {
+        var packetBytes = BuildAirportListPacket(declaredCount, includeCompatibilitySlot: true);
+        var packet = AirportListPacketDecoder.Decode(packetBytes);
+
+        var expectedPayloadLength = declaredCount == 161 ? 5832 : 7380;
+        Assert(
+            packetBytes.Length - AirportListPacketDecoder.HeaderSize == expectedPayloadLength,
+            $"charge utile={packetBytes.Length - AirportListPacketDecoder.HeaderSize}");
+        Assert(packet.DeclaredArraySize == (uint)declaredCount, $"déclaré={packet.DeclaredArraySize}");
+        Assert(packet.DecodedSlotCount == declaredCount + 1, $"emplacements={packet.DecodedSlotCount}");
+        Assert(packet.CompatibilitySlotCount == 1, $"compatibilité={packet.CompatibilitySlotCount}");
+        Assert(packet.EntryStride == AirportListPacketDecoder.Msfs2024EntrySize, $"stride={packet.EntryStride}");
+        Assert(packet.Airports.Any(item => item.Icao == "LFOU"), "LFOU absent");
+        Assert(packet.Airports.Any(item => item.Icao == "LFBI"), "LFBI absent");
+        Assert(packet.Airports.All(item => item.Icao != "ZZZZ"), "emplacement de compatibilité décodé à tort");
+    }
+}
+
+static byte[] BuildAirportListPacket(int declaredCount, bool includeCompatibilitySlot)
+{
+    var slotCount = declaredCount + (includeCompatibilitySlot ? 1 : 0);
+    var buffer = new byte[
+        AirportListPacketDecoder.HeaderSize
+        + (slotCount * AirportListPacketDecoder.Msfs2024EntrySize)];
+    BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(0, 4), (uint)buffer.Length);
+    BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(4, 4), 4);
+    BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(8, 4), 18);
+    BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(12, 4), 0x06101001);
+    BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(16, 4), (uint)declaredCount);
+    BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(20, 4), 0);
+    BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(24, 4), 1);
+
+    for (var index = 0; index < declaredCount; index++)
+    {
+        var icao = index switch
+        {
+            0 => "LFOU",
+            1 => "LFBI",
+            _ => $"X{index % 1000:000}",
+        };
+        var offset = AirportListPacketDecoder.HeaderSize
+            + (index * AirportListPacketDecoder.Msfs2024EntrySize);
+        Encoding.ASCII.GetBytes(icao).AsSpan().CopyTo(buffer.AsSpan(offset, 4));
+        Encoding.ASCII.GetBytes("LF").AsSpan().CopyTo(buffer.AsSpan(offset + 9, 2));
+        WriteDouble(buffer, offset + 12, 47.0810 + (index * 0.00001));
+        WriteDouble(buffer, offset + 20, -0.8770 + (index * 0.00001));
+        WriteDouble(buffer, offset + 28, 135.0);
+    }
+
+    if (includeCompatibilitySlot)
+    {
+        var offset = AirportListPacketDecoder.HeaderSize
+            + (declaredCount * AirportListPacketDecoder.Msfs2024EntrySize);
+        Encoding.ASCII.GetBytes("ZZZZ").AsSpan().CopyTo(buffer.AsSpan(offset, 4));
+        Encoding.ASCII.GetBytes("ZZ").AsSpan().CopyTo(buffer.AsSpan(offset + 9, 2));
+        WriteDouble(buffer, offset + 12, 0.0);
+        WriteDouble(buffer, offset + 20, 0.0);
+        WriteDouble(buffer, offset + 28, 0.0);
+    }
+
+    return buffer;
+}
+
+static void WriteDouble(byte[] buffer, int offset, double value) =>
+    BinaryPrimitives.WriteInt64LittleEndian(
+        buffer.AsSpan(offset, 8),
+        BitConverter.DoubleToInt64Bits(value));
 
 static void TestGeographicAirportSelection()
 {

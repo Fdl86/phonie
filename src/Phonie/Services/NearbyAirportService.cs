@@ -1,6 +1,5 @@
-using System.Buffers.Binary;
 using System.Runtime.InteropServices;
-using System.Text;
+using Phonie.Core;
 using Phonie.Models;
 using SimConnect.NET;
 using SimConnect.NET.Events;
@@ -12,7 +11,6 @@ public sealed class NearbyAirportService : IDisposable
     private const uint RequestBaseId = 0x06101000;
     private const uint AirportListMessageId = 18;
     private const uint FacilityListTypeAirport = 0;
-    private const int HeaderSize = 28;
     private static readonly TimeSpan RequestInterval = TimeSpan.FromSeconds(8);
 
     private readonly object sync = new();
@@ -22,6 +20,7 @@ public sealed class NearbyAirportService : IDisposable
     private DateTimeOffset lastRequest = DateTimeOffset.MinValue;
     private bool worldListFallbackActive;
     private bool worldListLoaded;
+    private bool compatibilityLayoutLogged;
     private NearbyAirportSnapshot latest = new(
         DateTimeOffset.MinValue,
         Array.Empty<NearbyAirportData>(),
@@ -176,7 +175,7 @@ public sealed class NearbyAirportService : IDisposable
     {
         if ((uint)eventArgs.MessageId != AirportListMessageId
             || eventArgs.DataPointer == IntPtr.Zero
-            || eventArgs.DataSize < HeaderSize)
+            || eventArgs.DataSize < AirportListPacketDecoder.HeaderSize)
         {
             return;
         }
@@ -196,16 +195,12 @@ public sealed class NearbyAirportService : IDisposable
 
     private void ProcessAirportList(byte[] buffer)
     {
-        var requestId = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(12, 4));
-        var arraySizeRaw = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(16, 4));
-        var arraySize = checked((int)arraySizeRaw);
-        var entryNumber = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(20, 4));
-        var outOf = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(24, 4));
+        var packet = AirportListPacketDecoder.Decode(buffer);
 
         PendingAirportList? request;
         lock (this.sync)
         {
-            this.pending.TryGetValue(requestId, out request);
+            this.pending.TryGetValue(packet.RequestId, out request);
         }
 
         if (request is null)
@@ -213,37 +208,34 @@ public sealed class NearbyAirportService : IDisposable
             return;
         }
 
-        if (arraySize > 0)
+        foreach (var airport in packet.Airports)
         {
-            var payloadSize = buffer.Length - HeaderSize;
-            if (payloadSize <= 0 || payloadSize % arraySize != 0)
-            {
-                throw new InvalidDataException(
-                    $"Disposition AirportList invalide : {payloadSize} octets pour {arraySize} élément(s).");
-            }
+            request.Airports[airport.Icao] = new NearbyAirportData(
+                airport.Icao,
+                airport.Region,
+                airport.Latitude,
+                airport.Longitude,
+                airport.AltitudeMeters);
+        }
 
-            var stride = payloadSize / arraySize;
-            for (var index = 0; index < arraySize; index++)
-            {
-                var offset = HeaderSize + (index * stride);
-                var airport = DecodeAirport(buffer.AsSpan(offset, stride));
-                if (airport is null)
-                {
-                    continue;
-                }
-
-                request.Airports[airport.Icao] = airport;
-            }
+        if (packet.CompatibilitySlotCount > 0 && !this.compatibilityLayoutLogged)
+        {
+            this.compatibilityLayoutLogged = true;
+            this.PublishLog(
+                $"Liste aérodromes : disposition MSFS compatible détectée " +
+                $"({packet.EntryStride} octets, {packet.CompatibilitySlotCount} emplacement supplémentaire ignoré).");
         }
 
         NearbyAirportSnapshot? completed = null;
         lock (this.sync)
         {
-            request.ReceivedPackets.Add(entryNumber);
-            var expectedPackets = checked((int)outOf);
-            if (outOf == 0 || request.ReceivedPackets.Count >= expectedPackets || entryNumber + 1 >= outOf)
+            request.ReceivedPackets.Add(packet.EntryNumber);
+            var expectedPackets = checked((int)packet.OutOf);
+            if (packet.OutOf == 0
+                || request.ReceivedPackets.Count >= expectedPackets
+                || packet.EntryNumber + 1 >= packet.OutOf)
             {
-                this.pending.Remove(requestId);
+                this.pending.Remove(packet.RequestId);
                 var airports = request.Airports.Values
                     .OrderBy(item => item.Icao, StringComparer.OrdinalIgnoreCase)
                     .ToArray();
@@ -265,55 +257,6 @@ public sealed class NearbyAirportService : IDisposable
         }
     }
 
-    private static NearbyAirportData? DecodeAirport(ReadOnlySpan<byte> data)
-    {
-        // MSFS 2020 : ident[6], region[3], doubles aux offsets 9/17/25 (33 octets).
-        // MSFS 2024 : ident[9], region[3], doubles aux offsets 12/20/28, avec éventuel padding final.
-        var modern = data.Length >= 36;
-        var identLength = modern ? 9 : 6;
-        var regionOffset = identLength;
-        var latitudeOffset = modern ? 12 : 9;
-        if (data.Length < latitudeOffset + 24)
-        {
-            return null;
-        }
-
-        var icao = ReadAnsiString(data.Slice(0, identLength));
-        if (icao.Length != 4 || icao.Any(character => !char.IsAsciiLetterOrDigit(character)))
-        {
-            return null;
-        }
-
-        var region = ReadAnsiString(data.Slice(regionOffset, 3));
-        var latitude = BitConverter.Int64BitsToDouble(
-            BinaryPrimitives.ReadInt64LittleEndian(data.Slice(latitudeOffset, 8)));
-        var longitude = BitConverter.Int64BitsToDouble(
-            BinaryPrimitives.ReadInt64LittleEndian(data.Slice(latitudeOffset + 8, 8)));
-        var altitude = BitConverter.Int64BitsToDouble(
-            BinaryPrimitives.ReadInt64LittleEndian(data.Slice(latitudeOffset + 16, 8)));
-        if (!double.IsFinite(latitude)
-            || !double.IsFinite(longitude)
-            || latitude is < -90 or > 90
-            || longitude is < -180 or > 180)
-        {
-            return null;
-        }
-
-        return new NearbyAirportData(
-            icao.ToUpperInvariant(),
-            region.ToUpperInvariant(),
-            latitude,
-            longitude,
-            altitude);
-    }
-
-    private static string ReadAnsiString(ReadOnlySpan<byte> data)
-    {
-        var zero = data.IndexOf((byte)0);
-        var slice = zero >= 0 ? data[..zero] : data;
-        return Encoding.ASCII.GetString(slice).Trim();
-    }
-
     private void DetachLocked()
     {
         if (this.client is not null)
@@ -330,6 +273,7 @@ public sealed class NearbyAirportService : IDisposable
         this.lastRequest = DateTimeOffset.MinValue;
         this.worldListFallbackActive = false;
         this.worldListLoaded = false;
+        this.compatibilityLayoutLogged = false;
     }
 
     private void PublishLog(string message) => this.LogMessage?.Invoke(this, $"[{DateTime.Now:HH:mm:ss}] {message}");

@@ -21,8 +21,16 @@
     <Compile Include="..\..\src\Phonie\Models\FacilityDiagnosticModels.cs" Link="Source\FacilityDiagnosticModels.cs" />
     <Compile Include="..\..\src\Phonie\Services\FacilityPacketDecoder.cs" Link="Source\FacilityPacketDecoder.cs" />
     <Compile Include="..\..\src\Phonie\Services\OperationalRadioService.cs" Link="Source\OperationalRadioService.cs" />
+    <Compile Include="..\..\src\Phonie\Services\OfficialRadioCatalogService.cs" Link="Source\OfficialRadioCatalogService.cs" />
+    <Compile Include="..\..\src\Phonie\Services\AppPaths.cs" Link="Source\AppPaths.cs" />
     <Compile Include="..\..\src\Phonie\Services\RadioPolicyResolver.cs" Link="Source\RadioPolicyResolver.cs" />
     <Compile Include="..\..\src\Phonie\Models\RadioPolicy.cs" Link="Source\RadioPolicy.cs" />
     <Compile Include="..\..\src\Phonie.Core\AirportRadioSelector.cs" Link="Source\AirportRadioSelector.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\data\radio\france-official.json"
+          Link="data\radio\france-official.json"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

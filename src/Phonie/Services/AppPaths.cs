@@ -24,6 +24,8 @@ public static class AppPaths
 
     public static string AirportProfilesDirectory { get; } = Path.Combine(DataDirectory, "airports");
 
+    public static string RadioDataDirectory { get; } = Path.Combine(DataDirectory, "radio");
+
     public static string WhisperModelsDirectory { get; } = Path.Combine(ModelsDirectory, "whisper");
 
     public static string VoskModelsDirectory { get; } = Path.Combine(ModelsDirectory, "vosk");
@@ -50,6 +52,7 @@ public static class AppPaths
                      ModelsDirectory,
                      DataDirectory,
                      AirportProfilesDirectory,
+                     RadioDataDirectory,
                      WhisperModelsDirectory,
                      VoskModelsDirectory,
                      SessionsDirectory,

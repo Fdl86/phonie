@@ -1212,7 +1212,8 @@ public partial class MainWindow : Window
         this.currentRecommendedFrequency = OperationalRadioService.Recommend(
             recommendationReport,
             recommendationIcao,
-            snapshot.IsOnGround);
+            snapshot.IsOnGround,
+            snapshot.Timestamp);
         this.groundOperationsCoordinator.UpdateSnapshot(snapshot);
         var runwayForAtis = string.Equals(
                 this.currentRadioIcao,

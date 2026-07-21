@@ -80,7 +80,7 @@ public sealed class SimConnectService : IAsyncDisposable
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         this.PublishStatus(ConnectionState.Waiting, "En attente de Microsoft Flight Simulator");
-        this.PublishLog("PHONIE DEV0.4.0.8 démarrée. Détection dynamique des contextes aérodrome et radio.");
+        this.PublishLog("PHONIE DEV0.4.0.9 démarrée. Détection dynamique des contextes aérodrome et radio.");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -139,7 +139,7 @@ public sealed class SimConnectService : IAsyncDisposable
     {
         this.PublishStatus(ConnectionState.Connecting, "Connexion à SimConnect...");
 
-        var newClient = new SimConnectClient("PHONIE DEV0.4.0.8")
+        var newClient = new SimConnectClient("PHONIE DEV0.4.0.9")
         {
             AutoReconnectEnabled = false,
         };
@@ -275,9 +275,14 @@ public sealed class SimConnectService : IAsyncDisposable
         var nearby = this.nearbyAirportService.Latest.Airports;
         var candidates = nearby.Select(item =>
         {
-            var frequencies = this.airportReports.TryGetValue(item.Icao, out var report)
-                ? report.Frequencies.Select(frequency => frequency.FrequencyMhz).ToArray()
-                : Array.Empty<double>();
+            var facilityFrequencies = this.airportReports.TryGetValue(item.Icao, out var report)
+                ? report.Frequencies.Select(frequency => frequency.FrequencyMhz)
+                : Enumerable.Empty<double>();
+            var frequencies = facilityFrequencies
+                .Concat(OfficialRadioCatalogService.GetPublishedFrequencies(item.Icao))
+                .Where(value => double.IsFinite(value) && value > 0)
+                .Distinct()
+                .ToArray();
             return new NearbyAirportCandidate(
                 item.Icao,
                 item.Region,

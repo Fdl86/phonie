@@ -1,0 +1,39 @@
+PHONIE DEV0.4.0.9 - VALIDATION STATIQUE
+
+Base et périmètre
+- source basée sur DEV0.4.0.8 complète
+- version visible, assembly et workflow mis à jour en DEV0.4.0.9
+- aucun dossier bin, obj, dist ou node_modules inclus
+- aucun ZIP imbriqué prévu dans l'artefact GitHub
+
+Détection aérodrome
+- décodeur AirportList isolé dans Phonie.Core
+- en-tête natif traité sur 28 octets
+- entrées MSFS 2024 traitées sur 36 octets
+- repli compact MSFS 2020 conservé sur 33 octets
+- dwArraySize reste la source de vérité
+- au plus un emplacement rgData de compatibilité supplémentaire est accepté puis toujours ignoré
+- tests synthétiques reproduisant exactement 5832 octets / 161 éléments et 7380 octets / 204 éléments
+- l'emplacement supplémentaire des tests contient volontairement une entrée ICAO valide ZZZZ et doit être rejeté
+
+Radio
+- catalogue portable JSON prioritaire pour LFBI et LFOU
+- LFBI : Tour 118.505 prioritaire, Approche/SIV 134.100, ATIS 121.780 silencieux, 124.000 silencieux
+- LFOU : 120.405 AFIS pendant les horaires publiés, A/A silencieuse hors horaires
+- Tour prioritaire sur Approche ; A/A, CTAF, UNICOM et diffusions automatiques silencieux
+- aucune modification automatique de COM1
+- terrains hors catalogue : repli Facilities prudent conservé
+
+Contrôles exécutés dans cet environnement
+- 60 fichiers C# analysés par tree-sitter : aucune erreur syntaxique
+- 5 fichiers JSON analysés : valides
+- 9 fichiers XML/XAML/CSProj/manifest analysés : valides
+- 1 workflow YAML analysé : valide
+- tous les chemins Compile/None/Content/ProjectReference explicites des CSProj existent
+- tests Core déclarés : détection AirportList, contextes géographique/radio, tout HOLD_SHORT valide, priorités radio
+- Smoke Tests : catalogue LFBI/LFOU, horaires LFOU, fréquences LFBI, A/A silencieuse
+
+Limite honnête
+- le SDK .NET/WPF Windows n'est pas disponible dans cet environnement
+- la compilation réelle, les Smoke Tests, les Core Tests et la publication autonome restent obligatoirement validés par GitHub Actions
+- cette archive est une candidate CI, pas une release validée avant workflow entièrement vert

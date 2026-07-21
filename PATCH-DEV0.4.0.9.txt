@@ -1,0 +1,12 @@
+PHONIE DEV0.4.0.9 - AIRPORT DETECTION & OFFICIAL RADIO
+
+Base requise : DEV0.4.0.8 - Airport & Radio Consolidation.
+
+Application du patch :
+1. Extraire le ZIP du patch.
+2. Copier son contenu à la racine du dépôt PHONIE.
+3. Accepter tous les remplacements.
+4. Commit/push avec GitHub Desktop.
+
+Le patch ne contient aucun dossier bin, obj ou dist et ne supprime aucune donnée portable.
+La compilation Windows x64 et les tests exécutables restent bloquants dans GitHub Actions.
