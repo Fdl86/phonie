@@ -1,0 +1,11 @@
+PHONIE DEV0.4.0.8 - VALIDATION STATIQUE
+
+- Version active mise à jour dans l'application et le workflow.
+- Détection dynamique et rechargement complet de l'aérodrome conservés.
+- Sélecteur radio générique ajouté dans Phonie.Core.
+- A/A, CTAF, UNICOM et diffusions automatiques classés silencieux avant tout fallback SimConnect.
+- Priorité dialoguée testée : Tour avant Approche, Approche en absence de Tour, aucune recommandation sur A/A seule.
+- Tout vrai HOLD_SHORT Facilities reste valable au départ.
+- Aucun ZIP imbriqué dans l'artefact GitHub.
+
+La compilation et l'exécution réelles restent bloquantes dans GitHub Actions.

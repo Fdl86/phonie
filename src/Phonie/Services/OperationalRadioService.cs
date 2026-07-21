@@ -1,3 +1,4 @@
+using Phonie.Core;
 using Phonie.Models;
 
 namespace Phonie.Services;
@@ -59,6 +60,23 @@ public static class OperationalRadioService
             }
         }
 
+        var facilityFrequency = airportReport?.Frequencies
+            .Where(item => Matches(item.FrequencyMhz, frequency))
+            .OrderBy(item => Math.Abs(item.FrequencyMhz - frequency))
+            .FirstOrDefault();
+        var facilityResolution = facilityFrequency is not null && airportReport is not null
+            ? ResolveFacilityFrequency(facilityFrequency, airportReport, resolvedIcao)
+            : null;
+
+        // Une A/A, CTAF, UNICOM, ATIS ou météo automatique doit rester silencieuse,
+        // même si le type de station COM générique fourni par le simulateur est imprécis.
+        if (facilityResolution?.Kind is OperationalRadioKind.SelfInformation
+            or OperationalRadioKind.AutomaticBroadcast
+            or OperationalRadioKind.RecordedMessage)
+        {
+            return facilityResolution;
+        }
+
         var policy = RadioPolicyResolver.Resolve(snapshot.Com1StationType);
         if (policy.Kind != RadioPolicyKind.Unknown)
         {
@@ -96,16 +114,53 @@ public static class OperationalRadioService
             };
         }
 
-        var facilityFrequency = airportReport?.Frequencies
-            .Where(item => Matches(item.FrequencyMhz, frequency))
-            .OrderBy(item => Math.Abs(item.FrequencyMhz - frequency))
-            .FirstOrDefault();
-        if (facilityFrequency is not null && airportReport is not null)
+        return facilityResolution ?? Unknown(frequency);
+    }
+
+    public static OperationalFrequency? Recommend(
+        AirportFacilityReport? airportReport,
+        string? resolvedIcao,
+        bool isOnGround)
+    {
+        if (airportReport is null || airportReport.Frequencies.Count == 0)
         {
-            return ResolveFacilityFrequency(facilityFrequency, airportReport, resolvedIcao);
+            return null;
         }
 
-        return Unknown(frequency);
+        var normalizedIcao = NormalizeIcao(
+            string.IsNullOrWhiteSpace(resolvedIcao)
+                ? (string.IsNullOrWhiteSpace(airportReport.Icao) ? airportReport.RequestedIcao : airportReport.Icao)
+                : resolvedIcao);
+        var candidates = airportReport.Frequencies
+            .Select(item => new AirportRadioCandidate(item.Type, item.FrequencyMhz, item.Name))
+            .ToArray();
+        var recommendation = AirportRadioSelector.Recommend(candidates, isOnGround);
+        if (recommendation is null)
+        {
+            return null;
+        }
+
+        AirportFrequencyData? selected;
+        if (string.Equals(normalizedIcao, "LFBI", StringComparison.OrdinalIgnoreCase)
+            && recommendation.Kind == AirportRadioServiceKind.Tower)
+        {
+            selected = airportReport.Frequencies.FirstOrDefault(item => Matches(item.FrequencyMhz, 118.505))
+                ?? airportReport.Frequencies.FirstOrDefault(item => Matches(item.FrequencyMhz, recommendation.FrequencyMhz));
+        }
+        else
+        {
+            selected = airportReport.Frequencies
+                .OrderBy(item => Math.Abs(item.FrequencyMhz - recommendation.FrequencyMhz))
+                .FirstOrDefault();
+        }
+
+        if (selected is null)
+        {
+            return null;
+        }
+
+        var resolved = ResolveFacilityFrequency(selected, airportReport, normalizedIcao);
+        return resolved.DialogueAllowed ? resolved : null;
     }
 
     private static OperationalFrequency ResolveFacilityFrequency(
@@ -142,7 +197,14 @@ public static class OperationalRadioService
         string source)
     {
         var name = facilityFrequency.Name?.Trim().ToUpperInvariant() ?? string.Empty;
-        if (ContainsAny(name, "AFIS", "INFO", "INFORMATION", "FSS"))
+        if (ContainsAny(name, "CTAF", "UNICOM", "MULTICOM", "AUTO-INFO", "AUTO INFO", "A/A", "A-A", "ADVISORY"))
+        {
+            return new OperationalFrequency(facilityFrequency.FrequencyMhz, serviceName, OperationalRadioKind.SelfInformation, false,
+                "Auto-information identifiée par son libellé Facilities.", source);
+        }
+
+        if (ContainsAny(name, "AFIS", "INFORMATION", "FSS")
+            || string.Equals(name, "INFO", StringComparison.OrdinalIgnoreCase))
         {
             return new OperationalFrequency(facilityFrequency.FrequencyMhz, serviceName, OperationalRadioKind.InformationService, true,
                 "Service d'information identifié par son libellé Facilities.", source);
@@ -158,12 +220,6 @@ public static class OperationalRadioService
         {
             return new OperationalFrequency(facilityFrequency.FrequencyMhz, serviceName, OperationalRadioKind.Controlled, true,
                 "Organisme contrôlé identifié par son libellé Facilities.", source);
-        }
-
-        if (ContainsAny(name, "CTAF", "UNICOM", "MULTICOM", "AUTO-INFO", "AUTO INFO"))
-        {
-            return new OperationalFrequency(facilityFrequency.FrequencyMhz, serviceName, OperationalRadioKind.SelfInformation, false,
-                "Auto-information identifiée par son libellé Facilities.", source);
         }
 
         return Unknown(facilityFrequency.FrequencyMhz);

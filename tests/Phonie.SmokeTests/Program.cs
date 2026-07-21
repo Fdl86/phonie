@@ -111,6 +111,7 @@ Check(
     expectedIntention: "tours de piste");
 
 RunFacilityDecoderTests();
+RunOperationalRadioTests();
 
 var stationOnly = PhraseologyService.Analyze("Poitiers Tour, bonjour.", "F-HNNY");
 if (stationOnly.Callsign is not null)
@@ -256,6 +257,79 @@ void WriteInt32(byte[] buffer, int offset, int value) =>
 
 void WriteSingle(byte[] buffer, int offset, float value) =>
     BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(offset, 4), BitConverter.SingleToInt32Bits(value));
+
+void RunOperationalRadioTests()
+{
+    var report = new Phonie.Models.AirportFacilityReport
+    {
+        RequestedIcao = "LFXX",
+        Icao = "LFXX",
+    };
+    report.Frequencies.Add(new Phonie.Models.AirportFrequencyData(0, 3, 123500000, 123.500, "A/A"));
+    report.Frequencies.Add(new Phonie.Models.AirportFrequencyData(1, 8, 124800000, 124.800, "APPROCHE"));
+    report.Frequencies.Add(new Phonie.Models.AirportFrequencyData(2, 6, 118700000, 118.700, "TOUR"));
+
+    var snapshot = new Phonie.Models.SimulatorSnapshot(
+        DateTimeOffset.UtcNow,
+        "MSFS 2024",
+        "Avion test",
+        "F-HNNY",
+        47.0,
+        -1.0,
+        300,
+        0,
+        0,
+        0,
+        true,
+        123.500,
+        118.700,
+        "LFXX",
+        "FSS",
+        1,
+        true,
+        0,
+        0,
+        0,
+        "7000",
+        "LFXX",
+        0.1,
+        "LFXX",
+        "test",
+        210,
+        10,
+        1015,
+        15,
+        10,
+        9999,
+        3000);
+
+    var active = OperationalRadioService.Resolve(snapshot, report, "LFXX");
+    if (active.Kind != Phonie.Models.OperationalRadioKind.SelfInformation || active.DialogueAllowed)
+    {
+        failures.Add($"A/A silencieuse : obtenu {active.Kind}, dialogue={active.DialogueAllowed}.");
+    }
+
+    var recommendation = OperationalRadioService.Recommend(report, "LFXX", isOnGround: true);
+    if (recommendation is null
+        || recommendation.Kind != Phonie.Models.OperationalRadioKind.Controlled
+        || Math.Abs(recommendation.FrequencyMhz - 118.700) > 0.001)
+    {
+        failures.Add($"Priorité Tour : obtenu {recommendation?.ServiceName ?? "aucune"} {recommendation?.FrequencyMhz:F3}.");
+    }
+
+    var noTower = new Phonie.Models.AirportFacilityReport
+    {
+        RequestedIcao = "LFYY",
+        Icao = "LFYY",
+    };
+    noTower.Frequencies.Add(new Phonie.Models.AirportFrequencyData(0, 3, 123500000, 123.500, "A/A"));
+    noTower.Frequencies.Add(new Phonie.Models.AirportFrequencyData(1, 8, 124800000, 124.800, "APPROCHE"));
+    var approach = OperationalRadioService.Recommend(noTower, "LFYY", isOnGround: true);
+    if (approach is null || Math.Abs(approach.FrequencyMhz - 124.800) > 0.001)
+    {
+        failures.Add("Priorité Approche en absence de Tour non respectée.");
+    }
+}
 
 void Check(
     string name,

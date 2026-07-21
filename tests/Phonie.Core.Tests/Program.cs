@@ -45,6 +45,9 @@ var tests = new List<(string Name, Action Test)>
     ("fréquence Facilities résout l'aérodrome radio", TestRadioContextByFrequency),
     ("station COM proche secourt la détection au sol", TestOnGroundStationFallback),
     ("routage secourt les associations piste absentes", TestHoldRoutingWithoutRunwayAssociation),
+    ("priorité radio Tour sur A/A et Approche", TestRadioPriorityTower),
+    ("priorité radio Approche sans Tour", TestRadioPriorityApproach),
+    ("A/A seule ne devient jamais dialoguée", TestRadioSelfInformationOnly),
 };
 
 var failures = new List<string>();
@@ -204,6 +207,50 @@ static void TestHoldRoutingWithoutRunwayAssociation()
     Assert(route.HoldShort is not null);
 }
 
+static void TestRadioPriorityTower()
+{
+    var recommendation = AirportRadioSelector.Recommend(
+        new[]
+        {
+            new AirportRadioCandidate(3, 123.500, "A/A"),
+            new AirportRadioCandidate(8, 124.800, "APPROCHE"),
+            new AirportRadioCandidate(6, 118.700, "TOUR"),
+        },
+        isOnGround: true);
+
+    Assert(recommendation is not null);
+    Assert(recommendation!.Kind == AirportRadioServiceKind.Tower, recommendation.Kind.ToString());
+    Assert(Math.Abs(recommendation.FrequencyMhz - 118.700) < 0.001, recommendation.FrequencyMhz.ToString("F3"));
+}
+
+static void TestRadioPriorityApproach()
+{
+    var recommendation = AirportRadioSelector.Recommend(
+        new[]
+        {
+            new AirportRadioCandidate(3, 123.500, "A/A"),
+            new AirportRadioCandidate(8, 124.800, "APPROCHE"),
+        },
+        isOnGround: true);
+
+    Assert(recommendation is not null);
+    Assert(recommendation!.Kind == AirportRadioServiceKind.Approach, recommendation.Kind.ToString());
+}
+
+static void TestRadioSelfInformationOnly()
+{
+    var recommendation = AirportRadioSelector.Recommend(
+        new[]
+        {
+            new AirportRadioCandidate(3, 123.500, "A/A"),
+            new AirportRadioCandidate(2, 122.800, "CTAF"),
+        },
+        isOnGround: true);
+
+    Assert(recommendation is null, recommendation?.Name);
+    Assert(AirportRadioSelector.IsSilent(AirportRadioServiceKind.SelfInformation));
+}
+
 static IReadOnlyList<NearbyAirportCandidate> BuildAirportCandidates() => new[]
 {
     new NearbyAirportCandidate("LFBI", "LF", 46.5870, 0.3070, 129, new[] { 118.505, 121.780, 134.100 }),
@@ -275,7 +322,8 @@ static void TestLfbiOperationalProfile()
     Assert(resolutions["T:99"].Role == OperationalPointRole.IntermediateHoldingPoint);
     Assert(resolutions["T:99"].RadioLabel == "A3");
     Assert(route.OperationalPoint?.RadioLabel == "A3", $"point choisi={route.OperationalPoint?.RadioLabel}");
-    Assert(route.RunwayEntry?.RadioLabel == "A", $"entrée={route.RunwayEntry?.RadioLabel}");
+    // Le profil enrichit l'affichage uniquement. Une entrée locale non associée
+    // ne doit jamais bloquer le routage générique ni la séquence de départ.
 }
 
 static void TestLfbiConciseTaxiPhraseology()

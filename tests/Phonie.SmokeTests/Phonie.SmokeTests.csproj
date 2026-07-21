@@ -20,5 +20,9 @@
     <Compile Include="..\..\src\Phonie\Models\AirportFacilityModels.cs" Link="Source\AirportFacilityModels.cs" />
     <Compile Include="..\..\src\Phonie\Models\FacilityDiagnosticModels.cs" Link="Source\FacilityDiagnosticModels.cs" />
     <Compile Include="..\..\src\Phonie\Services\FacilityPacketDecoder.cs" Link="Source\FacilityPacketDecoder.cs" />
+    <Compile Include="..\..\src\Phonie\Services\OperationalRadioService.cs" Link="Source\OperationalRadioService.cs" />
+    <Compile Include="..\..\src\Phonie\Services\RadioPolicyResolver.cs" Link="Source\RadioPolicyResolver.cs" />
+    <Compile Include="..\..\src\Phonie\Models\RadioPolicy.cs" Link="Source\RadioPolicy.cs" />
+    <Compile Include="..\..\src\Phonie.Core\AirportRadioSelector.cs" Link="Source\AirportRadioSelector.cs" />
   </ItemGroup>
 </Project>

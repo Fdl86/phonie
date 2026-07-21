@@ -66,6 +66,7 @@ public partial class MainWindow : Window
         false,
         "PHONIE reste silencieux tant que le service n'est pas déterminé.",
         "Initialisation");
+    private OperationalFrequency? currentRecommendedFrequency;
     private CancellationTokenSource? transcriptionCancellation;
     private CancellationTokenSource? speechSynthesisCancellation;
     private string? lastAtisAudioSignature;
@@ -1152,6 +1153,7 @@ public partial class MainWindow : Window
             this.currentGeographicIcao = string.Empty;
             this.currentRadioIcao = string.Empty;
             this.currentRadioContextSource = "Station radio non résolue";
+            this.currentRecommendedFrequency = null;
             this.latestSnapshot = null;
             this.currentAtis = null;
             this.lastAtisAudioSignature = null;
@@ -1203,6 +1205,14 @@ public partial class MainWindow : Window
             snapshot,
             this.latestRadioAirportReport,
             this.currentRadioIcao);
+        var recommendationReport = this.latestRadioAirportReport ?? this.latestGroundAirportReport;
+        var recommendationIcao = !string.IsNullOrWhiteSpace(this.currentRadioIcao)
+            ? this.currentRadioIcao
+            : this.currentGeographicIcao;
+        this.currentRecommendedFrequency = OperationalRadioService.Recommend(
+            recommendationReport,
+            recommendationIcao,
+            snapshot.IsOnGround);
         this.groundOperationsCoordinator.UpdateSnapshot(snapshot);
         var runwayForAtis = string.Equals(
                 this.currentRadioIcao,
@@ -1762,7 +1772,10 @@ public partial class MainWindow : Window
                 string.IsNullOrWhiteSpace(frequencyReport.Icao)
                     ? frequencyReport.RequestedIcao
                     : frequencyReport.Icao);
-            this.FrequencySummaryText.Text = $"Fréquences {frequencyIcao} : " + string.Join(" | ", frequencyReport.Frequencies
+            var recommendation = this.currentRecommendedFrequency is null
+                ? string.Empty
+                : $"Recommandée : {this.currentRecommendedFrequency.ServiceName} {this.currentRecommendedFrequency.FrequencyMhz:F3} | ";
+            this.FrequencySummaryText.Text = $"Fréquences {frequencyIcao} : {recommendation}" + string.Join(" | ", frequencyReport.Frequencies
                 .OrderBy(item => item.FrequencyMhz)
                 .Select(item => $"{item.FrequencyMhz:F3}"));
             this.SetForegroundResource(
@@ -2193,7 +2206,12 @@ public partial class MainWindow : Window
             OperationalRadioKind.SelfInformation => "AUTO-INFORMATION",
             _ => "FRÉQUENCE NON IDENTIFIÉE",
         };
-        this.RadioPolicyText.Text = this.currentOperationalFrequency.Guidance;
+        var recommendationText = this.currentRecommendedFrequency is not null
+            && !this.currentOperationalFrequency.DialogueAllowed
+            && Math.Abs(this.currentRecommendedFrequency.FrequencyMhz - this.currentOperationalFrequency.FrequencyMhz) > 0.0021
+                ? $" Fréquence dialoguée recommandée : {this.currentRecommendedFrequency.ServiceName} {this.currentRecommendedFrequency.FrequencyMhz:F3} MHz."
+                : string.Empty;
+        this.RadioPolicyText.Text = this.currentOperationalFrequency.Guidance + recommendationText;
         var resource = this.currentOperationalFrequency.Kind switch
         {
             OperationalRadioKind.Controlled => "Accent",
