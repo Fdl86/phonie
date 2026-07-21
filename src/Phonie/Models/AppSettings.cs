@@ -26,4 +26,8 @@ public sealed class AppSettings
     public bool AutoTranscribePtt { get; set; } = true;
 
     public string PreferredAirportIcao { get; set; } = "LFBI";
+
+    public bool AutoUpdateFranceRadioData { get; set; } = true;
+
+    public DateTimeOffset? LastFranceRadioDataCheckUtc { get; set; }
 }

@@ -1,4 +1,4 @@
-name: Build PHONIE DEV0.4.0.9 - Airport Detection and Official Radio
+name: Build PHONIE DEV0.4.1.0 - SIA Radio and Controller Voices
 
 on:
   workflow_dispatch:
@@ -15,13 +15,40 @@ concurrency:
 
 jobs:
   build-portable-windows:
-    name: Build, test and publish portable Windows x64
+    name: Generate SIA data, test and publish Windows x64
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 75
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SIA generator dependencies
+        run: python -m pip install --disable-pip-version-check -r tools/requirements-sia-radio.txt
+
+      - name: Run offline SIA generator regression tests
+        run: python tools/test_sia_radio_builder.py
+
+      - name: Generate official SIA database when repository is bootstrapping
+        shell: pwsh
+        run: |
+          $manifest = Get-Content data/radio/france/manifest.json -Raw | ConvertFrom-Json
+          if ($manifest.bootstrapRequired -eq $true -or $null -eq $manifest.current) {
+            Write-Host "Manifest d'amorçage détecté : génération de la base SIA active."
+            python tools/sia_radio_builder.py --output data/radio/france --cycle current --slot current --min-airports 200 --min-frequencies 150
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          else {
+            Write-Host "Base SIA versionnée déjà présente : aucune reconstruction lourde."
+          }
+
+      - name: Validate SIA database and absence of hardcoded production frequencies
+        run: python tools/validate_sia_radio.py --root . --min-airports 200 --min-frequencies 150
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
@@ -35,40 +62,35 @@ jobs:
             "src/Phonie/Phonie.csproj",
             "src/Phonie.Core/Phonie.Core.csproj",
             "src/Phonie.Core/AirportContextResolver.cs",
-            "src/Phonie.Core/AirportRadioSelector.cs",
             "src/Phonie.Core/AirportListPacketDecoder.cs",
-            "src/Phonie/Models/AirportContextModels.cs",
+            "src/Phonie.Core/SiaRadioCatalog.cs",
+            "src/Phonie/Models/SiaRadioDataModels.cs",
             "src/Phonie/Services/NearbyAirportService.cs",
             "src/Phonie/Services/OfficialRadioCatalogService.cs",
+            "src/Phonie/Services/RadioDataUpdateService.cs",
+            "src/Phonie/Services/ControllerSpeechService.cs",
             "tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj",
             "tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj",
-            "tests/Phonie.Core.Tests/Fixtures/LFBI-MSFS2020-ground.json",
-            "tests/Phonie.Core.Tests/Fixtures/LFBI-MSFS2024-ground.json",
-            "data/airports/LFBI.json",
-            "data/radio/france-official.json",
+            "data/radio/france/manifest.json",
+            "data/radio/france/current/airports-fr.json",
+            "data/radio/france-update-source.json",
+            "tools/sia_radio_builder.py",
+            "tools/validate_sia_radio.py",
             "README.md",
-            "TEST-DEV0.4.0.9.md",
-            "GROUND-OPERATIONS-DEV0.4.0.9.md",
-            "FACILITIES-NORMALIZATION-DEV0.4.0.9.md",
-            "CALLSIGN-RULES-DEV0.4.0.9.md",
-            "CHANGELOG-DEV0.4.0.9.md",
-            "STATIC-VALIDATION-DEV0.4.0.9.txt",
-            "OPERATIONAL-PROFILES-DEV0.4.0.9.md",
-            "AIRPORT-RADIO-CONTEXT-DEV0.4.0.9.md",
-            "SOURCE-MANIFEST-DEV0.4.0.9.txt"
+            "TEST-DEV0.4.1.0.md",
+            "SIA-RADIO-DATABASE-DEV0.4.1.0.md",
+            "CONTROLLER-VOICES-DEV0.4.1.0.md",
+            "CHANGELOG-DEV0.4.1.0.md",
+            "STATIC-VALIDATION-DEV0.4.1.0.txt",
+            "SOURCE-MANIFEST-DEV0.4.1.0.txt"
           )
           $missing = @($required | Where-Object { -not (Test-Path $_) })
           if ($missing.Count -gt 0) {
-            Write-Host "Contenu racine du dépôt :"
-            Get-ChildItem -Force | Select-Object Name, Length | Format-Table -AutoSize
             throw "Fichiers source manquants : $($missing -join ', ')"
           }
           Write-Host "Précontrôle source OK - $($required.Count) éléments requis présents."
           dotnet --info
 
-      # Le workflow ne dépend volontairement plus de PHONIE.sln. Certains
-      # environnements Git peuvent ignorer un fichier .sln globalement ; les
-      # quatre projets sont donc restaurés et compilés explicitement.
       - name: Restore projects
         shell: pwsh
         run: |
@@ -82,23 +104,23 @@ jobs:
           dotnet restore src/Phonie/Phonie.csproj
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build all projects
+      - name: Build all projects with zero warnings
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          dotnet build src/Phonie.Core/Phonie.Core.csproj --configuration Release --no-restore
+          dotnet build src/Phonie.Core/Phonie.Core.csproj --configuration Release --no-restore -warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-restore
+          dotnet build tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-restore -warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj --configuration Release --no-restore
+          dotnet build tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj --configuration Release --no-restore -warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build src/Phonie/Phonie.csproj --configuration Release --no-restore
+          dotnet build src/Phonie/Phonie.csproj --configuration Release --no-restore -warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Run DEV0.3 regression smoke tests
+      - name: Run smoke tests
         run: dotnet run --project tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-build --no-restore
 
-      - name: Run Ground Operations core tests
+      - name: Run core tests
         run: dotnet run --project tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj --configuration Release --no-build --no-restore
 
       - name: Publish autonomous Windows x64
@@ -108,38 +130,20 @@ jobs:
           --runtime win-x64
           --self-contained true
           --no-restore
-          --output dist/PHONIE-DEV0.4.0.9-win-x64
+          --output dist/PHONIE-DEV0.4.1.0-win-x64
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
           -p:DebugType=None
           -p:DebugSymbols=false
 
-      - name: Add build information
+      - name: Add portable folders and documentation
         shell: pwsh
         run: |
-          $commit = "${{ github.sha }}".Substring(0, 7)
-          @"
-          PHONIE DEV0.4.0.9 - AIRPORT DETECTION & OFFICIAL RADIO
-          Commit: $commit
-          Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
-          Runtime: Windows x64 autonome
-          Noyau: décodeur AirportList MSFS 2024 tolérant l'emplacement rgData de compatibilité observé dans les logs réels
-          Aérodromes: contextes géographique et radio séparés, détection dynamique et rechargement Facilities après spawn ou téléportation
-          Radio: catalogue officiel prioritaire LFBI/LFOU, Tour prioritaire, A/A/ATIS/répondeur silencieux
-          Sol: phraséologie générique, tout vrai HOLD_SHORT Facilities accepté, contrôle trafic piste avant décollage
-          Sécurité: aucune clairance décollage hors point d'attente, avec trafic piste ou état trafic inconnu
-          Base préservée: DEV0.3.0.5 - SimConnect, PTT, enregistrement, ASR CPU/Vulkan/Turbo/Vosk et télémétrie GPU
-          "@ | Set-Content -Encoding UTF8 dist/PHONIE-DEV0.4.0.9-win-x64/BUILD-INFO.txt
-
-      - name: Create portable folders and documentation
-        shell: pwsh
-        run: |
-          $root = "dist/PHONIE-DEV0.4.0.9-win-x64"
+          $root = "dist/PHONIE-DEV0.4.1.0-win-x64"
           $folders = @(
             "config",
             "logs",
-            "logs/airport-data",
             "logs/airport-data/raw",
             "logs/benchmarks",
             "logs/sessions",
@@ -147,50 +151,58 @@ jobs:
             "models/whisper",
             "models/vosk",
             "recordings",
-            "cache",
             "cache/atis",
             "cache/controller-voice",
-            "data/radio"
+            "data/radio/france/.staging"
           )
           foreach ($folder in $folders) {
             New-Item -ItemType Directory -Force "$root/$folder" | Out-Null
           }
+          $commit = "${{ github.sha }}".Substring(0, 7)
+          @"
+          PHONIE DEV0.4.1.0 - SIA RADIO & CONTROLLER VOICES
+          Commit: $commit
+          Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
+          Runtime: Windows x64 autonome
+          Radio France: base nationale générée depuis les publications officielles SIA, aucune fréquence d'aérodrome codée dans l'application
+          Sécurité radio: dernière base SIA validée comme seul secours français, silence si donnée absente ou ambiguë
+          Voix: attribution aléatoire homme/femme par station, stable pendant la session, cache séparé par voix
+          Aérodromes: moteur dynamique DEV0.4.0.9 conservé
+          "@ | Set-Content -Encoding UTF8 "$root/BUILD-INFO.txt"
           @"
           MODÈLES WHISPER
 
-          Les modèles ne sont pas inclus dans l'archive PHONIE.
-          Choisir un profil dans l'application puis utiliser "Installer profil".
-          Les fichiers sont enregistrés dans models\whisper et vérifiés par SHA-256.
-          Le passage CPU vers Vulkan ou Vulkan vers CPU demande un redémarrage de PHONIE.
-          Turbo reste un profil qualité optionnel et n'est jamais sélectionné automatiquement.
+          Les modèles ne sont pas inclus. Utiliser le bouton d'installation du profil dans PHONIE.
+          Tous les fichiers restent dans models\whisper et sont contrôlés par SHA-256.
           "@ | Set-Content -Encoding UTF8 "$root/models/whisper/LISEZ-MOI.txt"
           @"
           VOSK FR EXPÉRIMENTAL
 
-          Le modèle n'est pas inclus dans l'archive PHONIE.
-          Sélectionner "Vosk FR - expérimental" puis utiliser "Installer profil".
-          Le modèle est enregistré dans models\vosk et vérifié par SHA-256 avant extraction.
+          Le modèle n'est pas inclus. Utiliser le bouton d'installation du profil dans PHONIE.
           "@ | Set-Content -Encoding UTF8 "$root/models/vosk/LISEZ-MOI.txt"
-          Copy-Item README.md "$root/README.md"
-          Copy-Item TEST-DEV0.4.0.9.md "$root/TEST-DEV0.4.0.9.md"
-          Copy-Item GROUND-OPERATIONS-DEV0.4.0.9.md "$root/GROUND-OPERATIONS-DEV0.4.0.9.md"
-          Copy-Item FACILITIES-NORMALIZATION-DEV0.4.0.9.md "$root/FACILITIES-NORMALIZATION-DEV0.4.0.9.md"
-          Copy-Item CALLSIGN-RULES-DEV0.4.0.9.md "$root/CALLSIGN-RULES-DEV0.4.0.9.md"
-          Copy-Item CHANGELOG-DEV0.4.0.9.md "$root/CHANGELOG-DEV0.4.0.9.md"
-          Copy-Item STATIC-VALIDATION-DEV0.4.0.9.txt "$root/STATIC-VALIDATION-DEV0.4.0.9.txt"
-          Copy-Item OPERATIONAL-PROFILES-DEV0.4.0.9.md "$root/OPERATIONAL-PROFILES-DEV0.4.0.9.md"
-          Copy-Item AIRPORT-RADIO-CONTEXT-DEV0.4.0.9.md "$root/AIRPORT-RADIO-CONTEXT-DEV0.4.0.9.md"
-          Copy-Item SOURCE-MANIFEST-DEV0.4.0.9.txt "$root/SOURCE-MANIFEST-DEV0.4.0.9.txt"
-          Copy-Item ASR-PROFILES-DEV0.3.0.5.md "$root/ASR-PROFILES-DEV0.3.0.5.md"
-          Copy-Item TURBO-PROFILE-DEV0.3.0.5.md "$root/TURBO-PROFILE-DEV0.3.0.5.md"
-          Copy-Item GPU-BENCHMARK-DEV0.3.0.5.md "$root/GPU-BENCHMARK-DEV0.3.0.5.md"
-          Copy-Item ATC-ID-CALLSIGN-DEV0.3.0.5.md "$root/ATC-ID-CALLSIGN-DEV0.3.0.5.md"
-          Copy-Item THIRD-PARTY-NOTICES.md "$root/THIRD-PARTY-NOTICES.md"
+          $docs = @(
+            "README.md",
+            "TEST-DEV0.4.1.0.md",
+            "SIA-RADIO-DATABASE-DEV0.4.1.0.md",
+            "CONTROLLER-VOICES-DEV0.4.1.0.md",
+            "CHANGELOG-DEV0.4.1.0.md",
+            "STATIC-VALIDATION-DEV0.4.1.0.txt",
+            "SOURCE-MANIFEST-DEV0.4.1.0.txt",
+            "GROUND-OPERATIONS-DEV0.4.0.9.md",
+            "FACILITIES-NORMALIZATION-DEV0.4.0.9.md",
+            "CALLSIGN-RULES-DEV0.4.0.9.md",
+            "ASR-PROFILES-DEV0.3.0.5.md",
+            "TURBO-PROFILE-DEV0.3.0.5.md",
+            "GPU-BENCHMARK-DEV0.3.0.5.md",
+            "ATC-ID-CALLSIGN-DEV0.3.0.5.md",
+            "THIRD-PARTY-NOTICES.md"
+          )
+          foreach ($doc in $docs) { Copy-Item $doc "$root/$doc" }
 
-      - name: Verify portable storage layout
+      - name: Verify portable artifact
         shell: pwsh
         run: |
-          $root = "dist/PHONIE-DEV0.4.0.9-win-x64"
+          $root = "dist/PHONIE-DEV0.4.1.0-win-x64"
           $required = @(
             "$root/PHONIE.exe",
             "$root/config",
@@ -200,21 +212,22 @@ jobs:
             "$root/cache/controller-voice",
             "$root/models/whisper",
             "$root/models/vosk",
-            "$root/data/airports/LFBI.json",
-            "$root/data/radio/france-official.json"
+            "$root/data/radio/france/manifest.json",
+            "$root/data/radio/france/current/airports-fr.json",
+            "$root/data/radio/france-update-source.json"
           )
           foreach ($item in $required) {
-            if (-not (Test-Path $item)) {
-              throw "Élément portable manquant : $item"
-            }
+            if (-not (Test-Path $item)) { throw "Élément portable manquant : $item" }
+          }
+          $legacy = Get-Content "$root/data/radio/france-official.json" -Raw | ConvertFrom-Json
+          if ($legacy.deprecated -ne $true -or $legacy.usedByPhonie -ne $false) {
+            throw "Ancienne table radio non neutralisée."
           }
 
-      # GitHub compresse lui-même le dossier en un seul artefact.
-      # Aucun ZIP n'est créé dans le ZIP : une seule décompression donne directement PHONIE.exe.
       - name: Upload portable artifact - single extraction
         uses: actions/upload-artifact@v4
         with:
-          name: PHONIE-DEV0.4.0.9-win-x64
-          path: dist/PHONIE-DEV0.4.0.9-win-x64/**
+          name: PHONIE-DEV0.4.1.0-win-x64
+          path: dist/PHONIE-DEV0.4.1.0-win-x64/**
           if-no-files-found: error
           retention-days: 14

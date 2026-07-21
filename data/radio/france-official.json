@@ -1,61 +1,6 @@
 {
-  "schemaVersion": 1,
-  "dataset": "PHONIE - amorce fréquences officielles France",
-  "validFrom": "2026-07-09",
-  "airports": [
-    {
-      "icao": "LFBI",
-      "name": "POITIERS BIARD",
-      "source": "SIA eAIP France - AD 2 LFBI / carte ARC, AIRAC 09 JUL 2026",
-      "frequencies": [
-        {
-          "frequencyMhz": 118.505,
-          "serviceName": "POITIERS TOUR",
-          "kind": "Controlled",
-          "scheduleCode": "",
-          "source": "SIA eAIP France - AIRAC 09 JUL 2026",
-          "isDuplicate": false
-        },
-        {
-          "frequencyMhz": 134.100,
-          "serviceName": "POITIERS APPROCHE / SIV",
-          "kind": "Controlled",
-          "scheduleCode": "",
-          "source": "SIA eAIP France - AIRAC 09 JUL 2026",
-          "isDuplicate": false
-        },
-        {
-          "frequencyMhz": 121.780,
-          "serviceName": "POITIERS ATIS",
-          "kind": "AutomaticBroadcast",
-          "scheduleCode": "",
-          "source": "Profil opérationnel vérifié LFBI",
-          "isDuplicate": false
-        },
-        {
-          "frequencyMhz": 124.000,
-          "serviceName": "RÉPONDEUR POITIERS",
-          "kind": "RecordedMessage",
-          "scheduleCode": "",
-          "source": "Profil opérationnel vérifié LFBI",
-          "isDuplicate": false
-        }
-      ]
-    },
-    {
-      "icao": "LFOU",
-      "name": "CHOLET LE PONTREAU",
-      "source": "SIA eAIP France - AD 2 LFOU.18, valide 11 JUN 2026",
-      "frequencies": [
-        {
-          "frequencyMhz": 120.405,
-          "serviceName": "CHOLET INFORMATION",
-          "kind": "InformationService",
-          "scheduleCode": "LFOU_AFIS",
-          "source": "SIA eAIP France - AD 2 LFOU.18, valide 11 JUN 2026",
-          "isDuplicate": false
-        }
-      ]
-    }
-  ]
+  "schemaVersion": 0,
+  "deprecated": true,
+  "usedByPhonie": false,
+  "message": "Ancienne table neutralisée. DEV0.4.1.0 utilise exclusivement data/radio/france/manifest.json et les jeux de données SIA validés."
 }

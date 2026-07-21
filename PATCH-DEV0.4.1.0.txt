@@ -1,0 +1,10 @@
+PHONIE DEV0.4.1.0 - SIA RADIO & CONTROLLER VOICES
+
+Base attendue : DEV0.4.0.9.
+Extraire le patch directement à la racine du dépôt et accepter les remplacements.
+L'ancien fichier data/radio/france-official.json est volontairement remplacé par un fichier de neutralisation sans aucune fréquence.
+
+Commit conseillé :
+PHONIE DEV0.4.1.0 - SIA Radio and Controller Voices
+
+Statut : candidate CI jusqu'à réussite complète du workflow GitHub Actions.

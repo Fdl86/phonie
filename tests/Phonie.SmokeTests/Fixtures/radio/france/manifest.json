@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 2,
+  "datasetId": "phonie-france-radio-sia",
+  "datasetRevision": "fixture-0410",
+  "authority": "SIA",
+  "generatedAt": "2026-07-21T00:00:00+00:00",
+  "generatorVersion": "TEST",
+  "sourceCatalogUrl": "https://www.sia.aviation-civile.gouv.fr/",
+  "bootstrapRequired": false,
+  "previous": null,
+  "current": {
+    "relativePath": "current/airports-fr.json",
+    "sha256": "c12a5e61fce3331f3e4a34c252fa2551bc9572da729043a4d1c7cd01cde6f61a",
+    "revision": "fixture-0410",
+    "airacCycle": "07/26",
+    "effectiveFrom": "2026-07-09T00:00:00+00:00",
+    "effectiveUntil": "2026-08-06T00:00:00+00:00",
+    "airportCount": 120,
+    "frequencyCount": 127,
+    "interactiveCount": 7,
+    "silentCount": 120
+  },
+  "next": null
+}

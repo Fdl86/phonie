@@ -51,6 +51,10 @@ var tests = new List<(string Name, Action Test)>
     ("priorité radio Tour sur A/A et Approche", TestRadioPriorityTower),
     ("priorité radio Approche sans Tour", TestRadioPriorityApproach),
     ("A/A seule ne devient jamais dialoguée", TestRadioSelfInformationOnly),
+    ("catalogue SIA résout une fréquence partagée par contexte ICAO", TestSiaSharedChannelByAirport),
+    ("catalogue SIA préfère Tour à Approche au sol", TestSiaRecommendationPriority),
+    ("horaires non évalués sur canal partagé imposent le silence", TestSiaAmbiguousScheduleSafety),
+    ("canalisation 8,33 utilise une représentation entière", TestSiaChannelNormalization),
 };
 
 var failures = new List<string>();
@@ -77,6 +81,120 @@ if (failures.Count > 0)
 Console.WriteLine($"PHONIE Core tests OK - {tests.Count}/{tests.Count}");
 
 
+
+
+static void TestSiaSharedChannelByAirport()
+{
+    var catalogue = BuildSiaTestCatalog();
+    var first = catalogue.Resolve("LFXX", 123.500, preferLocal: true);
+    var second = catalogue.Resolve("LFYY", 123.500, preferLocal: true);
+    Assert(first.FrequencyKnown && first.Frequency?.Callsign == "ALPHA A/A", first.Reason);
+    Assert(second.FrequencyKnown && second.Frequency?.Callsign == "BRAVO A/A", second.Reason);
+}
+
+static void TestSiaRecommendationPriority()
+{
+    var catalogue = BuildSiaTestCatalog();
+    var recommended = catalogue.Recommend("LFXX", isOnGround: true, dialogueOnly: false);
+    Assert(recommended?.Kind == SiaRadioServiceKind.Tower, recommended?.Callsign ?? "aucune recommandation");
+}
+
+static void TestSiaAmbiguousScheduleSafety()
+{
+    var dataset = BuildSiaDataset();
+    var airport = dataset.Airports.Single(item => item.Icao == "LFXX");
+    airport.Frequencies.Add(new SiaRadioFrequencyRecord
+    {
+        Channel = "120.405",
+        ChannelKhz = 120405,
+        ServiceCode = "AFIS",
+        Callsign = "ALPHA INFORMATION",
+        Kind = SiaRadioServiceKind.Information,
+        Scope = SiaRadioStationScope.Local,
+        Interactive = true,
+        ScheduleState = SiaRadioScheduleState.PublishedNotEvaluated,
+    });
+    airport.Frequencies.Add(new SiaRadioFrequencyRecord
+    {
+        Channel = "120.405",
+        ChannelKhz = 120405,
+        ServiceCode = "A/A",
+        Callsign = "ALPHA A/A",
+        Kind = SiaRadioServiceKind.SelfInformation,
+        Scope = SiaRadioStationScope.Local,
+        Interactive = false,
+        ScheduleState = SiaRadioScheduleState.NotApplicable,
+    });
+    var resolution = new SiaRadioCatalog(dataset).Resolve("LFXX", 120.405, preferLocal: true);
+    Assert(resolution.Ambiguous, resolution.Reason);
+    Assert(resolution.Frequency is { Interactive: false }, "le mode silencieux n'a pas été retenu");
+}
+
+static void TestSiaChannelNormalization()
+{
+    Assert(RadioChannel.ToChannelKhz(118.505) == 118505);
+    Assert(RadioChannel.CarrierHzFromChannelKhz(118505) == 118500000);
+    var record = new SiaRadioFrequencyRecord { ChannelKhz = 118505, Channel = "118.505" };
+    Assert(RadioChannel.Matches(record, 118.505));
+}
+
+static SiaRadioCatalog BuildSiaTestCatalog() => new(BuildSiaDataset());
+
+static SiaRadioDataset BuildSiaDataset()
+{
+    var from = new DateTimeOffset(2026, 7, 9, 0, 0, 0, TimeSpan.Zero);
+    return new SiaRadioDataset
+    {
+        Authority = "SIA",
+        AiracCycle = "TEST",
+        Revision = "fixture",
+        EffectiveFrom = from,
+        EffectiveUntil = from.AddDays(28),
+        Airports = new List<SiaAirportRadioRecord>
+        {
+            new()
+            {
+                Icao = "LFXX",
+                Name = "ALPHA",
+                Frequencies = new List<SiaRadioFrequencyRecord>
+                {
+                    new()
+                    {
+                        Channel = "123.500", ChannelKhz = 123500, ServiceCode = "A/A", Callsign = "ALPHA A/A",
+                        Kind = SiaRadioServiceKind.SelfInformation, Scope = SiaRadioStationScope.Local,
+                        Interactive = false, ScheduleState = SiaRadioScheduleState.NotApplicable,
+                    },
+                    new()
+                    {
+                        Channel = "118.505", ChannelKhz = 118505, ServiceCode = "TWR", Callsign = "ALPHA TOUR",
+                        Kind = SiaRadioServiceKind.Tower, Scope = SiaRadioStationScope.Local,
+                        Interactive = true, ScheduleState = SiaRadioScheduleState.Always,
+                    },
+                    new()
+                    {
+                        Channel = "134.100", ChannelKhz = 134100, ServiceCode = "APP", Callsign = "ALPHA APPROCHE",
+                        Kind = SiaRadioServiceKind.Approach, Scope = SiaRadioStationScope.Regional,
+                        Interactive = true, ScheduleState = SiaRadioScheduleState.Always,
+                    },
+                },
+            },
+            new()
+            {
+                Icao = "LFYY",
+                Name = "BRAVO",
+                Frequencies = new List<SiaRadioFrequencyRecord>
+                {
+                    new()
+                    {
+                        Channel = "123.500", ChannelKhz = 123500, ServiceCode = "A/A", Callsign = "BRAVO A/A",
+                        Kind = SiaRadioServiceKind.SelfInformation, Scope = SiaRadioStationScope.Local,
+                        Interactive = false, ScheduleState = SiaRadioScheduleState.NotApplicable,
+                    },
+                },
+            },
+        },
+    };
+}
 
 static void TestAirportListMsfs2024CompatibilitySlot()
 {

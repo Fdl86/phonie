@@ -17,7 +17,11 @@ public sealed record OperationalFrequency(
     bool DialogueAllowed,
     string Guidance,
     string Source,
-    bool IsDuplicate = false);
+    bool IsDuplicate = false,
+    string StationKey = "",
+    string Scope = "Local",
+    string DataRevision = "",
+    string Channel = "");
 
 public sealed record AtisInformation(
     string AirportIcao,

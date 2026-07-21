@@ -5,7 +5,7 @@ namespace Phonie.Services;
 
 public static class OperationalRadioService
 {
-    private const double FrequencyToleranceMhz = 0.0021;
+    private const double LegacyFacilityToleranceMhz = 0.0021;
 
     public static OperationalFrequency Resolve(
         SimulatorSnapshot snapshot,
@@ -28,38 +28,27 @@ public static class OperationalRadioService
             return official.Frequency;
         }
 
-        // Compatibilité volontaire avec l'ancienne base radio de MSFS 2020.
-        // Elle ne devient jamais une fréquence officielle ni une recommandation.
-        if (string.Equals(resolvedIcao, "LFBI", StringComparison.OrdinalIgnoreCase)
-            && Matches(frequency, 118.500))
+        // Pour les aérodromes français, la base SIA est l'unique autorité radio.
+        // Une fréquence Facilities ou un type COM SimConnect ne peut jamais la remplacer.
+        if (OfficialRadioCatalogService.IsFrenchIcao(resolvedIcao))
         {
-            return new OperationalFrequency(
+            return Unknown(
                 frequency,
-                "POITIERS TOUR",
-                OperationalRadioKind.Controlled,
-                true,
-                "Fréquence Tour héritée de MSFS 2020. La fréquence officielle recommandée reste 118.505.",
-                "MSFS 2020 - secours de compatibilité",
-                true);
+                official.DatabaseAvailable
+                    ? official.Reason
+                    : "Base radio SIA indisponible : aucune fréquence française de secours n'est inventée.",
+                official.DatabaseAvailable ? "Base SIA active" : "Données officielles indisponibles");
         }
 
-        // Lorsqu'un aérodrome est présent dans le catalogue officiel mais que la fréquence
-        // active n'y figure pas, les fréquences de scène ne doivent pas reprendre autorité.
-        if (official.AirportKnown)
-        {
-            return Unknown(frequency);
-        }
-
+        // Hors périmètre français, les Facilities restent un secours diagnostique générique.
         var facilityFrequency = airportReport?.Frequencies
-            .Where(item => Matches(item.FrequencyMhz, frequency))
+            .Where(item => MatchesLegacy(item.FrequencyMhz, frequency))
             .OrderBy(item => Math.Abs(item.FrequencyMhz - frequency))
             .FirstOrDefault();
         var facilityResolution = facilityFrequency is not null && airportReport is not null
             ? ResolveFacilityFrequency(facilityFrequency, airportReport, resolvedIcao)
             : null;
 
-        // Une A/A, CTAF, UNICOM, ATIS ou météo automatique doit rester silencieuse,
-        // même si le type de station COM générique fourni par le simulateur est imprécis.
         if (facilityResolution?.Kind is OperationalRadioKind.SelfInformation
             or OperationalRadioKind.AutomaticBroadcast
             or OperationalRadioKind.RecordedMessage)
@@ -78,28 +67,28 @@ public static class OperationalRadioService
                     OperationalRadioKind.Controlled,
                     true,
                     policy.Guidance,
-                    "Type COM SimConnect"),
+                    "Type COM SimConnect - hors France"),
                 RadioPolicyKind.InformationService => new OperationalFrequency(
                     frequency,
                     FriendlyService(snapshot, resolvedIcao),
                     OperationalRadioKind.InformationService,
                     true,
                     policy.Guidance,
-                    "Type COM SimConnect"),
+                    "Type COM SimConnect - hors France"),
                 RadioPolicyKind.AutomaticInformation => new OperationalFrequency(
                     frequency,
                     FriendlyService(snapshot, resolvedIcao),
                     OperationalRadioKind.AutomaticBroadcast,
                     false,
                     policy.Guidance,
-                    "Type COM SimConnect"),
+                    "Type COM SimConnect - hors France"),
                 RadioPolicyKind.SelfInformation => new OperationalFrequency(
                     frequency,
                     FriendlyService(snapshot, resolvedIcao),
                     OperationalRadioKind.SelfInformation,
                     false,
                     policy.Guidance,
-                    "Type COM SimConnect"),
+                    "Type COM SimConnect - hors France"),
                 _ => Unknown(frequency),
             };
         }
@@ -123,8 +112,14 @@ public static class OperationalRadioService
         var official = OfficialRadioCatalogService.Recommend(
             normalizedIcao,
             isOnGround,
-            timestamp ?? DateTimeOffset.UtcNow);
-        if (official.AirportKnown)
+            timestamp ?? DateTimeOffset.UtcNow,
+            dialogueOnly: false);
+        if (OfficialRadioCatalogService.IsFrenchIcao(normalizedIcao))
+        {
+            return official.Frequency;
+        }
+
+        if (official.Frequency is not null)
         {
             return official.Frequency;
         }
@@ -134,10 +129,6 @@ public static class OperationalRadioService
             return null;
         }
 
-        normalizedIcao = NormalizeIcao(
-            string.IsNullOrWhiteSpace(resolvedIcao)
-                ? (string.IsNullOrWhiteSpace(airportReport.Icao) ? airportReport.RequestedIcao : airportReport.Icao)
-                : resolvedIcao);
         var candidates = airportReport.Frequencies
             .Select(item => new AirportRadioCandidate(item.Type, item.FrequencyMhz, item.Name))
             .ToArray();
@@ -147,20 +138,9 @@ public static class OperationalRadioService
             return null;
         }
 
-        AirportFrequencyData? selected;
-        if (string.Equals(normalizedIcao, "LFBI", StringComparison.OrdinalIgnoreCase)
-            && recommendation.Kind == AirportRadioServiceKind.Tower)
-        {
-            selected = airportReport.Frequencies.FirstOrDefault(item => Matches(item.FrequencyMhz, 118.505))
-                ?? airportReport.Frequencies.FirstOrDefault(item => Matches(item.FrequencyMhz, recommendation.FrequencyMhz));
-        }
-        else
-        {
-            selected = airportReport.Frequencies
-                .OrderBy(item => Math.Abs(item.FrequencyMhz - recommendation.FrequencyMhz))
-                .FirstOrDefault();
-        }
-
+        var selected = airportReport.Frequencies
+            .OrderBy(item => Math.Abs(item.FrequencyMhz - recommendation.FrequencyMhz))
+            .FirstOrDefault();
         if (selected is null)
         {
             return null;
@@ -176,7 +156,7 @@ public static class OperationalRadioService
         string resolvedIcao)
     {
         var serviceName = BuildFacilityServiceName(facilityFrequency, report, resolvedIcao);
-        const string source = "Fréquence Facilities du contexte radio";
+        const string source = "Fréquence Facilities - hors périmètre France";
         return facilityFrequency.Type switch
         {
             1 => new OperationalFrequency(facilityFrequency.FrequencyMhz, serviceName, OperationalRadioKind.AutomaticBroadcast, false,
@@ -232,13 +212,16 @@ public static class OperationalRadioService
         return Unknown(facilityFrequency.FrequencyMhz);
     }
 
-    private static OperationalFrequency Unknown(double frequency) => new(
+    private static OperationalFrequency Unknown(
+        double frequency,
+        string guidance = "PHONIE reste silencieux tant que le service n'est pas déterminé.",
+        string source = "Aucune classification") => new(
         frequency,
         "FRÉQUENCE NON IDENTIFIÉE",
         OperationalRadioKind.Unknown,
         false,
-        "PHONIE reste silencieux tant que le service n'est pas déterminé.",
-        "Aucune classification");
+        guidance,
+        source);
 
     private static bool ContainsAny(string value, params string[] tokens) =>
         tokens.Any(token => value.Contains(token, StringComparison.OrdinalIgnoreCase));
@@ -260,8 +243,8 @@ public static class OperationalRadioService
         return string.IsNullOrWhiteSpace(icao) ? "STATION" : icao;
     }
 
-    private static bool Matches(double left, double right) =>
-        double.IsFinite(left) && double.IsFinite(right) && Math.Abs(left - right) <= FrequencyToleranceMhz;
+    private static bool MatchesLegacy(double left, double right) =>
+        double.IsFinite(left) && double.IsFinite(right) && Math.Abs(left - right) <= LegacyFacilityToleranceMhz;
 
     private static string FriendlyService(SimulatorSnapshot snapshot, string resolvedIcao)
     {

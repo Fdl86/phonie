@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private readonly GpuBenchmarkService gpuBenchmarkService = new();
     private readonly AtisService atisService = new();
     private readonly GroundOperationsCoordinator groundOperationsCoordinator = new();
+    private readonly RadioDataUpdateService radioDataUpdateService = new();
     private ControllerSpeechService controllerSpeechService;
     private readonly DispatcherTimer audioMeterTimer = new() { Interval = TimeSpan.FromMilliseconds(125) };
     private readonly DispatcherTimer acknowledgementTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -72,11 +73,13 @@ public partial class MainWindow : Window
     private string? lastAtisAudioSignature;
     private CancellationTokenSource? turboWarmupCancellation;
     private CancellationTokenSource? benchmarkCancellation;
+    private CancellationTokenSource? radioDataUpdateCancellation;
     private Task? turboWarmupTask;
     private Task? benchmarkTask;
     private Task? controllerSpeechTask;
     private bool transcriptionInProgress;
     private bool benchmarkInProgress;
+    private bool radioDataUpdateInProgress;
     private bool pseudoMaximized;
     private bool currentPttAcknowledgementOnly;
     private GroundMapSnapshot? latestGroundMap;
@@ -106,6 +109,9 @@ public partial class MainWindow : Window
         this.audioService.RecordingCompleted += this.AudioService_OnRecordingCompleted;
         this.groundOperationsCoordinator.LogMessage += this.Service_OnLogMessage;
         this.controllerSpeechService.LogMessage += this.Service_OnLogMessage;
+        this.controllerSpeechService.VoiceAssigned += this.ControllerSpeechService_OnVoiceAssigned;
+        this.radioDataUpdateService.LogMessage += this.Service_OnLogMessage;
+        OfficialRadioCatalogService.StatusChanged += this.OfficialRadioCatalogService_OnStatusChanged;
 
         this.keyboardHook.KeyPressed += this.KeyboardHook_OnKeyPressed;
         this.keyboardHook.KeyReleased += this.KeyboardHook_OnKeyReleased;
@@ -141,6 +147,10 @@ public partial class MainWindow : Window
         this.UpdateWhisperStatus(this.speechRecognitionService.GetSelectedStatus());
         this.DiagnosticsPathText.Text = System.IO.Path.Combine("logs", System.IO.Path.GetFileName(this.diagnosticsService.SessionFilePath));
 
+        var radioDataStatus = OfficialRadioCatalogService.Reload();
+        this.UpdateSiaRadioStatusUi(radioDataStatus);
+        this.UpdateVoiceInventoryUi();
+
         this.diagnosticsService.Start(() => new DiagnosticsContext(
             this.pttHeld,
             this.diagnosticsPttSource,
@@ -173,6 +183,12 @@ public partial class MainWindow : Window
         var runtimeOrder = this.speechRecognitionService.StartupWhisperUsesVulkan ? "Vulkan puis CPU" : "CPU";
         this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Profil ASR au démarrage : {startupDefinition.ShortName} - runtime Whisper {runtimeOrder}.");
         this.ScheduleTurboWarmup("démarrage");
+        if (this.settings.AutoUpdateFranceRadioData
+            && (this.settings.LastFranceRadioDataCheckUtc is null
+                || DateTimeOffset.UtcNow - this.settings.LastFranceRadioDataCheckUtc.Value > TimeSpan.FromHours(24)))
+        {
+            _ = this.RunRadioDataUpdateAsync(force: false, startup: true);
+        }
     }
 
     private async void MainWindow_OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -192,6 +208,7 @@ public partial class MainWindow : Window
         this.speechSynthesisCancellation?.Cancel();
         this.turboWarmupCancellation?.Cancel();
         this.benchmarkCancellation?.Cancel();
+        this.radioDataUpdateCancellation?.Cancel();
         await AwaitQuietlyAsync(this.turboWarmupTask);
         await AwaitQuietlyAsync(this.benchmarkTask);
         await AwaitQuietlyAsync(this.controllerSpeechTask);
@@ -199,8 +216,12 @@ public partial class MainWindow : Window
         this.speechSynthesisCancellation?.Dispose();
         this.turboWarmupCancellation?.Dispose();
         this.benchmarkCancellation?.Dispose();
+        this.radioDataUpdateCancellation?.Dispose();
         this.speechRecognitionService.Dispose();
+        OfficialRadioCatalogService.StatusChanged -= this.OfficialRadioCatalogService_OnStatusChanged;
+        this.controllerSpeechService.VoiceAssigned -= this.ControllerSpeechService_OnVoiceAssigned;
         this.controllerSpeechService.Dispose();
+        this.radioDataUpdateService.Dispose();
         this.audioService.Dispose();
         await this.simConnectService.DisposeAsync();
         await this.diagnosticsService.DisposeAsync();
@@ -1201,14 +1222,19 @@ public partial class MainWindow : Window
             snapshot.RadioAirportIcao,
             snapshot.RadioContextSource);
 
+        var operationalRadioIcao = !string.IsNullOrWhiteSpace(this.currentRadioIcao)
+            ? this.currentRadioIcao
+            : snapshot.IsOnGround
+                ? this.currentGeographicIcao
+                : snapshot.RadioAirportIcao;
         this.currentOperationalFrequency = OperationalRadioService.Resolve(
             snapshot,
             this.latestRadioAirportReport,
-            this.currentRadioIcao);
-        var recommendationReport = this.latestRadioAirportReport ?? this.latestGroundAirportReport;
-        var recommendationIcao = !string.IsNullOrWhiteSpace(this.currentRadioIcao)
-            ? this.currentRadioIcao
-            : this.currentGeographicIcao;
+            operationalRadioIcao);
+        var recommendationReport = this.latestGroundAirportReport ?? this.latestRadioAirportReport;
+        var recommendationIcao = !string.IsNullOrWhiteSpace(this.currentGeographicIcao)
+            ? this.currentGeographicIcao
+            : this.currentRadioIcao;
         this.currentRecommendedFrequency = OperationalRadioService.Recommend(
             recommendationReport,
             recommendationIcao,
@@ -1279,7 +1305,7 @@ public partial class MainWindow : Window
             this.UpdateGroundOperationsUi();
             this.EnsureAtisCacheWhenNeeded();
 
-            var radioSignature = $"{snapshot.Com1ActiveMhz:F3}|{this.currentOperationalFrequency.ServiceName}|{this.currentOperationalFrequency.Kind}|{snapshot.Com1SpacingMode}|{snapshot.Com1Receiving}|{snapshot.RadioAirportIcao}";
+            var radioSignature = $"{snapshot.Com1ActiveMhz:F3}|{this.currentOperationalFrequency.ServiceName}|{this.currentOperationalFrequency.Kind}|{this.currentOperationalFrequency.DataRevision}|{snapshot.Com1SpacingMode}|{snapshot.Com1Receiving}|{snapshot.RadioAirportIcao}";
             if (!string.Equals(radioSignature, this.lastRadioSignature, StringComparison.Ordinal))
             {
                 this.lastRadioSignature = radioSignature;
@@ -1762,21 +1788,46 @@ public partial class MainWindow : Window
         }
 
         var frequencyReport = radioReport ?? groundReport;
-        if (frequencyReport is null)
+        var frequencyIcao = !string.IsNullOrWhiteSpace(this.currentGeographicIcao)
+            ? this.currentGeographicIcao
+            : frequencyReport is null
+                ? string.Empty
+                : NormalizeIcao(
+                    string.IsNullOrWhiteSpace(frequencyReport.Icao)
+                        ? frequencyReport.RequestedIcao
+                        : frequencyReport.Icao);
+        if (OfficialRadioCatalogService.IsFrenchIcao(frequencyIcao))
+        {
+            var published = OfficialRadioCatalogService.GetPublishedServices(frequencyIcao);
+            if (published.Count == 0)
+            {
+                this.FrequencySummaryText.Text =
+                    $"Fréquences {frequencyIcao} : aucune donnée SIA active - PHONIE reste silencieux.";
+                this.SetForegroundResource(this.FrequencySummaryText, "Warning");
+            }
+            else
+            {
+                var recommendation = this.currentRecommendedFrequency is null
+                    ? string.Empty
+                    : $"Locale : {this.currentRecommendedFrequency.ServiceName} {this.currentRecommendedFrequency.FrequencyMhz:F3} | ";
+                this.FrequencySummaryText.Text =
+                    $"SIA {frequencyIcao} : {recommendation}"
+                    + string.Join(
+                        " | ",
+                        published.Select(item =>
+                            $"{item.FrequencyMhz:F3} {item.ServiceName}"
+                            + (string.Equals(item.Scope, "Regional", StringComparison.OrdinalIgnoreCase) ? " [régional]" : string.Empty)));
+                this.SetForegroundResource(this.FrequencySummaryText, "Accent");
+            }
+        }
+        else if (frequencyReport is null)
         {
             this.FrequencySummaryText.Text = "Fréquences : en attente du contexte radio.";
             this.SetForegroundResource(this.FrequencySummaryText, "Warning");
         }
         else
         {
-            var frequencyIcao = NormalizeIcao(
-                string.IsNullOrWhiteSpace(frequencyReport.Icao)
-                    ? frequencyReport.RequestedIcao
-                    : frequencyReport.Icao);
-            var recommendation = this.currentRecommendedFrequency is null
-                ? string.Empty
-                : $"Recommandée : {this.currentRecommendedFrequency.ServiceName} {this.currentRecommendedFrequency.FrequencyMhz:F3} | ";
-            this.FrequencySummaryText.Text = $"Fréquences {frequencyIcao} : {recommendation}" + string.Join(" | ", frequencyReport.Frequencies
+            this.FrequencySummaryText.Text = $"Facilities hors France {frequencyIcao} : " + string.Join(" | ", frequencyReport.Frequencies
                 .OrderBy(item => item.FrequencyMhz)
                 .Select(item => $"{item.FrequencyMhz:F3}"));
             this.SetForegroundResource(
@@ -1899,9 +1950,12 @@ public partial class MainWindow : Window
             this.audioService.StopPlayback();
 
             this.controllerSpeechService.LogMessage -= this.Service_OnLogMessage;
+            this.controllerSpeechService.VoiceAssigned -= this.ControllerSpeechService_OnVoiceAssigned;
             this.controllerSpeechService.Dispose();
             this.controllerSpeechService = new ControllerSpeechService(this.audioService);
             this.controllerSpeechService.LogMessage += this.Service_OnLogMessage;
+            this.controllerSpeechService.VoiceAssigned += this.ControllerSpeechService_OnVoiceAssigned;
+            this.UpdateVoiceInventoryUi();
 
             this.diagnosticsService.WriteEvent("VOICE_RESTART", "Moteur de synthèse contrôleur réinitialisé.");
             this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Moteur vocal contrôleur redémarré.");
@@ -1915,6 +1969,126 @@ public partial class MainWindow : Window
         {
             this.RestartControllerVoiceButton.IsEnabled = true;
         }
+    }
+
+    private async void UpdateRadioDataButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        await this.RunRadioDataUpdateAsync(force: true, startup: false);
+    }
+
+    private async Task RunRadioDataUpdateAsync(bool force, bool startup)
+    {
+        if (this.radioDataUpdateInProgress || this.closing)
+        {
+            return;
+        }
+
+        this.radioDataUpdateInProgress = true;
+        this.UpdateRadioDataButton.IsEnabled = false;
+        this.UpdateRadioDataButton.Content = "MAJ...";
+        this.radioDataUpdateCancellation?.Cancel();
+        this.radioDataUpdateCancellation?.Dispose();
+        this.radioDataUpdateCancellation = new CancellationTokenSource();
+        try
+        {
+            var result = await this.radioDataUpdateService.CheckAndUpdateAsync(
+                force,
+                this.radioDataUpdateCancellation.Token);
+            this.settings.LastFranceRadioDataCheckUtc = DateTimeOffset.UtcNow;
+            this.SaveSettings();
+            this.UpdateSiaRadioStatusUi(result.Status);
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] {result.Message}");
+            if (!startup || result.Changed)
+            {
+                this.diagnosticsService.WriteEvent(
+                    "SIA_RADIO_UPDATE",
+                    $"Succès={result.Success} Changement={result.Changed} - {result.Message}");
+            }
+
+            if (result.Changed && this.latestSnapshot is not null)
+            {
+                var snapshot = this.latestSnapshot;
+                var resolutionIcao = !string.IsNullOrWhiteSpace(this.currentRadioIcao)
+                    ? this.currentRadioIcao
+                    : snapshot.IsOnGround
+                        ? this.currentGeographicIcao
+                        : snapshot.RadioAirportIcao;
+                this.currentOperationalFrequency = OperationalRadioService.Resolve(
+                    snapshot,
+                    this.latestRadioAirportReport,
+                    resolutionIcao);
+                this.currentRecommendedFrequency = OperationalRadioService.Recommend(
+                    this.latestGroundAirportReport ?? this.latestRadioAirportReport,
+                    this.currentGeographicIcao,
+                    snapshot.IsOnGround,
+                    snapshot.Timestamp);
+                this.UpdateOperationalRadioUi();
+                if (this.latestGroundAirportReport is not null)
+                {
+                    this.UpdateAirportUi(this.latestGroundAirportReport);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Mise à jour radio SIA annulée.");
+        }
+        finally
+        {
+            this.radioDataUpdateInProgress = false;
+            this.UpdateRadioDataButton.IsEnabled = true;
+            this.UpdateRadioDataButton.Content = "MAJ SIA";
+        }
+    }
+
+    private void OfficialRadioCatalogService_OnStatusChanged(object? sender, SiaRadioDatabaseStatus value) =>
+        _ = this.Dispatcher.BeginInvoke(() => this.UpdateSiaRadioStatusUi(value));
+
+    private void ControllerSpeechService_OnVoiceAssigned(object? sender, ControllerVoiceAssignment assignment) =>
+        _ = this.Dispatcher.BeginInvoke(() =>
+        {
+            if (string.Equals(
+                assignment.StationKey,
+                this.currentOperationalFrequency.StationKey,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                this.VoiceAssignmentText.Text = $"Voix : {assignment.VoiceName} - {assignment.Gender}";
+            }
+        });
+
+    private void UpdateSiaRadioStatusUi(SiaRadioDatabaseStatus value)
+    {
+        if (this.SiaRadioDataText is null)
+        {
+            return;
+        }
+
+        if (value.Valid)
+        {
+            var next = string.IsNullOrWhiteSpace(value.NextAiracCycle) || value.NextEffectiveFrom is null
+                ? string.Empty
+                : $" | prochain {value.NextAiracCycle} le {value.NextEffectiveFrom.Value:dd/MM}";
+            this.SiaRadioDataText.Text =
+                $"Base SIA {value.AiracCycle} - {value.AirportCount} AD / {value.FrequencyCount} fréquences - {value.State}{next}";
+            this.SetForegroundResource(this.SiaRadioDataText, value.State == "STALE" ? "Warning" : "Success");
+        }
+        else
+        {
+            this.SiaRadioDataText.Text = $"Base SIA indisponible - {value.Message}";
+            this.SetForegroundResource(this.SiaRadioDataText, "Danger");
+        }
+    }
+
+    private void UpdateVoiceInventoryUi()
+    {
+        if (this.VoiceAssignmentText is null)
+        {
+            return;
+        }
+
+        var inventory = this.controllerSpeechService.Inventory;
+        this.VoiceAssignmentText.Text =
+            $"Voix FR : {inventory.MaleCount} homme / {inventory.FemaleCount} femme / {inventory.OtherCount} autre";
     }
 
     private void GroundMapCanvas_OnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -2126,6 +2300,7 @@ public partial class MainWindow : Window
                 await this.controllerSpeechService.SpeakControllerAsync(
                     text,
                     this.currentOperationalFrequency.ServiceName,
+                    this.currentOperationalFrequency.StationKey,
                     this.settings.OutputDeviceId,
                     token).ConfigureAwait(false);
                 if (requiresAcknowledgement && !token.IsCancellationRequested)
@@ -2201,18 +2376,43 @@ public partial class MainWindow : Window
         this.RadioPolicyTitleText.Text = this.currentOperationalFrequency.Kind switch
         {
             OperationalRadioKind.Controlled => "SERVICE CONTRÔLÉ",
-            OperationalRadioKind.InformationService => "SERVICE D'INFORMATION",
+            OperationalRadioKind.InformationService =>
+                string.Equals(this.currentOperationalFrequency.Scope, "Regional", StringComparison.OrdinalIgnoreCase)
+                    ? "SERVICE RÉGIONAL D'INFORMATION"
+                    : "SERVICE D'INFORMATION",
             OperationalRadioKind.AutomaticBroadcast => "DIFFUSION AUTOMATIQUE",
             OperationalRadioKind.RecordedMessage => "MESSAGE ENREGISTRÉ",
             OperationalRadioKind.SelfInformation => "AUTO-INFORMATION",
             _ => "FRÉQUENCE NON IDENTIFIÉE",
         };
         var recommendationText = this.currentRecommendedFrequency is not null
-            && !this.currentOperationalFrequency.DialogueAllowed
-            && Math.Abs(this.currentRecommendedFrequency.FrequencyMhz - this.currentOperationalFrequency.FrequencyMhz) > 0.0021
-                ? $" Fréquence dialoguée recommandée : {this.currentRecommendedFrequency.ServiceName} {this.currentRecommendedFrequency.FrequencyMhz:F3} MHz."
+            && Math.Abs(this.currentRecommendedFrequency.FrequencyMhz - this.currentOperationalFrequency.FrequencyMhz) > 0.0005
+                ? $" Fréquence locale recommandée : {this.currentRecommendedFrequency.ServiceName} {this.currentRecommendedFrequency.FrequencyMhz:F3} MHz."
                 : string.Empty;
-        this.RadioPolicyText.Text = this.currentOperationalFrequency.Guidance + recommendationText;
+        this.RadioPolicyText.Text =
+            this.currentOperationalFrequency.Guidance
+            + recommendationText
+            + (string.IsNullOrWhiteSpace(this.currentOperationalFrequency.Source)
+                ? string.Empty
+                : $" Source : {this.currentOperationalFrequency.Source}.");
+
+        if (this.currentOperationalFrequency.DialogueAllowed)
+        {
+            var stationKey = string.IsNullOrWhiteSpace(this.currentOperationalFrequency.StationKey)
+                ? this.currentOperationalFrequency.ServiceName
+                : this.currentOperationalFrequency.StationKey;
+            var assignment = this.controllerSpeechService.GetOrAssignVoice(
+                stationKey,
+                this.currentOperationalFrequency.ServiceName);
+            this.VoiceAssignmentText.Text = string.IsNullOrWhiteSpace(assignment.VoiceName)
+                ? "Voix : Windows par défaut"
+                : $"Voix : {assignment.VoiceName} - {assignment.Gender}";
+        }
+        else
+        {
+            this.VoiceAssignmentText.Text = "Voix : aucune - service silencieux";
+        }
+
         var resource = this.currentOperationalFrequency.Kind switch
         {
             OperationalRadioKind.Controlled => "Accent",

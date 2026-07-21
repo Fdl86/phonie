@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 2,
+  "datasetId": "phonie-france-radio-sia",
+  "datasetRevision": "",
+  "authority": "SIA",
+  "generatedAt": "2026-07-21T00:00:00+00:00",
+  "generatorVersion": "DEV0.4.1.0",
+  "sourceCatalogUrl": "https://www.sia.aviation-civile.gouv.fr/produits-numeriques-en-libre-disposition/les-bases-de-donnees-sia.html",
+  "bootstrapRequired": true,
+  "previous": null,
+  "current": null,
+  "next": null
+}

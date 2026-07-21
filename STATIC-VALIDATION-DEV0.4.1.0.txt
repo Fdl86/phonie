@@ -1,0 +1,39 @@
+PHONIE DEV0.4.1.0 - VALIDATION STATIQUE
+
+Base et périmètre
+- source basée sur DEV0.4.0.9 complète
+- moteur de détection dynamique des aérodromes conservé
+- aucune fréquence opérationnelle française codée en dur dans src/**/*.cs
+- ancienne table data/radio/france-official.json neutralisée et inutilisable
+- aucun dossier bin, obj, dist, node_modules ou __pycache__ inclus
+- aucun ZIP, DLL, EXE, PDB ou PYC inclus dans la source
+
+Base radio SIA
+- manifest previous/current/next et activation AIRAC
+- générateur SIA XML/AIXM 4.5 avec repli Atlas VAC officiel
+- contrôle SHA-256, couverture minimale, schéma, période et statistiques
+- Facilities MSFS interdites comme secours radio pour les ICAO français
+- silence si base officielle absente, canal inconnu ou horaires ambigus
+- normalisation entière des canaux 8,33 kHz
+- mise à jour portable et rollback vers une précédente base SIA validée
+
+Voix contrôleur
+- choix aléatoire homme/femme parmi les voix françaises installées
+- attribution stable par station pendant la session
+- cache TTS séparé par identité de voix
+- ATIS séparé ; services silencieux sans voix dialoguée
+
+Contrôles exécutés dans cet environnement
+- 63 fichiers C# : chaînes/commentaires et délimiteurs analysés
+- 9 fichiers JSON : valides
+- 9 fichiers XML/XAML/CSProj/manifest : valides
+- 2 workflows YAML : valides
+- 29 gestionnaires XAML référencés : tous présents
+- fixture nationale Smoke Tests : SHA-256 valide
+- tests hors ligne du générateur SIA : réussis
+- scripts Python : compilation syntaxique réussie
+
+Limite honnête
+- le SDK .NET/WPF Windows n'est pas disponible dans cet environnement
+- la compilation réelle, les Smoke Tests, les Core Tests, la génération SIA en ligne et la publication Windows x64 restent obligatoirement validées par GitHub Actions
+- cette archive est une candidate CI, pas une release validée avant workflow entièrement vert

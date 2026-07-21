@@ -26,6 +26,12 @@ public static class AppPaths
 
     public static string RadioDataDirectory { get; } = Path.Combine(DataDirectory, "radio");
 
+    public static string FranceRadioDataDirectory { get; } = Path.Combine(RadioDataDirectory, "france");
+
+    public static string FranceRadioManifestPath { get; } = Path.Combine(FranceRadioDataDirectory, "manifest.json");
+
+    public static string FranceRadioStagingDirectory { get; } = Path.Combine(FranceRadioDataDirectory, ".staging");
+
     public static string WhisperModelsDirectory { get; } = Path.Combine(ModelsDirectory, "whisper");
 
     public static string VoskModelsDirectory { get; } = Path.Combine(ModelsDirectory, "vosk");
@@ -53,6 +59,8 @@ public static class AppPaths
                      DataDirectory,
                      AirportProfilesDirectory,
                      RadioDataDirectory,
+                     FranceRadioDataDirectory,
+                     FranceRadioStagingDirectory,
                      WhisperModelsDirectory,
                      VoskModelsDirectory,
                      SessionsDirectory,

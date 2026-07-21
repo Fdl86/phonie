@@ -80,7 +80,7 @@ public sealed class SimConnectService : IAsyncDisposable
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         this.PublishStatus(ConnectionState.Waiting, "En attente de Microsoft Flight Simulator");
-        this.PublishLog("PHONIE DEV0.4.0.9 démarrée. Détection dynamique des contextes aérodrome et radio.");
+        this.PublishLog("PHONIE DEV0.4.1.0 démarrée. Détection dynamique des contextes aérodrome et radio.");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -139,7 +139,7 @@ public sealed class SimConnectService : IAsyncDisposable
     {
         this.PublishStatus(ConnectionState.Connecting, "Connexion à SimConnect...");
 
-        var newClient = new SimConnectClient("PHONIE DEV0.4.0.9")
+        var newClient = new SimConnectClient("PHONIE DEV0.4.1.0")
         {
             AutoReconnectEnabled = false,
         };

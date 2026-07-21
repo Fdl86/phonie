@@ -1,317 +1,463 @@
+using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using Phonie.Core;
 using Phonie.Models;
 
 namespace Phonie.Services;
 
 /// <summary>
-/// Petit catalogue opérationnel vérifié servant de priorité aux fréquences de scène.
-/// Les données sont chargées depuis data/radio/france-official.json lorsqu'il est présent.
-/// Un secours embarqué LFBI/LFOU évite qu'une copie incomplète réactive les fréquences erronées de MSFS.
+/// Catalogue radio français dérivé exclusivement des publications officielles du SIA.
+/// Aucune fréquence d'aérodrome n'est codée dans l'application. Le seul secours est
+/// une précédente base SIA locale dont l'intégrité a été validée.
 /// </summary>
 public static class OfficialRadioCatalogService
 {
-    private const double FrequencyToleranceMhz = 0.0021;
-    private static readonly Lazy<IReadOnlyDictionary<string, OfficialAirportDefinition>> Airports =
-        new(LoadCatalog, LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly object Gate = new();
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
+    private static SiaRadioCatalog? catalog;
+    private static SiaRadioManifest? manifest;
+    private static SiaRadioDatabaseStatus status = Unavailable("Base radio SIA non chargée.");
+
+    public static event EventHandler<SiaRadioDatabaseStatus>? StatusChanged;
+
+    public static SiaRadioDatabaseStatus Status
+    {
+        get
+        {
+            lock (Gate)
+            {
+                return status;
+            }
+        }
+    }
+
+    public static SiaRadioDatabaseStatus Reload(DateTimeOffset? timestamp = null)
+    {
+        lock (Gate)
+        {
+            var now = timestamp ?? DateTimeOffset.UtcNow;
+            Directory.CreateDirectory(AppPaths.FranceRadioDataDirectory);
+            var manifestPath = AppPaths.FranceRadioManifestPath;
+            if (!File.Exists(manifestPath))
+            {
+                catalog = null;
+                manifest = null;
+                return PublishStatus(Unavailable("Manifest radio SIA absent. Utiliser la mise à jour des données France."));
+            }
+
+            try
+            {
+                manifest = JsonSerializer.Deserialize<SiaRadioManifest>(File.ReadAllText(manifestPath), JsonOptions)
+                    ?? throw new InvalidDataException("Manifest radio SIA vide.");
+                ValidateManifest(manifest);
+
+                if (manifest.BootstrapRequired)
+                {
+                    catalog = null;
+                    return PublishStatus(Unavailable("Base radio SIA à générer par le workflow officiel."));
+                }
+
+                ActivateDueNext(manifest, now, manifestPath);
+                var candidates = BuildCandidateList(manifest, now);
+                var errors = new List<string>();
+                foreach (var candidate in candidates)
+                {
+                    try
+                    {
+                        var loaded = LoadDescriptor(candidate.Descriptor);
+                        catalog = loaded;
+                        var dataset = loaded.Dataset;
+                        var stale = now >= dataset.EffectiveUntil;
+                        var next = manifest.Next;
+                        var nextCycle = next is not null && next.EffectiveFrom > now ? next.AiracCycle : null;
+                        var nextDate = next is not null && next.EffectiveFrom > now ? next.EffectiveFrom : null;
+                        var message = stale
+                            ? "Dernière base SIA validée utilisée hors période AIRAC : vérifier la mise à jour."
+                            : candidate.Label == "current"
+                                ? "Base SIA active et intègre."
+                                : $"Base SIA de secours utilisée ({candidate.Label}).";
+                        return PublishStatus(new SiaRadioDatabaseStatus(
+                            true,
+                            true,
+                            stale ? "STALE" : candidate.Label.ToUpperInvariant(),
+                            dataset.Revision,
+                            dataset.AiracCycle,
+                            dataset.EffectiveFrom,
+                            dataset.EffectiveUntil,
+                            dataset.GeneratedAt,
+                            dataset.Airports.Count,
+                            dataset.Airports.Sum(item => item.Frequencies.Count),
+                            ResolvePath(candidate.Descriptor.RelativePath),
+                            $"SIA - {dataset.SourceKind}",
+                            message,
+                            nextCycle,
+                            nextDate));
+                    }
+                    catch (Exception exception)
+                    {
+                        errors.Add($"{candidate.Label}: {Clean(exception)}");
+                    }
+                }
+
+                catalog = null;
+                return PublishStatus(Unavailable(
+                    errors.Count == 0
+                        ? "Aucun jeu de données SIA valide dans le manifest."
+                        : $"Jeux de données SIA rejetés : {string.Join(" | ", errors)}"));
+            }
+            catch (Exception exception)
+            {
+                catalog = null;
+                manifest = null;
+                return PublishStatus(Unavailable($"Chargement de la base radio SIA impossible : {Clean(exception)}"));
+            }
+        }
+    }
 
     public static OfficialRadioLookup Resolve(
         string? icao,
         double frequencyMhz,
         DateTimeOffset timestamp)
     {
-        var normalized = NormalizeIcao(icao);
-        if (!Airports.Value.TryGetValue(normalized, out var airport))
+        EnsureLoaded(timestamp);
+        lock (Gate)
         {
-            return new OfficialRadioLookup(false, null);
-        }
+            var normalized = NormalizeIcao(icao);
+            if (catalog is null)
+            {
+                return new OfficialRadioLookup(false, false, null, status.Message);
+            }
 
-        var entry = airport.Frequencies
-            .Where(item => Matches(item.FrequencyMhz, frequencyMhz))
-            .OrderBy(item => Math.Abs(item.FrequencyMhz - frequencyMhz))
-            .FirstOrDefault();
-        if (entry is null)
-        {
-            return new OfficialRadioLookup(true, null);
-        }
+            var resolution = catalog.Resolve(normalized, frequencyMhz, preferLocal: true);
+            if (!resolution.FrequencyKnown || resolution.Frequency is null)
+            {
+                return new OfficialRadioLookup(true, resolution.AirportKnown, null, resolution.Reason);
+            }
 
-        return new OfficialRadioLookup(
-            true,
-            BuildOperationalFrequency(airport, entry, timestamp));
+            return new OfficialRadioLookup(
+                true,
+                resolution.AirportKnown,
+                BuildOperationalFrequency(resolution, catalog.Dataset),
+                resolution.Reason);
+        }
     }
 
     public static OfficialRadioLookup Recommend(
         string? icao,
         bool isOnGround,
-        DateTimeOffset timestamp)
+        DateTimeOffset timestamp,
+        bool dialogueOnly = false)
     {
-        var normalized = NormalizeIcao(icao);
-        if (!Airports.Value.TryGetValue(normalized, out var airport))
+        EnsureLoaded(timestamp);
+        lock (Gate)
         {
-            return new OfficialRadioLookup(false, null);
+            if (catalog is null)
+            {
+                return new OfficialRadioLookup(false, false, null, status.Message);
+            }
+
+            var normalized = NormalizeIcao(icao);
+            var airportKnown = catalog.ContainsAirport(normalized);
+            var frequency = catalog.Recommend(normalized, isOnGround, dialogueOnly);
+            if (frequency is null)
+            {
+                return new OfficialRadioLookup(true, airportKnown, null, "Aucune fréquence locale officielle répondant au filtre.");
+            }
+
+            var airport = catalog.GetAirport(normalized)!;
+            var resolution = new SiaRadioResolution(
+                true,
+                true,
+                false,
+                airport,
+                frequency,
+                new[] { frequency },
+                "Fréquence locale recommandée depuis la base SIA active.");
+            return new OfficialRadioLookup(
+                true,
+                true,
+                BuildOperationalFrequency(resolution, catalog.Dataset),
+                resolution.Reason);
         }
-
-        var candidates = airport.Frequencies
-            .Select(item => BuildOperationalFrequency(airport, item, timestamp))
-            .Where(item => item.DialogueAllowed)
-            .OrderByDescending(item => Priority(item.Kind, item.ServiceName, isOnGround))
-            .ThenBy(item => item.FrequencyMhz)
-            .ToArray();
-
-        return new OfficialRadioLookup(true, candidates.FirstOrDefault());
     }
 
     public static IReadOnlyList<double> GetPublishedFrequencies(string? icao)
     {
+        EnsureLoaded(DateTimeOffset.UtcNow);
+        lock (Gate)
+        {
+            var airport = catalog?.GetAirport(icao);
+            return airport is null
+                ? Array.Empty<double>()
+                : airport.Frequencies
+                    .Select(item => item.ChannelKhz / 1000d)
+                    .Distinct()
+                    .OrderBy(value => value)
+                    .ToArray();
+        }
+    }
+
+    public static IReadOnlyList<OperationalFrequency> GetPublishedServices(string? icao)
+    {
+        EnsureLoaded(DateTimeOffset.UtcNow);
+        lock (Gate)
+        {
+            var airport = catalog?.GetAirport(icao);
+            if (airport is null || catalog is null)
+            {
+                return Array.Empty<OperationalFrequency>();
+            }
+
+            return airport.Frequencies
+                .Select(record => BuildOperationalFrequency(
+                    new SiaRadioResolution(
+                        true,
+                        true,
+                        false,
+                        airport,
+                        record,
+                        new[] { record },
+                        "Service publié dans la base SIA active."),
+                    catalog.Dataset))
+                .OrderBy(item => item.FrequencyMhz)
+                .ThenBy(item => item.ServiceName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+    }
+
+    public static bool IsFrenchIcao(string? icao)
+    {
         var normalized = NormalizeIcao(icao);
-        return Airports.Value.TryGetValue(normalized, out var airport)
-            ? airport.Frequencies
-                .Select(item => item.FrequencyMhz)
-                .Where(value => double.IsFinite(value) && value > 0)
-                .Distinct()
-                .OrderBy(value => value)
-                .ToArray()
-            : Array.Empty<double>();
+        return normalized.StartsWith("LF", StringComparison.Ordinal)
+            || normalized.StartsWith("TF", StringComparison.Ordinal)
+            || normalized.StartsWith("FM", StringComparison.Ordinal)
+            || normalized.StartsWith("NT", StringComparison.Ordinal)
+            || normalized.StartsWith("NW", StringComparison.Ordinal);
     }
 
     private static OperationalFrequency BuildOperationalFrequency(
-        OfficialAirportDefinition airport,
-        OfficialFrequencyDefinition entry,
-        DateTimeOffset timestamp)
+        SiaRadioResolution resolution,
+        SiaRadioDataset dataset)
     {
-        var source = string.IsNullOrWhiteSpace(entry.Source)
-            ? airport.Source
-            : entry.Source;
+        var record = resolution.Frequency!;
+        var airport = resolution.Airport!;
+        var kind = MapKind(record.Kind);
+        var dialogueAllowed = record.Interactive
+            && record.ScheduleState != SiaRadioScheduleState.PublishedNotEvaluated
+            && !resolution.Ambiguous
+            && kind is OperationalRadioKind.Controlled or OperationalRadioKind.InformationService;
+        var serviceName = string.IsNullOrWhiteSpace(record.Callsign)
+            ? $"{airport.Name} {record.ServiceCode}".Trim()
+            : record.Callsign.Trim();
+        var sourceReference = string.IsNullOrWhiteSpace(record.SourceReference)
+            ? airport.SourceReference
+            : record.SourceReference;
+        var source = $"SIA {dataset.AiracCycle} - {sourceReference}".Trim(' ', '-');
+        var guidance = resolution.Ambiguous
+            ? resolution.Reason
+            : Guidance(kind, record.ScheduleState, record.HoursText, record.Scope);
+        var stationKey = string.Join(
+            "|",
+            record.Scope == SiaRadioStationScope.Local ? airport.Icao : "REGIONAL",
+            record.Callsign.Trim().ToUpperInvariant(),
+            record.ServiceCode.Trim().ToUpperInvariant());
 
-        if (string.Equals(entry.ScheduleCode, "LFOU_AFIS", StringComparison.OrdinalIgnoreCase))
-        {
-            var afisOpen = IsLfouAfisOpen(timestamp);
-            return afisOpen
-                ? new OperationalFrequency(
-                    entry.FrequencyMhz,
-                    entry.ServiceName,
-                    OperationalRadioKind.InformationService,
-                    true,
-                    "AFIS publié ouvert à cette heure : renseignements sans autorisation de contrôle.",
-                    source)
-                : new OperationalFrequency(
-                    entry.FrequencyMhz,
-                    "CHOLET A/A",
-                    OperationalRadioKind.SelfInformation,
-                    false,
-                    "AFIS publié fermé à cette heure : fréquence utilisée en auto-information, PHONIE reste silencieux.",
-                    source);
-        }
-
-        var kind = ParseKind(entry.Kind);
         return new OperationalFrequency(
-            entry.FrequencyMhz,
-            entry.ServiceName,
+            record.ChannelKhz / 1000d,
+            serviceName,
             kind,
-            kind is OperationalRadioKind.Controlled or OperationalRadioKind.InformationService,
-            Guidance(kind),
+            dialogueAllowed,
+            guidance,
             source,
-            entry.IsDuplicate);
+            false,
+            stationKey,
+            record.Scope.ToString(),
+            dataset.Revision,
+            record.Channel);
     }
 
-    private static int Priority(OperationalRadioKind kind, string serviceName, bool isOnGround)
+    private static OperationalRadioKind MapKind(SiaRadioServiceKind kind) => kind switch
     {
-        var normalized = (serviceName ?? string.Empty).ToUpperInvariant();
-        if (kind == OperationalRadioKind.Controlled)
-        {
-            if (normalized.Contains("TOUR", StringComparison.Ordinal)
-                || normalized.Contains("TOWER", StringComparison.Ordinal))
-            {
-                return 1000;
-            }
-
-            if (normalized.Contains("SOL", StringComparison.Ordinal)
-                || normalized.Contains("GROUND", StringComparison.Ordinal))
-            {
-                return isOnGround ? 950 : 600;
-            }
-
-            if (normalized.Contains("APPROCHE", StringComparison.Ordinal)
-                || normalized.Contains("APPROACH", StringComparison.Ordinal))
-            {
-                return isOnGround ? 850 : 980;
-            }
-
-            return 800;
-        }
-
-        return kind == OperationalRadioKind.InformationService ? 750 : 0;
-    }
-
-    private static string Guidance(OperationalRadioKind kind) => kind switch
-    {
-        OperationalRadioKind.Controlled => "Organisme contrôlé publié : dialogue pilote-contrôleur autorisé.",
-        OperationalRadioKind.InformationService => "Service d'information publié : renseignements sans autorisation de contrôle.",
-        OperationalRadioKind.AutomaticBroadcast => "Diffusion automatique : PHONIE ne répond jamais au pilote.",
-        OperationalRadioKind.RecordedMessage => "Message enregistré : aucun dialogue pilote-contrôleur.",
-        OperationalRadioKind.SelfInformation => "Auto-information : PHONIE reste silencieux.",
-        _ => "Service non classé : PHONIE reste silencieux.",
+        SiaRadioServiceKind.Tower or
+        SiaRadioServiceKind.Ground or
+        SiaRadioServiceKind.Clearance or
+        SiaRadioServiceKind.Approach or
+        SiaRadioServiceKind.Departure or
+        SiaRadioServiceKind.ControlledOther => OperationalRadioKind.Controlled,
+        SiaRadioServiceKind.Information or
+        SiaRadioServiceKind.FlightInformation => OperationalRadioKind.InformationService,
+        SiaRadioServiceKind.SelfInformation => OperationalRadioKind.SelfInformation,
+        SiaRadioServiceKind.AutomaticBroadcast => OperationalRadioKind.AutomaticBroadcast,
+        SiaRadioServiceKind.RecordedMessage => OperationalRadioKind.RecordedMessage,
+        _ => OperationalRadioKind.Unknown,
     };
 
-    private static OperationalRadioKind ParseKind(string? value) =>
-        Enum.TryParse<OperationalRadioKind>(value, ignoreCase: true, out var parsed)
-            ? parsed
-            : OperationalRadioKind.Unknown;
-
-    private static IReadOnlyDictionary<string, OfficialAirportDefinition> LoadCatalog()
+    private static string Guidance(
+        OperationalRadioKind kind,
+        SiaRadioScheduleState schedule,
+        string hoursText,
+        SiaRadioStationScope scope)
     {
-        var fallback = BuildFallbackCatalog();
-        var path = Path.Combine(AppPaths.DataDirectory, "radio", "france-official.json");
+        var scopeText = scope == SiaRadioStationScope.Regional ? "Service régional. " : string.Empty;
+        var scheduleText = schedule == SiaRadioScheduleState.PublishedNotEvaluated
+            ? string.IsNullOrWhiteSpace(hoursText)
+                ? "Horaires publiés non évalués automatiquement. "
+                : $"Horaires SIA non évalués automatiquement : {hoursText}. "
+            : string.Empty;
+        return scopeText + scheduleText + (kind switch
+        {
+            OperationalRadioKind.Controlled => "Organisme contrôlé publié par le SIA : dialogue autorisé lorsque le service est actif.",
+            OperationalRadioKind.InformationService => "Service d'information publié par le SIA : renseignements sans autorisation de contrôle.",
+            OperationalRadioKind.AutomaticBroadcast => "Diffusion automatique publiée par le SIA : PHONIE ne répond jamais au pilote.",
+            OperationalRadioKind.RecordedMessage => "Message enregistré publié par le SIA : aucun dialogue pilote-contrôleur.",
+            OperationalRadioKind.SelfInformation => "Auto-information publiée par le SIA : PHONIE reste silencieux.",
+            _ => "Service SIA non classé : PHONIE reste silencieux.",
+        });
+    }
+
+    private static void EnsureLoaded(DateTimeOffset timestamp)
+    {
+        lock (Gate)
+        {
+            if (catalog is null)
+            {
+                Reload(timestamp);
+            }
+        }
+    }
+
+    private static SiaRadioCatalog LoadDescriptor(SiaRadioDatasetDescriptor descriptor)
+    {
+        if (descriptor.AirportCount < 100 || descriptor.FrequencyCount < 100)
+        {
+            throw new InvalidDataException(
+                $"Couverture nationale insuffisante ({descriptor.AirportCount} aérodromes, {descriptor.FrequencyCount} fréquences).");
+        }
+
+        var path = ResolvePath(descriptor.RelativePath);
         if (!File.Exists(path))
         {
-            return fallback;
+            throw new FileNotFoundException("Jeu de données absent.", path);
         }
 
-        try
+        var sha = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant();
+        if (!string.Equals(sha, descriptor.Sha256, StringComparison.OrdinalIgnoreCase))
         {
-            var document = JsonSerializer.Deserialize<OfficialRadioCatalogDocument>(
-                File.ReadAllText(path),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (document?.Airports is null || document.Airports.Count == 0)
-            {
-                return fallback;
-            }
-
-            var loaded = document.Airports
-                .Where(item => NormalizeIcao(item.Icao).Length == 4 && item.Frequencies.Count > 0)
-                .ToDictionary(
-                    item => NormalizeIcao(item.Icao),
-                    item => item with { Icao = NormalizeIcao(item.Icao) },
-                    StringComparer.OrdinalIgnoreCase);
-
-            foreach (var item in fallback)
-            {
-                loaded.TryAdd(item.Key, item.Value);
-            }
-
-            return loaded;
-        }
-        catch
-        {
-            return fallback;
-        }
-    }
-
-    private static IReadOnlyDictionary<string, OfficialAirportDefinition> BuildFallbackCatalog()
-    {
-        var airports = new[]
-        {
-            new OfficialAirportDefinition(
-                "LFBI",
-                "POITIERS BIARD",
-                "SIA eAIP France - AD 2 LFBI / carte ARC, AIRAC 09 JUL 2026",
-                new List<OfficialFrequencyDefinition>
-                {
-                    new(118.505, "POITIERS TOUR", nameof(OperationalRadioKind.Controlled), string.Empty,
-                        "SIA eAIP France - AIRAC 09 JUL 2026", false),
-                    new(134.100, "POITIERS APPROCHE / SIV", nameof(OperationalRadioKind.Controlled), string.Empty,
-                        "SIA eAIP France - AIRAC 09 JUL 2026", false),
-                    new(121.780, "POITIERS ATIS", nameof(OperationalRadioKind.AutomaticBroadcast), string.Empty,
-                        "Profil opérationnel vérifié LFBI", false),
-                    new(124.000, "RÉPONDEUR POITIERS", nameof(OperationalRadioKind.RecordedMessage), string.Empty,
-                        "Profil opérationnel vérifié LFBI", false),
-                }),
-            new OfficialAirportDefinition(
-                "LFOU",
-                "CHOLET LE PONTREAU",
-                "SIA eAIP France - AD 2 LFOU.18, valide 11 JUN 2026",
-                new List<OfficialFrequencyDefinition>
-                {
-                    new(120.405, "CHOLET INFORMATION", nameof(OperationalRadioKind.InformationService), "LFOU_AFIS",
-                        "SIA eAIP France - AD 2 LFOU.18, valide 11 JUN 2026", false),
-                }),
-        };
-
-        return airports.ToDictionary(item => item.Icao, StringComparer.OrdinalIgnoreCase);
-    }
-
-    private static bool IsLfouAfisOpen(DateTimeOffset timestamp)
-    {
-        var utc = timestamp.ToUniversalTime();
-        var summer = IsEuropeanSummerTime(utc);
-        var holidaySchedule = utc.DayOfWeek == DayOfWeek.Sunday || IsFrenchPublicHoliday(utc.Date);
-        var minute = (utc.Hour * 60) + utc.Minute;
-
-        // L'AIP France publie ces horaires en UTC hiver et demande de retirer
-        // une heure aux horaires été. Les bornes été ci-dessous sont donc déjà
-        // converties en UTC : 0430-0900 / 1030-1600 et 1100-1600 DIM/JF.
-        if (summer)
-        {
-            return holidaySchedule
-                ? minute is >= 660 and < 960
-                : minute is >= 270 and < 540 or >= 630 and < 960;
+            throw new InvalidDataException("SHA-256 du jeu de données incorrect.");
         }
 
-        return holidaySchedule
-            ? minute is >= 780 and < 1080
-            : minute is >= 420 and < 660 or >= 750 and < 1080;
-    }
-
-    private static bool IsEuropeanSummerTime(DateTimeOffset utc)
-    {
-        var year = utc.Year;
-        var start = LastSunday(year, 3).AddHours(1);
-        var end = LastSunday(year, 10).AddHours(1);
-        return utc >= start && utc < end;
-    }
-
-    private static DateTimeOffset LastSunday(int year, int month)
-    {
-        var day = DateTime.DaysInMonth(year, month);
-        var date = new DateTimeOffset(year, month, day, 0, 0, 0, TimeSpan.Zero);
-        while (date.DayOfWeek != DayOfWeek.Sunday)
+        var loaded = SiaRadioCatalog.Load(path);
+        if (!string.Equals(loaded.Dataset.Revision, descriptor.Revision, StringComparison.OrdinalIgnoreCase))
         {
-            date = date.AddDays(-1);
+            throw new InvalidDataException("Révision du jeu de données différente du manifest.");
         }
 
-        return date;
-    }
-
-    private static bool IsFrenchPublicHoliday(DateTime date)
-    {
-        var easter = EasterSunday(date.Year);
-        var holidays = new HashSet<DateTime>
+        if (loaded.Dataset.Airports.Count != descriptor.AirportCount)
         {
-            new(date.Year, 1, 1),
-            easter.AddDays(1),
-            new(date.Year, 5, 1),
-            new(date.Year, 5, 8),
-            easter.AddDays(39),
-            easter.AddDays(50),
-            new(date.Year, 7, 14),
-            new(date.Year, 8, 15),
-            new(date.Year, 11, 1),
-            new(date.Year, 11, 11),
-            new(date.Year, 12, 25),
-        };
-        return holidays.Contains(date.Date);
+            throw new InvalidDataException("Nombre d'aérodromes différent du manifest.");
+        }
+
+        return loaded;
     }
 
-    private static DateTime EasterSunday(int year)
+    private static IReadOnlyList<(string Label, SiaRadioDatasetDescriptor Descriptor)> BuildCandidateList(
+        SiaRadioManifest value,
+        DateTimeOffset now)
     {
-        var a = year % 19;
-        var b = year / 100;
-        var c = year % 100;
-        var d = b / 4;
-        var e = b % 4;
-        var f = (b + 8) / 25;
-        var g = (b - f + 1) / 3;
-        var h = ((19 * a) + b - d - g + 15) % 30;
-        var i = c / 4;
-        var k = c % 4;
-        var l = (32 + (2 * e) + (2 * i) - h - k) % 7;
-        var m = (a + (11 * h) + (22 * l)) / 451;
-        var month = (h + l - (7 * m) + 114) / 31;
-        var day = ((h + l - (7 * m) + 114) % 31) + 1;
-        return new DateTime(year, month, day);
+        var result = new List<(string, SiaRadioDatasetDescriptor)>();
+        if (value.Current is not null)
+        {
+            result.Add(("current", value.Current));
+        }
+
+        if (value.Previous is not null)
+        {
+            result.Add(("previous", value.Previous));
+        }
+
+        if (value.Next is not null && value.Next.EffectiveFrom <= now)
+        {
+            result.Insert(0, ("next-due", value.Next));
+        }
+
+        return result;
     }
 
-    private static bool Matches(double left, double right) =>
-        double.IsFinite(left) && double.IsFinite(right) && Math.Abs(left - right) <= FrequencyToleranceMhz;
+    private static void ActivateDueNext(SiaRadioManifest value, DateTimeOffset now, string manifestPath)
+    {
+        if (value.Next is null || value.Next.EffectiveFrom > now)
+        {
+            return;
+        }
+
+        _ = LoadDescriptor(value.Next);
+        value.Previous = value.Current;
+        value.Current = value.Next;
+        value.Next = null;
+        value.DatasetRevision = value.Current.Revision;
+        WriteManifestAtomically(manifestPath, value);
+    }
+
+    private static void WriteManifestAtomically(string path, SiaRadioManifest value)
+    {
+        var temporary = path + ".tmp";
+        File.WriteAllText(temporary, JsonSerializer.Serialize(value, JsonOptions));
+        File.Move(temporary, path, true);
+    }
+
+    private static void ValidateManifest(SiaRadioManifest value)
+    {
+        if (value.SchemaVersion != 2)
+        {
+            throw new InvalidDataException($"Schéma manifest non pris en charge : {value.SchemaVersion}.");
+        }
+
+        if (!string.Equals(value.Authority, "SIA", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("Autorité du manifest différente du SIA.");
+        }
+    }
+
+    private static string ResolvePath(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath)
+            || Path.IsPathRooted(relativePath)
+            || relativePath.Contains("..", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("Chemin de jeu de données radio invalide.");
+        }
+
+        return Path.GetFullPath(Path.Combine(AppPaths.FranceRadioDataDirectory, relativePath));
+    }
+
+    private static SiaRadioDatabaseStatus PublishStatus(SiaRadioDatabaseStatus value)
+    {
+        status = value;
+        StatusChanged?.Invoke(null, value);
+        return value;
+    }
+
+    private static SiaRadioDatabaseStatus Unavailable(string message) => new(
+        false,
+        false,
+        "UNAVAILABLE",
+        string.Empty,
+        string.Empty,
+        default,
+        default,
+        default,
+        0,
+        0,
+        string.Empty,
+        "SIA",
+        message);
 
     private static string NormalizeIcao(string? value)
     {
@@ -321,25 +467,12 @@ public static class OfficialRadioCatalogService
             : string.Empty;
     }
 
-    public sealed record OfficialRadioLookup(bool AirportKnown, OperationalFrequency? Frequency);
+    private static string Clean(Exception exception) =>
+        exception.GetBaseException().Message.ReplaceLineEndings(" ").Trim();
 
-    private sealed record OfficialRadioCatalogDocument(
-        int SchemaVersion,
-        string Dataset,
-        string ValidFrom,
-        List<OfficialAirportDefinition> Airports);
-
-    private sealed record OfficialAirportDefinition(
-        string Icao,
-        string Name,
-        string Source,
-        List<OfficialFrequencyDefinition> Frequencies);
-
-    private sealed record OfficialFrequencyDefinition(
-        double FrequencyMhz,
-        string ServiceName,
-        string Kind,
-        string ScheduleCode,
-        string Source,
-        bool IsDuplicate);
+    public sealed record OfficialRadioLookup(
+        bool DatabaseAvailable,
+        bool AirportKnown,
+        OperationalFrequency? Frequency,
+        string Reason);
 }

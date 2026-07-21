@@ -260,170 +260,91 @@ void WriteSingle(byte[] buffer, int offset, float value) =>
 
 void RunOperationalRadioTests()
 {
-    var report = new Phonie.Models.AirportFacilityReport
+    var status = OfficialRadioCatalogService.Reload(new DateTimeOffset(2026, 7, 21, 12, 0, 0, TimeSpan.Zero));
+    if (!status.Valid || status.AirportCount < 100)
     {
-        RequestedIcao = "LFXX",
-        Icao = "LFXX",
-    };
-    report.Frequencies.Add(new Phonie.Models.AirportFrequencyData(0, 3, 123500000, 123.500, "A/A"));
-    report.Frequencies.Add(new Phonie.Models.AirportFrequencyData(1, 8, 124800000, 124.800, "APPROCHE"));
-    report.Frequencies.Add(new Phonie.Models.AirportFrequencyData(2, 6, 118700000, 118.700, "TOUR"));
+        failures.Add($"Fixture SIA non chargée : {status.Message}");
+        return;
+    }
 
+    var report = new Phonie.Models.AirportFacilityReport { RequestedIcao = "LFXX", Icao = "LFXX" };
+    // Données Facilities volontairement contradictoires : elles ne doivent jamais piloter un terrain français.
+    report.Frequencies.Add(new Phonie.Models.AirportFrequencyData(0, 6, 119900000, 119.900, "FAUSSE TOUR MSFS"));
     var snapshot = new Phonie.Models.SimulatorSnapshot(
-        DateTimeOffset.UtcNow,
-        "MSFS 2024",
-        "Avion test",
-        "F-HNNY",
-        47.0,
-        -1.0,
-        300,
-        0,
-        0,
-        0,
-        true,
-        123.500,
-        118.700,
-        "LFXX",
-        "FSS",
-        1,
-        true,
-        0,
-        0,
-        0,
-        "7000",
-        "LFXX",
-        0.1,
-        "LFXX",
-        "test",
-        210,
-        10,
-        1015,
-        15,
-        10,
-        9999,
-        3000);
+        new DateTimeOffset(2026, 7, 21, 12, 0, 0, TimeSpan.Zero),
+        "MSFS 2024", "Avion test", "F-HNNY", 47.0, -1.0, 300, 0, 0, 0, true,
+        123.500, 118.700, "LFXX", "FSS", 1, true, 0, 0, 0, "7000",
+        "LFXX", 0.1, "LFXX", "test", 210, 10, 1015, 15, 10, 9999, 3000);
 
     var active = OperationalRadioService.Resolve(snapshot, report, "LFXX");
     if (active.Kind != Phonie.Models.OperationalRadioKind.SelfInformation || active.DialogueAllowed)
     {
-        failures.Add($"A/A silencieuse : obtenu {active.Kind}, dialogue={active.DialogueAllowed}.");
+        failures.Add($"A/A SIA silencieuse : obtenu {active.Kind}, dialogue={active.DialogueAllowed}.");
     }
 
-    var recommendation = OperationalRadioService.Recommend(report, "LFXX", isOnGround: true);
+    var recommendation = OperationalRadioService.Recommend(report, "LFXX", isOnGround: true, snapshot.Timestamp);
     if (recommendation is null
         || recommendation.Kind != Phonie.Models.OperationalRadioKind.Controlled
         || Math.Abs(recommendation.FrequencyMhz - 118.700) > 0.001)
     {
-        failures.Add($"Priorité Tour : obtenu {recommendation?.ServiceName ?? "aucune"} {recommendation?.FrequencyMhz:F3}.");
+        failures.Add($"Priorité Tour SIA : obtenu {recommendation?.ServiceName ?? "aucune"} {recommendation?.FrequencyMhz:F3}.");
     }
 
-    var noTower = new Phonie.Models.AirportFacilityReport
-    {
-        RequestedIcao = "LFYY",
-        Icao = "LFYY",
-    };
-    noTower.Frequencies.Add(new Phonie.Models.AirportFrequencyData(0, 3, 123500000, 123.500, "A/A"));
-    noTower.Frequencies.Add(new Phonie.Models.AirportFrequencyData(1, 8, 124800000, 124.800, "APPROCHE"));
-    var approach = OperationalRadioService.Recommend(noTower, "LFYY", isOnGround: true);
+    var approach = OperationalRadioService.Recommend(null, "LFYY", isOnGround: true, snapshot.Timestamp);
     if (approach is null || Math.Abs(approach.FrequencyMhz - 124.800) > 0.001)
     {
-        failures.Add("Priorité Approche en absence de Tour non respectée.");
+        failures.Add("Priorité Approche SIA en absence de Tour non respectée.");
     }
 
-    var lfbiPublished = OfficialRadioCatalogService.GetPublishedFrequencies("LFBI");
-    var lfouPublished = OfficialRadioCatalogService.GetPublishedFrequencies("LFOU");
-    if (!lfbiPublished.Any(value => Math.Abs(value - 118.505) <= 0.001)
-        || !lfbiPublished.Any(value => Math.Abs(value - 134.100) <= 0.001)
-        || !lfouPublished.Any(value => Math.Abs(value - 120.405) <= 0.001))
+    var wrongScene = OperationalRadioService.Resolve(snapshot with
     {
-        failures.Add("Catalogue officiel : fréquences LFBI/LFOU absentes ou fichier JSON non chargé.");
-    }
-
-    var lfbiWrongSceneSnapshot = snapshot with
-    {
-        Timestamp = new DateTimeOffset(2026, 7, 21, 8, 0, 0, TimeSpan.Zero),
-        Com1ActiveMhz = 123.500,
+        Com1ActiveMhz = 119.900,
         Com1StationIdent = "LFBI",
-        Com1StationType = "FSS",
         GeographicAirportIcao = "LFBI",
         RadioAirportIcao = "LFBI",
-    };
-    var lfbiWrongScene = OperationalRadioService.Resolve(lfbiWrongSceneSnapshot, null, "LFBI");
-    if (lfbiWrongScene.Kind != Phonie.Models.OperationalRadioKind.Unknown
-        || lfbiWrongScene.DialogueAllowed)
+    }, report, "LFBI");
+    if (wrongScene.Kind != Phonie.Models.OperationalRadioKind.Unknown || wrongScene.DialogueAllowed)
     {
-        failures.Add("LFBI : une fréquence de scène non publiée ne doit jamais devenir dialoguée.");
+        failures.Add("Une fréquence Facilities française absente de la base SIA ne doit jamais devenir dialoguée.");
     }
 
-    var lfouOpenTime = new DateTimeOffset(2026, 7, 21, 8, 0, 0, TimeSpan.Zero);
-    var lfouOpenSnapshot = snapshot with
-    {
-        Timestamp = lfouOpenTime,
-        Com1ActiveMhz = 120.405,
-        Com1StationIdent = "LFOU",
-        Com1StationType = "FSS",
-        GeographicAirportIcao = "LFOU",
-        RadioAirportIcao = "LFOU",
-    };
-    var lfouOpen = OperationalRadioService.Resolve(lfouOpenSnapshot, null, "LFOU");
-    if (lfouOpen.Kind != Phonie.Models.OperationalRadioKind.InformationService
-        || !lfouOpen.DialogueAllowed
-        || Math.Abs(lfouOpen.FrequencyMhz - 120.405) > 0.001)
-    {
-        failures.Add($"LFOU AFIS ouvert : obtenu {lfouOpen.Kind}, dialogue={lfouOpen.DialogueAllowed}.");
-    }
-
-    var lfouOpenRecommendation = OperationalRadioService.Recommend(
-        null,
-        "LFOU",
-        isOnGround: true,
-        lfouOpenTime);
-    if (lfouOpenRecommendation is null
-        || Math.Abs(lfouOpenRecommendation.FrequencyMhz - 120.405) > 0.001)
-    {
-        failures.Add("LFOU AFIS ouvert : recommandation officielle 120.405 absente.");
-    }
-
-    var lfouClosedTime = new DateTimeOffset(2026, 7, 21, 9, 30, 0, TimeSpan.Zero);
-    var lfouClosedSnapshot = lfouOpenSnapshot with { Timestamp = lfouClosedTime };
-    var lfouClosed = OperationalRadioService.Resolve(lfouClosedSnapshot, null, "LFOU");
-    if (lfouClosed.Kind != Phonie.Models.OperationalRadioKind.SelfInformation
-        || lfouClosed.DialogueAllowed)
-    {
-        failures.Add($"LFOU hors horaires AFIS : A/A silencieuse attendue, obtenu {lfouClosed.Kind}.");
-    }
-
-    var lfouClosedRecommendation = OperationalRadioService.Recommend(
-        null,
-        "LFOU",
-        isOnGround: true,
-        lfouClosedTime);
-    if (lfouClosedRecommendation is not null)
-    {
-        failures.Add("LFOU hors horaires AFIS : aucune fréquence dialoguée ne doit être recommandée.");
-    }
-
-    var lfouSecondPeriodTime = new DateTimeOffset(2026, 7, 21, 11, 0, 0, TimeSpan.Zero);
-    var lfouSecondPeriod = OperationalRadioService.Resolve(
-        lfouOpenSnapshot with { Timestamp = lfouSecondPeriodTime },
-        null,
-        "LFOU");
-    if (lfouSecondPeriod.Kind != Phonie.Models.OperationalRadioKind.InformationService
-        || !lfouSecondPeriod.DialogueAllowed)
-    {
-        failures.Add("LFOU AFIS : deuxième plage horaire été non reconnue.");
-    }
-
-    var lfbiRecommendation = OperationalRadioService.Recommend(
-        null,
-        "LFBI",
-        isOnGround: true,
-        lfouOpenTime);
+    var lfbiRecommendation = OperationalRadioService.Recommend(null, "LFBI", true, snapshot.Timestamp);
     if (lfbiRecommendation is null
         || Math.Abs(lfbiRecommendation.FrequencyMhz - 118.505) > 0.001
         || !lfbiRecommendation.ServiceName.Contains("TOUR", StringComparison.OrdinalIgnoreCase))
     {
-        failures.Add("LFBI : la Tour officielle 118.505 doit être prioritaire sans dépendre des Facilities MSFS.");
+        failures.Add("La Tour issue de la fixture SIA doit être prioritaire au sol.");
+    }
+
+    var mauleon = OperationalRadioService.Resolve(snapshot with
+    {
+        Com1ActiveMhz = 123.500,
+        GeographicAirportIcao = "LFJB",
+        RadioAirportIcao = "LFJB",
+    }, null, "LFJB");
+    if (mauleon.Kind != Phonie.Models.OperationalRadioKind.SelfInformation || mauleon.DialogueAllowed)
+    {
+        failures.Add("LFJB fixture : A/A doit rester silencieuse sans fréquence codée dans l'application.");
+    }
+
+    var montaiguFis = OperationalRadioService.Resolve(snapshot with
+    {
+        Com1ActiveMhz = 130.275,
+        GeographicAirportIcao = "LFFW",
+        RadioAirportIcao = "LFFW",
+    }, null, "LFFW");
+    if (montaiguFis.Kind != Phonie.Models.OperationalRadioKind.InformationService
+        || !string.Equals(montaiguFis.Scope, "Regional", StringComparison.OrdinalIgnoreCase))
+    {
+        failures.Add("LFFW fixture : le FIS régional doit rester distinct de l'A/A locale.");
+    }
+
+    var montaiguLocal = OperationalRadioService.Recommend(null, "LFFW", true, snapshot.Timestamp);
+    if (montaiguLocal is null
+        || montaiguLocal.Kind != Phonie.Models.OperationalRadioKind.SelfInformation
+        || Math.Abs(montaiguLocal.FrequencyMhz - 123.500) > 0.001)
+    {
+        failures.Add("LFFW fixture : la recommandation locale doit rester l'A/A, pas le FIS régional.");
     }
 }
 

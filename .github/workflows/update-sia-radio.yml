@@ -1,0 +1,77 @@
+name: Update PHONIE France radio database from SIA
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Force regeneration even when the SIA catalogue signature is unchanged
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: "23 5 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phonie-sia-radio-update
+  cancel-in-progress: false
+
+jobs:
+  probe-and-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install generator dependencies
+        run: python -m pip install --disable-pip-version-check -r tools/requirements-sia-radio.txt
+
+      - name: Run offline generator regression tests
+        run: python tools/test_sia_radio_builder.py
+
+      - name: Probe official SIA catalogue
+        id: probe
+        shell: bash
+        run: |
+          FORCE=""
+          if [ "${{ inputs.force }}" = "true" ]; then FORCE="--force"; fi
+          python tools/sia_radio_probe.py --root . --write --github-output "$GITHUB_OUTPUT" $FORCE
+
+      - name: Generate active SIA database only when publication changed
+        if: steps.probe.outputs.changed == 'true'
+        run: python tools/sia_radio_builder.py --output data/radio/france --cycle current --slot current --min-airports 200 --min-frequencies 150
+
+      - name: Try to stage the next published AIRAC cycle
+        if: steps.probe.outputs.changed == 'true'
+        continue-on-error: true
+        run: python tools/sia_radio_builder.py --output data/radio/france --cycle next --slot next --min-airports 200 --min-frequencies 150
+
+      - name: Validate generated database
+        if: steps.probe.outputs.changed == 'true'
+        run: python tools/validate_sia_radio.py --root . --min-airports 200 --min-frequencies 150
+
+      - name: Commit validated SIA data
+        if: steps.probe.outputs.changed == 'true'
+        shell: bash
+        run: |
+          git config user.name "phonie-sia-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/radio/france
+          if git diff --cached --quiet; then
+            echo "Aucun changement validé à publier."
+            exit 0
+          fi
+          CYCLE=$(python -c "import json; print(json.load(open('data/radio/france/manifest.json',encoding='utf-8'))['current']['airacCycle'])")
+          git commit -m "PHONIE radio data - SIA AIRAC ${CYCLE}"
+          git push

@@ -1,0 +1,3374 @@
+{
+  "schemaVersion": 2,
+  "datasetId": "phonie-france-radio-sia",
+  "revision": "fixture-0410",
+  "authority": "SIA",
+  "sourceKind": "Fixture SIA figée pour tests",
+  "airacCycle": "07/26",
+  "effectiveFrom": "2026-07-09T00:00:00+00:00",
+  "effectiveUntil": "2026-08-06T00:00:00+00:00",
+  "generatedAt": "2026-07-21T00:00:00+00:00",
+  "generatorVersion": "TEST",
+  "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+  "airports": [
+    {
+      "icao": "LFXX",
+      "name": "LFXX TEST",
+      "latitude": 47.0,
+      "longitude": -1.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "TEST A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        },
+        {
+          "channel": "118.700",
+          "channelKhz": 118700,
+          "carrierHz": 118700000,
+          "serviceCode": "TWR",
+          "callsign": "TEST TOUR",
+          "kind": "Tower",
+          "scope": "Local",
+          "interactive": true,
+          "scheduleState": "Always",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-TWR-118700",
+          "confidence": 1.0
+        },
+        {
+          "channel": "124.800",
+          "channelKhz": 124800,
+          "carrierHz": 124800000,
+          "serviceCode": "APP",
+          "callsign": "TEST APPROCHE",
+          "kind": "Approach",
+          "scope": "Regional",
+          "interactive": true,
+          "scheduleState": "Always",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-APP-124800",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFYY",
+      "name": "LFYY TEST",
+      "latitude": 47.0,
+      "longitude": -1.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "TEST DEUX A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        },
+        {
+          "channel": "124.800",
+          "channelKhz": 124800,
+          "carrierHz": 124800000,
+          "serviceCode": "APP",
+          "callsign": "TEST DEUX APPROCHE",
+          "kind": "Approach",
+          "scope": "Regional",
+          "interactive": true,
+          "scheduleState": "Always",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-APP-124800",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBI",
+      "name": "LFBI TEST",
+      "latitude": 47.0,
+      "longitude": -1.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "118.505",
+          "channelKhz": 118505,
+          "carrierHz": 118505000,
+          "serviceCode": "TWR",
+          "callsign": "POITIERS TOUR",
+          "kind": "Tower",
+          "scope": "Local",
+          "interactive": true,
+          "scheduleState": "Always",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-TWR-118505",
+          "confidence": 1.0
+        },
+        {
+          "channel": "134.100",
+          "channelKhz": 134100,
+          "carrierHz": 134100000,
+          "serviceCode": "APP",
+          "callsign": "POITIERS APPROCHE",
+          "kind": "Approach",
+          "scope": "Regional",
+          "interactive": true,
+          "scheduleState": "Always",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-APP-134100",
+          "confidence": 1.0
+        },
+        {
+          "channel": "121.780",
+          "channelKhz": 121780,
+          "carrierHz": 121780000,
+          "serviceCode": "ATIS",
+          "callsign": "POITIERS ATIS",
+          "kind": "AutomaticBroadcast",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-ATIS-121780",
+          "confidence": 1.0
+        },
+        {
+          "channel": "124.000",
+          "channelKhz": 124000,
+          "carrierHz": 124000000,
+          "serviceCode": "REC",
+          "callsign": "POITIERS MESSAGE",
+          "kind": "RecordedMessage",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-REC-124000",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFOU",
+      "name": "LFOU TEST",
+      "latitude": 47.0,
+      "longitude": -1.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "120.405",
+          "channelKhz": 120405,
+          "carrierHz": 120405000,
+          "serviceCode": "AFIS",
+          "callsign": "CHOLET INFORMATION",
+          "kind": "Information",
+          "scope": "Local",
+          "interactive": true,
+          "scheduleState": "Always",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-AFIS-120405",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFJB",
+      "name": "LFJB TEST",
+      "latitude": 47.0,
+      "longitude": -1.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "MAULEON A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFFW",
+      "name": "LFFW TEST",
+      "latitude": 47.0,
+      "longitude": -1.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "MONTAIGU A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        },
+        {
+          "channel": "130.275",
+          "channelKhz": 130275,
+          "carrierHz": 130275000,
+          "serviceCode": "FIS",
+          "callsign": "NANTES INFORMATION",
+          "kind": "FlightInformation",
+          "scope": "Regional",
+          "interactive": true,
+          "scheduleState": "Always",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-FIS-130275",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAA",
+      "name": "LFAA FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAA A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAB",
+      "name": "LFAB FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAB A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAC",
+      "name": "LFAC FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAC A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAD",
+      "name": "LFAD FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAD A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAE",
+      "name": "LFAE FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAE A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAF",
+      "name": "LFAF FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAF A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAG",
+      "name": "LFAG FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAG A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAH",
+      "name": "LFAH FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAH A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAI",
+      "name": "LFAI FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAI A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAJ",
+      "name": "LFAJ FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAJ A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAK",
+      "name": "LFAK FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAK A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAL",
+      "name": "LFAL FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAL A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAM",
+      "name": "LFAM FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAM A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAN",
+      "name": "LFAN FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAN A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAO",
+      "name": "LFAO FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAO A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAP",
+      "name": "LFAP FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAP A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAQ",
+      "name": "LFAQ FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAQ A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAR",
+      "name": "LFAR FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAR A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAS",
+      "name": "LFAS FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAS A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAT",
+      "name": "LFAT FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAT A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAU",
+      "name": "LFAU FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAU A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAV",
+      "name": "LFAV FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAV A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAW",
+      "name": "LFAW FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAW A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAX",
+      "name": "LFAX FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAX A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAY",
+      "name": "LFAY FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAY A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFAZ",
+      "name": "LFAZ FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFAZ A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFA0",
+      "name": "LFA0 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFA0 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFA1",
+      "name": "LFA1 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFA1 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFA2",
+      "name": "LFA2 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFA2 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFA3",
+      "name": "LFA3 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFA3 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFA4",
+      "name": "LFA4 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFA4 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFA5",
+      "name": "LFA5 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFA5 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFA6",
+      "name": "LFA6 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFA6 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFA7",
+      "name": "LFA7 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFA7 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFA8",
+      "name": "LFA8 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFA8 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFA9",
+      "name": "LFA9 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFA9 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBA",
+      "name": "LFBA FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBA A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBB",
+      "name": "LFBB FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBB A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBC",
+      "name": "LFBC FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBC A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBD",
+      "name": "LFBD FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBD A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBE",
+      "name": "LFBE FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBE A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBF",
+      "name": "LFBF FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBF A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBG",
+      "name": "LFBG FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBG A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBH",
+      "name": "LFBH FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBH A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBJ",
+      "name": "LFBJ FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBJ A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBK",
+      "name": "LFBK FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBK A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBL",
+      "name": "LFBL FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBL A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBM",
+      "name": "LFBM FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBM A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBN",
+      "name": "LFBN FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBN A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBO",
+      "name": "LFBO FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBO A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBP",
+      "name": "LFBP FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBP A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBQ",
+      "name": "LFBQ FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBQ A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBR",
+      "name": "LFBR FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBR A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBS",
+      "name": "LFBS FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBS A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBT",
+      "name": "LFBT FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBT A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBU",
+      "name": "LFBU FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBU A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBV",
+      "name": "LFBV FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBV A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBW",
+      "name": "LFBW FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBW A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBX",
+      "name": "LFBX FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBX A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBY",
+      "name": "LFBY FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBY A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFBZ",
+      "name": "LFBZ FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFBZ A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFB0",
+      "name": "LFB0 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFB0 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFB1",
+      "name": "LFB1 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFB1 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFB2",
+      "name": "LFB2 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFB2 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFB3",
+      "name": "LFB3 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFB3 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFB4",
+      "name": "LFB4 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFB4 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFB5",
+      "name": "LFB5 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFB5 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFB6",
+      "name": "LFB6 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFB6 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFB7",
+      "name": "LFB7 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFB7 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFB8",
+      "name": "LFB8 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFB8 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFB9",
+      "name": "LFB9 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFB9 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCA",
+      "name": "LFCA FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCA A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCB",
+      "name": "LFCB FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCB A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCC",
+      "name": "LFCC FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCC A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCD",
+      "name": "LFCD FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCD A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCE",
+      "name": "LFCE FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCE A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCF",
+      "name": "LFCF FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCF A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCG",
+      "name": "LFCG FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCG A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCH",
+      "name": "LFCH FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCH A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCI",
+      "name": "LFCI FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCI A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCJ",
+      "name": "LFCJ FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCJ A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCK",
+      "name": "LFCK FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCK A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCL",
+      "name": "LFCL FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCL A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCM",
+      "name": "LFCM FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCM A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCN",
+      "name": "LFCN FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCN A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCO",
+      "name": "LFCO FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCO A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCP",
+      "name": "LFCP FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCP A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCQ",
+      "name": "LFCQ FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCQ A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCR",
+      "name": "LFCR FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCR A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCS",
+      "name": "LFCS FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCS A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCT",
+      "name": "LFCT FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCT A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCU",
+      "name": "LFCU FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCU A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCV",
+      "name": "LFCV FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCV A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCW",
+      "name": "LFCW FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCW A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCX",
+      "name": "LFCX FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCX A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCY",
+      "name": "LFCY FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCY A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFCZ",
+      "name": "LFCZ FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFCZ A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFC0",
+      "name": "LFC0 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFC0 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFC1",
+      "name": "LFC1 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFC1 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFC2",
+      "name": "LFC2 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFC2 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFC3",
+      "name": "LFC3 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFC3 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFC4",
+      "name": "LFC4 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFC4 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFC5",
+      "name": "LFC5 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFC5 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFC6",
+      "name": "LFC6 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFC6 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFC7",
+      "name": "LFC7 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFC7 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFC8",
+      "name": "LFC8 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFC8 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFC9",
+      "name": "LFC9 FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFC9 A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFDA",
+      "name": "LFDA FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFDA A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFDB",
+      "name": "LFDB FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFDB A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFDC",
+      "name": "LFDC FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFDC A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFDD",
+      "name": "LFDD FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFDD A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFDE",
+      "name": "LFDE FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFDE A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFDF",
+      "name": "LFDF FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFDF A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "icao": "LFDG",
+      "name": "LFDG FIXTURE",
+      "latitude": 46.0,
+      "longitude": 2.0,
+      "sourceReference": "Fixture SIA CI",
+      "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+      "frequencies": [
+        {
+          "channel": "123.500",
+          "channelKhz": 123500,
+          "carrierHz": 123500000,
+          "serviceCode": "A/A",
+          "callsign": "LFDG A/A",
+          "kind": "SelfInformation",
+          "scope": "Local",
+          "interactive": false,
+          "scheduleState": "NotApplicable",
+          "hoursText": "",
+          "remarks": "fixture test",
+          "sourceReference": "Fixture SIA figée pour CI",
+          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/",
+          "sourceRecordId": "TEST-A/A-123500",
+          "confidence": 1.0
+        }
+      ]
+    }
+  ]
+}
