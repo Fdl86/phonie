@@ -1,0 +1,6 @@
+PHONIE DEV0.4.0.6 - HOLD SHORT FLOW
+
+Décompresser ce patch à la racine du dépôt DEV0.4.0.5 et accepter les remplacements.
+Aucune suppression de fichier n’est requise.
+
+Changements principaux : phraséologie générique vers le point d’attente, validation par position réelle, clairance combinée alignement-décollage si piste libre, protections trafic, AFIS informatif, version et workflow 0.4.0.6.

@@ -167,7 +167,7 @@ public sealed class GpuBenchmarkService
         var jsonPath = Path.Combine(AppPaths.BenchmarksDirectory, stem + ".json");
         var textPath = Path.Combine(AppPaths.BenchmarksDirectory, stem + ".txt");
         var report = new GpuBenchmarkReport(
-            "DEV0.4.0.5",
+            "DEV0.4.0.6",
             startedAt,
             completedAt,
             processId,
@@ -320,7 +320,7 @@ public sealed class GpuBenchmarkService
     {
         var culture = CultureInfo.InvariantCulture;
         var builder = new StringBuilder();
-        builder.AppendLine("PHONIE DEV0.4.0.5 - BENCHMARK GPU / VRAM");
+        builder.AppendLine("PHONIE DEV0.4.0.6 - BENCHMARK GPU / VRAM");
         builder.AppendLine($"Début : {report.StartedAt:O}");
         builder.AppendLine($"Fin : {report.CompletedAt:O}");
         builder.AppendLine($"PID : {report.ProcessId}");

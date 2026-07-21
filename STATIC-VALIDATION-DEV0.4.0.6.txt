@@ -1,0 +1,21 @@
+PHONIE DEV0.4.0.6 - STATIC VALIDATION
+
+Contrôles statiques uniquement - aucune compilation .NET/WPF exécutée dans cet environnement.
+La compilation réelle, les tests C# et la publication restent assurés par GitHub Actions.
+
+PASS - fichiers requis - 15 présents
+PASS - équilibrage lexical C# - 54 fichiers
+PASS - XML/XAML - 9 fichiers
+PASS - JSON - 4 fichiers
+PASS - références des tests - 29 fonctions nommées résolues
+PASS - phrase roulage générique
+PASS - clairance combinée
+PASS - point intermédiaire exclu
+PASS - trafic inconnu bloque
+PASS - ancienne clairance intersection retirée
+PASS - comparaison du point annoncé retirée
+PASS - version DEV0.4.0.6 - csproj, UI, workflow et README
+PASS - absence de sorties de build - aucun bin/obj/dist
+PASS - artefact à décompression unique
+
+Total : 14/14 contrôles réussis.

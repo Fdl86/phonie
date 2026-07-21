@@ -8,9 +8,14 @@ var tests = new List<(string Name, Action Test)>
     ("tous parkings LFBI reliés à une attente", TestLfbiAllParkingsReachHold),
     ("capture LFBI MSFS 2020 normalisée", TestLfbiMsfs2020Fixture),
     ("profil LFBI résout A3 intermédiaire et A2 départ", TestLfbiOperationalProfile),
-    ("phraséologie LFBI concise vers Alpha 2", TestLfbiConciseTaxiPhraseology),
-    ("départ intersection LFBI depuis Alpha 2", TestLfbiIntersectionDeparture),
+    ("phraséologie LFBI générique vers le point d'attente", TestLfbiConciseTaxiPhraseology),
+    ("prêt au point d'attente donne alignement et décollage", TestLfbiDirectTakeoffFromHold),
+    ("nom de point annoncé ne pilote pas la clairance", TestReportedPointDoesNotDriveClearance),
+    ("point intermédiaire ne donne pas la clairance décollage", TestIntermediateHoldDoesNotClearTakeoff),
+    ("piste occupée bloque la clairance décollage", TestOccupiedRunwayBlocksTakeoff),
+    ("trafic inconnu bloque la clairance décollage", TestUnknownTrafficBlocksTakeoff),
     ("AFIS informe sans clairance de contrôle", TestAfisInformationOnly),
+    ("AFIS au point d'attente reste informatif", TestAfisReadyInformationOnly),
     ("collationnement PTT et relance", TestAcknowledgementLifecycle),
     ("chemin parking vers attente", TestParkingToHoldRoute),
     ("attente libre la plus proche", TestNearestAvailableHold),
@@ -155,13 +160,16 @@ static void TestLfbiConciseTaxiPhraseology()
         1015);
 
     Assert(decision.Action == ControllerAction.Speak, decision.SystemMessage);
-    Assert(decision.SpokenText.Contains("point d'attente Alpha deux", StringComparison.Ordinal), decision.SpokenText);
-    Assert(!decision.SpokenText.Contains("via ", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(decision.ReasonCode == "TAXI_CLEARANCE_GENERIC_HOLD", decision.ReasonCode);
+    Assert(decision.SpokenText.Contains("roulez au point d'attente et rappelez prêt", StringComparison.Ordinal), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("Alpha", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
     Assert(!decision.SpokenText.Contains("Delta", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("via ", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(decision.SystemMessage.Contains("A2", StringComparison.Ordinal), decision.SystemMessage);
     Assert(decision.RequiresAcknowledgement);
 }
 
-static void TestLfbiIntersectionDeparture()
+static void TestLfbiDirectTakeoffFromHold()
 {
     var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
     var profile = BuildLfbiProfile();
@@ -189,7 +197,7 @@ static void TestLfbiIntersectionDeparture()
         profile,
         1015);
     var decision = engine.Process(
-        "Fox Novembre Yankee prêt en Alpha 2",
+        "Fox Novembre Yankee prêt au point d'attente",
         "F-HNNY",
         ControlledRadio(),
         model,
@@ -201,9 +209,112 @@ static void TestLfbiIntersectionDeparture()
         1015);
 
     Assert(decision.Action == ControllerAction.Speak, decision.SystemMessage);
-    Assert(decision.ReasonCode == "INTERSECTION_TAKEOFF_CLEARED", decision.ReasonCode);
-    Assert(decision.SpokenText.Contains("intersection Alpha", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.ReasonCode == "LINEUP_TAKEOFF_CLEARED_FROM_HOLD", decision.ReasonCode);
+    Assert(decision.SpokenText.Contains("alignez-vous piste deux un", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.SpokenText.Contains("vent deux un zéro degrés, un zéro nœuds", StringComparison.Ordinal), decision.SpokenText);
     Assert(decision.SpokenText.Contains("autorisé décollage", StringComparison.Ordinal), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("Alpha", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("intersection", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(decision.RequiresAcknowledgement);
+}
+
+static void TestReportedPointDoesNotDriveClearance()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var profile = BuildLfbiProfile();
+    var engine = PrepareLfbiTaxiSession(model, profile);
+    var decision = engine.Process(
+        "Fox Novembre Yankee prêt en Bravo 7",
+        "F-HNNY",
+        ControlledRadio(),
+        model,
+        ObservationAtNode(model, "T:17"),
+        AvailableOccupancy(),
+        210,
+        10,
+        profile,
+        1015);
+
+    Assert(decision.ReasonCode == "LINEUP_TAKEOFF_CLEARED_FROM_HOLD", decision.ReasonCode);
+    Assert(!decision.SpokenText.Contains("Bravo", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+}
+
+static void TestIntermediateHoldDoesNotClearTakeoff()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var profile = BuildLfbiProfile();
+    var engine = PrepareLfbiTaxiSession(model, profile);
+    var decision = engine.Process(
+        "Fox Novembre Yankee prêt au point d'attente",
+        "F-HNNY",
+        ControlledRadio(),
+        model,
+        ObservationAtNode(model, "T:99"),
+        AvailableOccupancy(),
+        210,
+        10,
+        profile,
+        1015);
+
+    Assert(decision.Action == ControllerAction.Unable, decision.SpokenText);
+    Assert(decision.ReasonCode == "READY_NOT_AT_DEPARTURE_HOLD", decision.ReasonCode);
+    Assert(!decision.SpokenText.Contains("autorisé décollage", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+}
+
+static void TestOccupiedRunwayBlocksTakeoff()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var profile = BuildLfbiProfile();
+    var engine = PrepareLfbiTaxiSession(model, profile);
+    var runway = engine.Session.AssignedRunway ?? throw new InvalidOperationException("Piste non attribuée.");
+    var occupiedEdges = model.Edges
+        .Where(item => item.IsRunway && (item.RunwayNumber == runway.Number || item.RunwayNumber is null))
+        .Select(item => item.SourceIndex)
+        .ToHashSet();
+    Assert(occupiedEdges.Count > 0, "Aucun segment piste trouvé.");
+    var occupied = new GroundOccupancySnapshot(
+        DateTimeOffset.UtcNow,
+        OccupancyKnowledge.Available,
+        new HashSet<string>(StringComparer.Ordinal),
+        occupiedEdges,
+        "test piste occupée");
+    var decision = engine.Process(
+        "Fox Novembre Yankee prêt au point d'attente",
+        "F-HNNY",
+        ControlledRadio(),
+        model,
+        ObservationAtNode(model, "T:17"),
+        occupied,
+        210,
+        10,
+        profile,
+        1015);
+
+    Assert(decision.ReasonCode == "RUNWAY_OCCUPIED_HOLD", decision.ReasonCode);
+    Assert(decision.SpokenText.Contains("maintenez point d'attente", StringComparison.Ordinal), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("autorisé décollage", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+}
+
+static void TestUnknownTrafficBlocksTakeoff()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var profile = BuildLfbiProfile();
+    var engine = PrepareLfbiTaxiSession(model, profile);
+    var decision = engine.Process(
+        "Fox Novembre Yankee prêt au point d'attente",
+        "F-HNNY",
+        ControlledRadio(),
+        model,
+        ObservationAtNode(model, "T:17"),
+        GroundOccupancySnapshot.Unknown(DateTimeOffset.UtcNow, "test indisponible"),
+        210,
+        10,
+        profile,
+        1015);
+
+    Assert(decision.ReasonCode == "TRAFFIC_STATUS_UNKNOWN_HOLD", decision.ReasonCode);
+    Assert(decision.SpokenText.Contains("trafic non déterminé", StringComparison.Ordinal), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("autorisé décollage", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
 }
 
 static void TestAfisInformationOnly()
@@ -226,7 +337,44 @@ static void TestAfisInformationOnly()
     Assert(decision.ReasonCode == "AFIS_TAXI_INFORMATION");
     Assert(!decision.SpokenText.Contains("roulez", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
     Assert(!decision.SpokenText.Contains("autorisé", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
-    Assert(decision.SpokenText.Contains("point d'attente Alpha deux", StringComparison.Ordinal), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("Alpha", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(decision.SpokenText.Contains("rappelez prêt au point d'attente", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.RequiresAcknowledgement);
+}
+
+static void TestAfisReadyInformationOnly()
+{
+    var model = AirportGroundModelBuilder.Build(LoadFixture("LFBI-MSFS2024-ground.json"));
+    var profile = BuildLfbiProfile();
+    var engine = new GroundOperationsEngine();
+    var afis = new RadioContext(ServiceCapability.InformationOnly, "Terrain AFIS", true, "test");
+    _ = engine.Process(
+        "prêt au roulage",
+        "F-HNNY",
+        afis,
+        model,
+        ObservationAtNode(model, "P:12"),
+        AvailableOccupancy(),
+        210,
+        10,
+        profile,
+        1015);
+    var decision = engine.Process(
+        "Fox Novembre Yankee prêt au point d'attente",
+        "F-HNNY",
+        afis,
+        model,
+        ObservationAtNode(model, "T:17"),
+        AvailableOccupancy(),
+        210,
+        10,
+        profile,
+        1015);
+
+    Assert(decision.ReasonCode == "AFIS_READY_INFORMATION", decision.ReasonCode);
+    Assert(decision.SpokenText.Contains("aucun trafic signalé", StringComparison.Ordinal), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("alignez-vous", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("autorisé", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
     Assert(decision.RequiresAcknowledgement);
 }
 
@@ -552,9 +700,9 @@ static void TestShortCallsignAfterContact()
     Assert(decision.SpokenText.StartsWith("Fox Novembre Yankee", StringComparison.Ordinal), decision.SpokenText);
     Assert(decision.FullCallsign == "F-HNNY");
     Assert(decision.ShortCallsign == "F-NY");
-    Assert(decision.SpokenText.Contains("point d'attente Delta un", StringComparison.Ordinal), decision.SpokenText);
-    Assert(decision.SpokenText.Contains("via Delta", StringComparison.Ordinal), decision.SpokenText);
-    Assert(!decision.SpokenText.Contains("via Delta et Delta un", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.SpokenText.Contains("roulez au point d'attente et rappelez prêt", StringComparison.Ordinal), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("Delta", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(!decision.SpokenText.Contains("via ", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
 }
 
 static void TestAtisSilent()
@@ -614,6 +762,37 @@ static void TestNonRunwayGarbageIgnored()
     Assert(model.Edges.Where(edge => edge.Kind == TaxiPathKind.Runway).All(edge => edge.RunwayNumber == 21));
 }
 
+
+static GroundOperationsEngine PrepareLfbiTaxiSession(
+    AirportGroundModel model,
+    AirportOperationalProfile profile)
+{
+    var engine = new GroundOperationsEngine();
+    _ = engine.Process(
+        "Poitiers Tour bonjour au parking",
+        "F-HNNY",
+        ControlledRadio(),
+        model,
+        ObservationAtNode(model, "P:12"),
+        AvailableOccupancy(),
+        210,
+        10,
+        profile,
+        1015);
+    var taxi = engine.Process(
+        "prêt au roulage",
+        "F-HNNY",
+        ControlledRadio(),
+        model,
+        ObservationAtNode(model, "P:12"),
+        AvailableOccupancy(),
+        210,
+        10,
+        profile,
+        1015);
+    Assert(taxi.ReasonCode == "TAXI_CLEARANCE_GENERIC_HOLD", taxi.ReasonCode);
+    return engine;
+}
 
 static AirportOperationalProfile BuildLfbiProfile() => new(
     "LFBI",

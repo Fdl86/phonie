@@ -1,64 +1,65 @@
-# PHONIE DEV0.4.0.5 - GROUND OPERATIONS FINAL RC
+# PHONIE DEV0.4.0.6 - HOLD SHORT FLOW
 
 PHONIE est une application Windows x64 portable en C# / .NET 8 / WPF destinée aux communications ATC VFR locales avec Microsoft Flight Simulator 2020 et 2024.
 
-DEV0.4.0.5 consolide le chantier `GROUND OPERATIONS` avant le passage à DEV0.5. Elle conserve la base stable DEV0.3.0.5 et le routage validé de DEV0.4.0.4.
+DEV0.4.0.6 simplifie la fin du chantier Ground Operations avant DEV0.5. Le moteur continue de calculer le trajet exact avec les données Facilities, mais les noms locaux de points d'attente ne sont plus nécessaires dans la phraséologie pilote-contrôleur.
 
-## Fonctions principales
+## Roulage contrôlé
 
-Lorsqu'un pilote demande le roulage, PHONIE récupère le réseau par SimConnect Facilities, localise l'avion, détermine la piste en service, applique un profil opérationnel lorsqu'il existe, distingue point intermédiaire, point d'attente de départ et entrée de piste, écarte les occupations réelles, calcule l'itinéraire et produit une phraséologie courte.
+Après une demande de roulage, PHONIE détermine la piste, calcule un itinéraire accessible et répond :
 
-Le trajet détaillé reste visible dans le diagnostic même lorsqu'il n'est pas récité à la radio.
+`Fox Novembre Yankee, roulez au point d'attente et rappelez prêt.`
 
-## Profil opérationnel LFBI
+Les appellations A, A2, A3, D1 et les segments internes restent visibles dans le diagnostic et sur la carte, mais ne sont plus prononcés. Une mauvaise appellation de scène ou une transcription approximative ne pilote donc plus la clairance.
 
-`data\airports\LFBI.json` associe les données officielles au graphe par position et fonction, sans dépendre des index internes de la scène :
+## Prêt au point d'attente
 
-- A3 : point intermédiaire ;
-- A2 : point d'attente de départ ;
-- A : entrée de piste pour le départ depuis l'intersection.
+Au prochain appel, PHONIE vérifie la position réelle. La clairance combinée n'est donnée que lorsque :
 
-Depuis le parking S6, la destination radio est A2. Les noms internes Facilities `D`, `D1`, `D2` ou `D3` restent visibles dans le diagnostic mais ne remplacent pas l'appellation opérationnelle vérifiée.
+- l'avion est sur un vrai point d'attente de départ lié à la piste attribuée ;
+- un point intermédiaire n'est pas confondu avec le point de départ ;
+- le trafic disponible est connu ;
+- aucun segment de la piste attribuée n'est occupé.
 
-Sur un aérodrome sans profil, PHONIE conserve le moteur géométrique. Il utilise un nom Facilities plausible avec son niveau de confiance ou une formulation générique lorsque le nom n'est pas fiable.
+Réponse Tour attendue lorsque la piste est libre :
 
-## Carte du roulage
+`Fox Novembre Yankee, alignez-vous piste deux un, vent deux un zéro degrés, un zéro nœuds, autorisé décollage.`
 
-La section `Diagnostic > Carte du roulage` affiche le réseau Facilities, la piste, l'itinéraire attribué, le point d'attente sélectionné, les autres candidats, l'entrée de piste, l'avion utilisateur, le trafic analysé et les occupations.
+Si la piste est occupée ou si l'état du trafic est indisponible, PHONIE maintient l'avion au point d'attente.
 
-## Séquence départ
+## AFIS
 
-La machine d'état distingue parking, roulage, point intermédiaire, point d'attente de départ, prêt au départ, départ intersection, alignement, remontée de piste, autorisation de décollage et avion en vol. La position réelle doit confirmer le point annoncé.
+Le moteur géométrique et le diagnostic restent disponibles, mais l'AFIS transmet uniquement la piste, le vent, le QNH et les renseignements de trafic disponibles. Il ne dit jamais `roulez`, `alignez-vous` ou `autorisé décollage`.
 
-## ATC, AFIS et services sans dialogue
+## Diagnostic graphique
 
-- ATC contrôlé : instructions et autorisations opérationnelles ;
-- AFIS / FSS : renseignements uniquement, aucune autorisation de contrôle ;
-- ATIS / AWS : diffusion automatique, aucun dialogue ;
-- auto-information / CTAF / UNICOM : silence ;
-- fréquence inconnue : silence.
+`Diagnostic > Carte du roulage` conserve :
 
-## Collationnement simplifié
+- le réseau Facilities ;
+- la piste et les points d'attente ;
+- l'itinéraire interne attribué ;
+- les noms Facilities et opérationnels ;
+- les segments occupés ;
+- l'avion et les trafics analysés.
 
-Après un message opérationnel de la Tour ou de l'AFIS, PHONIE attend une émission PTT du pilote. Le contenu est journalisé mais n'est pas bloquant. Sans PTT, PHONIE relance avec `collationnez`, puis `accusez réception`. Le PTT de collationnement n'est pas réinterprété comme une nouvelle demande.
+Le profil LFBI reste présent pour comprendre et vérifier A3, A2 et A, mais ces noms ne conditionnent plus la phrase radio.
+
+## Collationnement
+
+Après chaque message opérationnel Tour ou AFIS, une émission PTT est attendue. Son contenu n'est pas bloquant dans cette version. En l'absence de PTT, PHONIE relance avec `collationnez`, puis `accusez réception`.
 
 ## Redémarrage vocal
 
-- `Redémarrer ASR` annule les workers, libère les modèles et réinitialise le profil courant ;
-- `Redémarrer voix` arrête la lecture et recrée le moteur de synthèse.
+Les commandes `Redémarrer ASR` et `Redémarrer voix` permettent de relancer séparément la reconnaissance et la synthèse sans fermer PHONIE. Le changement de runtime Whisper CPU/Vulkan demande encore une relance complète.
 
-Le changement de runtime Whisper CPU vers Vulkan, ou Vulkan vers CPU, demande toujours une relance complète de PHONIE.
+## Voix réalistes
 
-## Indicatif
+La refonte complète des voix ATC est prévue dans DEV0.8 - ATC Voice. Les versions DEV0.4 à DEV0.7 stabilisent d'abord la logique opérationnelle, les circuits, le trafic et le moteur multi-aérodromes afin que les nouvelles voix reposent sur un dialogue fiable.
 
-Pour `F-HNNY` : premier contact `Fox Hôtel Novembre Novembre Yankee`, puis `Fox Novembre Yankee`, avec conservation interne de `F-HNNY` et de la forme abrégée `F-NY`.
-
-## Stockage portable
+## Stockage et livraison
 
 Toutes les données restent sous le dossier PHONIE : `config`, `data`, `logs`, `recordings`, `cache` et `models`.
 
-## Livraison
+Le workflow compile, teste et publie un artefact Windows x64 à décompression unique. Une seule extraction donne directement accès à `PHONIE.exe`.
 
-Le workflow compile, teste et publie le dossier Windows x64. GitHub crée lui-même l'artefact : il n'existe plus de ZIP à l'intérieur du ZIP. Une seule décompression donne directement accès à `PHONIE.exe`.
-
-Commencer les essais avec `TEST-DEV0.4.0.5.md`.
+Commencer les essais avec `TEST-DEV0.4.0.6.md`.

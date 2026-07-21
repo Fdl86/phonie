@@ -183,10 +183,9 @@ public sealed class GroundOperationsEngine
                 && this.session.AssignedTaxiRoute is { Success: true } assignedRoute
                 && this.session.AssignedRunway is not null)
             {
-                var assignedDestination = BuildHoldingPointPhrase(assignedRoute, this.session.AssignedRunway);
                 var reminder = radio.Capability == ServiceCapability.InformationOnly
-                    ? $"{CurrentCallsign(spokenFull, spokenShort)}, point d'attente recommandé {assignedDestination}, rappelez prêt."
-                    : $"{CurrentCallsign(spokenFull, spokenShort)}, poursuivez vers {assignedDestination}.";
+                    ? $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(this.session.AssignedRunway.Designator)} en service, rappelez prêt au point d'attente."
+                    : $"{CurrentCallsign(spokenFull, spokenShort)}, poursuivez vers le point d'attente et rappelez prêt.";
                 return Message(
                     ControllerAction.Speak,
                     "TAXI_CLEARANCE_ALREADY_ISSUED",
@@ -230,10 +229,6 @@ public sealed class GroundOperationsEngine
             this.session.AssignedRunwayEntry = route.RunwayEntry;
             this.session.State = GroundSessionState.TaxiClearanceIssued;
 
-            var destination = BuildHoldingPointPhrase(route, runwaySelection.RunwayEnd);
-            var via = route.IncludeViaInSpeech && route.TaxiwayNames.Count > 0
-                ? $" via {JoinFrench(route.TaxiwayNames)}"
-                : string.Empty;
             string text;
             string reason;
             string system;
@@ -241,19 +236,18 @@ public sealed class GroundOperationsEngine
             {
                 text =
                     $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(runwaySelection.RunwayEnd.Designator)} en service, " +
-                    $"{destination}, {BuildWindAndQnh(windDirectionDegrees, windSpeedKnots, qnhHpa)}, rappelez prêt.";
+                    $"{BuildWindAndQnh(windDirectionDegrees, windSpeedKnots, qnhHpa)}, rappelez prêt au point d'attente.";
                 reason = "AFIS_TAXI_INFORMATION";
-                system = "AFIS : itinéraire calculé à titre d'information, aucune clairance impérative de roulage.";
+                system = "AFIS : piste et paramètres transmis. L'itinéraire est calculé uniquement pour le diagnostic, sans clairance impérative de roulage.";
             }
             else
             {
-                text = $"{CurrentCallsign(spokenFull, spokenShort)}, roulez {destination}{via}, rappelez prêt.";
-                reason = "TAXI_CLEARANCE";
-                system = route.OperationalPoint?.Confidence == OperationalLabelConfidence.Official
-                    ? $"Appellation officielle {route.OperationalPoint.RadioLabel} issue du profil {airport.Icao}."
-                    : route.OperationalPoint?.HasReliableRadioLabel == true
-                        ? "Appellation issue de la scène avec confiance moyenne."
-                        : "Nom radio non garanti : formulation générique utilisée.";
+                text = $"{CurrentCallsign(spokenFull, spokenShort)}, roulez au point d'attente et rappelez prêt.";
+                reason = "TAXI_CLEARANCE_GENERIC_HOLD";
+                var internalPoint = route.OperationalPoint?.RadioLabel ?? route.HoldShort.Label;
+                system =
+                    $"Itinéraire interne calculé vers {internalPoint} ({route.HoldShort.NodeId}) pour la piste {runwaySelection.RunwayEnd.Designator}. " +
+                    "L'appellation locale n'est volontairement pas prononcée.";
             }
 
             this.EstablishContact(text);
@@ -262,16 +256,16 @@ public sealed class GroundOperationsEngine
 
         if (intent is PilotIntent.ReadyAtHoldShort or PilotIntent.ReadyForIntersectionDeparture)
         {
-            if (!IsAtAssignedDeparturePoint(location, intentDetails.ReportedPoint))
+            if (!IsAtDepartureHoldShort(airport, location, profile))
             {
                 return Incompatible(
-                    "READY_NOT_AT_ASSIGNED_HOLD",
-                    BuildReadyPositionMismatch(location, intentDetails.ReportedPoint));
+                    "READY_NOT_AT_DEPARTURE_HOLD",
+                    BuildReadyPositionMismatch(location));
             }
 
-            this.session.State = intent == PilotIntent.ReadyForIntersectionDeparture
-                ? GroundSessionState.IntersectionDepartureRequested
-                : GroundSessionState.ReadyForDeparture;
+            // Les noms de points et la demande d'intersection ne pilotent plus la décision.
+            // La position géométrique au point d'attente et l'état du trafic sont les seules conditions opérationnelles.
+            this.session.State = GroundSessionState.ReadyForDeparture;
 
             if (this.session.AssignedRunway is null)
             {
@@ -296,6 +290,18 @@ public sealed class GroundOperationsEngine
                     0.9);
             }
 
+            if (occupancy.Knowledge == OccupancyKnowledge.Unknown)
+            {
+                var waitText = $"{CurrentCallsign(spokenFull, spokenShort)}, maintenez point d'attente, trafic non déterminé.";
+                return Message(
+                    ControllerAction.Speak,
+                    "TRAFFIC_STATUS_UNKNOWN_HOLD",
+                    waitText,
+                    "État du trafic indisponible : aucune autorisation d'entrée ni de décollage.",
+                    this.session.AssignedTaxiRoute,
+                    0.75);
+            }
+
             if (IsRunwayOccupied(airport, this.session.AssignedRunway, occupancy))
             {
                 var waitText = $"{CurrentCallsign(spokenFull, spokenShort)}, maintenez point d'attente, trafic sur la piste.";
@@ -308,56 +314,22 @@ public sealed class GroundOperationsEngine
                     0.95);
             }
 
-            var handling = this.session.AssignedOperationalPoint?.DepartureHandling
-                ?? DepartureHandling.ControllerChoice;
-            if (intentDetails.MentionsBacktrack || handling == DepartureHandling.BacktrackRequired)
-            {
-                this.session.State = GroundSessionState.BacktrackCleared;
-                var backtrackText =
-                    $"{CurrentCallsign(spokenFull, spokenShort)}, remontez piste {SpeakRunway(this.session.AssignedRunway.Designator)}, " +
-                    "alignez-vous et attendez.";
-                return Message(
-                    ControllerAction.Speak,
-                    "BACKTRACK_CLEARED",
-                    backtrackText,
-                    "Remontée de piste autorisée, décollage non encore autorisé.",
-                    this.session.AssignedTaxiRoute,
-                    0.95);
-            }
-
-            if (handling == DepartureHandling.IntersectionPreferred
-                && this.session.AssignedRunwayEntry?.HasReliableRadioLabel == true)
-            {
-                this.session.State = GroundSessionState.TakeoffCleared;
-                var entry = SpeakTaxiway(this.session.AssignedRunwayEntry.RadioLabel);
-                var takeoffText =
-                    $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(this.session.AssignedRunway.Designator)}, " +
-                    $"alignez-vous et autorisé décollage à partir de l'intersection {entry}, " +
-                    $"vent {SpeakWind(windDirectionDegrees, windSpeedKnots)}.";
-                return Message(
-                    ControllerAction.Speak,
-                    "INTERSECTION_TAKEOFF_CLEARED",
-                    takeoffText,
-                    $"Départ intersection {this.session.AssignedRunwayEntry.RadioLabel} autorisé depuis le point {this.session.AssignedOperationalPoint?.RadioLabel}.",
-                    this.session.AssignedTaxiRoute,
-                    0.96);
-            }
-
-            this.session.State = GroundSessionState.LineUpCleared;
-            var lineUpText =
-                $"{CurrentCallsign(spokenFull, spokenShort)}, alignez-vous piste {SpeakRunway(this.session.AssignedRunway.Designator)} et attendez.";
+            this.session.State = GroundSessionState.TakeoffCleared;
+            var takeoffText =
+                $"{CurrentCallsign(spokenFull, spokenShort)}, alignez-vous piste {SpeakRunway(this.session.AssignedRunway.Designator)}, " +
+                $"vent {SpeakWind(windDirectionDegrees, windSpeedKnots)}, autorisé décollage.";
             return Message(
                 ControllerAction.Speak,
-                "LINEUP_CLEARED_AFTER_READY",
-                lineUpText,
-                "Alignement autorisé, décollage en attente.",
+                "LINEUP_TAKEOFF_CLEARED_FROM_HOLD",
+                takeoffText,
+                "Avion confirmé au point d'attente de départ et piste libre selon le trafic disponible. Les appellations locales ne participent pas à la décision.",
                 this.session.AssignedTaxiRoute,
-                0.95);
+                0.96);
         }
 
         if (intent == PilotIntent.BacktrackRequest)
         {
-            if (!IsAtAssignedDeparturePoint(location, intentDetails.ReportedPoint)
+            if (!IsAtDepartureHoldShort(airport, location, profile)
                 || this.session.AssignedRunway is null)
             {
                 return Incompatible("BACKTRACK_INCOMPATIBLE", "remontée de piste impossible depuis la position actuelle.");
@@ -386,7 +358,7 @@ public sealed class GroundOperationsEngine
 
         if (intent == PilotIntent.LineUpRequest)
         {
-            if (!IsAtAssignedDeparturePoint(location, intentDetails.ReportedPoint)
+            if (!IsAtDepartureHoldShort(airport, location, profile)
                 || this.session.AssignedRunway is null)
             {
                 return Incompatible("LINEUP_INCOMPATIBLE", "alignement impossible depuis la position ou l'état actuel.");
@@ -432,7 +404,7 @@ public sealed class GroundOperationsEngine
 
         if (intent == PilotIntent.LineUpAndTakeoffRequest)
         {
-            if (!IsAtAssignedDeparturePoint(location, intentDetails.ReportedPoint)
+            if (!IsAtDepartureHoldShort(airport, location, profile)
                 || this.session.AssignedRunway is null)
             {
                 return Incompatible("LINEUP_TAKEOFF_INCOMPATIBLE", "demande alignement et décollage incompatible avec la situation.");
@@ -446,16 +418,41 @@ public sealed class GroundOperationsEngine
                 return Message(ControllerAction.Speak, "AFIS_LINEUP_TAKEOFF_INFORMATION", info, "AFIS : aucune clairance de contrôle.", this.session.AssignedTaxiRoute, 0.85);
             }
 
-            this.session.State = GroundSessionState.LineUpCleared;
+            if (occupancy.Knowledge == OccupancyKnowledge.Unknown)
+            {
+                var waitText = $"{CurrentCallsign(spokenFull, spokenShort)}, maintenez point d'attente, trafic non déterminé.";
+                return Message(
+                    ControllerAction.Speak,
+                    "TRAFFIC_STATUS_UNKNOWN_HOLD",
+                    waitText,
+                    "État du trafic indisponible : aucune autorisation d'entrée ni de décollage.",
+                    this.session.AssignedTaxiRoute,
+                    0.75);
+            }
+
+            if (IsRunwayOccupied(airport, this.session.AssignedRunway, occupancy))
+            {
+                var waitText = $"{CurrentCallsign(spokenFull, spokenShort)}, maintenez point d'attente, trafic sur la piste.";
+                return Message(
+                    ControllerAction.Speak,
+                    "RUNWAY_OCCUPIED_HOLD",
+                    waitText,
+                    "Piste occupée : aucune autorisation d'entrée ni de décollage.",
+                    this.session.AssignedTaxiRoute,
+                    0.95);
+            }
+
+            this.session.State = GroundSessionState.TakeoffCleared;
             var text =
-                $"{CurrentCallsign(spokenFull, spokenShort)}, alignez-vous piste {SpeakRunway(this.session.AssignedRunway.Designator)} et attendez.";
+                $"{CurrentCallsign(spokenFull, spokenShort)}, alignez-vous piste {SpeakRunway(this.session.AssignedRunway.Designator)}, " +
+                $"vent {SpeakWind(windDirectionDegrees, windSpeedKnots)}, autorisé décollage.";
             return Message(
                 ControllerAction.Speak,
-                "LINEUP_ONLY_PENDING_RUNWAY_CHECK",
+                "LINEUP_TAKEOFF_CLEARED_FROM_HOLD",
                 text,
-                "La demande combinée est reconnue, mais le décollage n'est pas autorisé avant confirmation de l'alignement.",
+                "Demande combinée acceptée depuis un point d'attente de départ, piste libre selon le trafic disponible.",
                 this.session.AssignedTaxiRoute,
-                0.9);
+                0.96);
         }
 
         return Message(
@@ -624,35 +621,41 @@ public sealed class GroundOperationsEngine
         }
     }
 
-    private bool IsAtAssignedDeparturePoint(GroundLocation location, string? reportedPoint)
+    private bool IsAtDepartureHoldShort(
+        AirportGroundModel airport,
+        GroundLocation location,
+        AirportOperationalProfile? profile)
     {
         if (location.Kind != GroundPositionKind.HoldShort
-            || this.session.AssignedHoldShort is null
-            || !string.Equals(location.NodeId, this.session.AssignedHoldShort.NodeId, StringComparison.Ordinal))
+            || string.IsNullOrWhiteSpace(location.NodeId)
+            || this.session.AssignedRunway is null)
         {
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(reportedPoint)
-            || this.session.AssignedOperationalPoint?.HasReliableRadioLabel != true)
+        var holdShort = airport.HoldShortPoints.FirstOrDefault(item =>
+            string.Equals(item.NodeId, location.NodeId, StringComparison.Ordinal));
+        if (holdShort is null)
         {
-            return true;
+            return false;
         }
 
-        return string.Equals(
-            NormalizePoint(reportedPoint),
-            NormalizePoint(this.session.AssignedOperationalPoint.RadioLabel),
-            StringComparison.OrdinalIgnoreCase);
+        var resolutions = OperationalPointResolver.Resolve(airport, profile);
+        var resolution = resolutions.GetValueOrDefault(location.NodeId);
+        if (resolution?.Role == OperationalPointRole.IntermediateHoldingPoint)
+        {
+            return false;
+        }
+
+        var isAssignedNode = this.session.AssignedHoldShort is not null
+            && string.Equals(location.NodeId, this.session.AssignedHoldShort.NodeId, StringComparison.Ordinal);
+        var isAssociatedRunway = holdShort.AssociatedRunwayIndex == this.session.AssignedRunway.RunwayIndex
+            || holdShort.NearestRunwayNumber == this.session.AssignedRunway.Number;
+        return isAssignedNode || isAssociatedRunway;
     }
 
-    private string BuildReadyPositionMismatch(GroundLocation location, string? reportedPoint)
-    {
-        var expected = this.session.AssignedOperationalPoint?.HasReliableRadioLabel == true
-            ? $"point {this.session.AssignedOperationalPoint.RadioLabel}"
-            : "point d'attente attribué";
-        var reported = string.IsNullOrWhiteSpace(reportedPoint) ? string.Empty : $" annoncé {reportedPoint},";
-        return $"position{reported} non confirmée au {expected} ; maintenez et confirmez votre position.";
-    }
+    private static string BuildReadyPositionMismatch(GroundLocation location) =>
+        $"position actuelle {location.Description} non confirmée à un point d'attente de départ lié à la piste attribuée ; maintenez et rappelez prêt au point d'attente.";
 
     private static bool IsRunwayOccupied(
         AirportGroundModel airport,
@@ -702,16 +705,6 @@ public sealed class GroundOperationsEngine
             this.session.AuthorizedShortCallsign,
             confidence,
             requiresAcknowledgement);
-
-    private static string BuildHoldingPointPhrase(TaxiRoute route, RunwayEnd runway)
-    {
-        if (route.OperationalPoint?.HasReliableRadioLabel == true)
-        {
-            return $"point d'attente {SpeakTaxiway(route.OperationalPoint.RadioLabel)}";
-        }
-
-        return $"point d'attente piste {SpeakRunway(runway.Designator)}";
-    }
 
     private static string BuildWindAndQnh(double direction, double speed, double qnh)
     {
@@ -812,9 +805,6 @@ public sealed class GroundOperationsEngine
 
         return string.Join(" ", Math.Abs(value).ToString().Select(SpeakDigit));
     }
-
-    private static string NormalizePoint(string value) =>
-        new(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 
     private static string SpeakDigit(char digit) => digit switch
     {
