@@ -2,8 +2,10 @@
 """Build PHONIE's French radio database from official SIA publications.
 
 Preferred input is the official SIA AIXM 4.5 XML export. When a direct XML
-archive is not configured, the builder falls back to the official Atlas VAC
-catalogue and extracts radio channels from the current PDF publications.
+archive is not configured, the builder discovers aerodromes through the
+official Atlas VAC catalogue, then reads the machine-readable eAIP AD 2.18
+table. Atlas VAC chart PDFs are only a last-resort fallback because several of
+their embedded cartographic fonts do not expose a reliable Unicode text layer.
 No operational frequency is embedded in this program.
 """
 from __future__ import annotations
@@ -33,8 +35,9 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
-VERSION = "DEV0.4.1.2"
+VERSION = "DEV0.4.1.3"
 AIM_CATALOG = "https://www.sia.aviation-civile.gouv.fr/produits-numeriques-en-libre-disposition/les-bases-de-donnees-sia.html"
 VAC_SEARCH = "https://www.sia.aviation-civile.gouv.fr/catalogsearch/result/"
 SESSION_HEADERS = {
@@ -358,6 +361,34 @@ def atlas_vac_directory(cycle: Cycle) -> str:
     return f"https://www.sia.aviation-civile.gouv.fr/media/dvd/{dvd}/Atlas-VAC/PDF_AIPparSSection/VAC/AD"
 
 
+def aip_pdf_directory(cycle: Cycle) -> str:
+    """Return the immutable official eAIP PDF directory for one AIRAC cycle."""
+    dvd, airac = cycle_path_tokens(cycle)
+    return (
+        f"https://www.sia.aviation-civile.gouv.fr/media/dvd/{dvd}/"
+        f"FRANCE/{airac}/pdf"
+    )
+
+
+def aip_airport_pdf_url(cycle: Cycle, icao: str) -> str:
+    """Return the official full AD 2 PDF for one aerodrome."""
+    return f"{aip_pdf_directory(cycle)}/FR-AD-2.{icao.upper()}-fr-FR.pdf"
+
+
+def aip_html_directory(cycle: Cycle) -> str:
+    """Return the immutable official eAIP HTML directory for one AIRAC cycle."""
+    dvd, airac = cycle_path_tokens(cycle)
+    return (
+        f"https://www.sia.aviation-civile.gouv.fr/media/dvd/{dvd}/"
+        f"FRANCE/{airac}/html/eAIP"
+    )
+
+
+def aip_airport_html_url(cycle: Cycle, icao: str) -> str:
+    """Return the official full AD 2 HTML page for one aerodrome."""
+    return f"{aip_html_directory(cycle)}/FR-AD-2.{icao.upper()}-fr-FR.html"
+
+
 def parse_vac_catalog_page(html: str, page_url: str, cycle: Cycle) -> tuple[dict[str, PdfDocument], str]:
     """Extract Atlas VAC ICAO codes and the official next-page URL from SIA HTML."""
     soup = BeautifulSoup(html, "html.parser")
@@ -497,7 +528,7 @@ def discover_vac_documents(
     """Discover the official Atlas VAC set with two independent methods.
 
     The SIA catalogue search no longer returns useful results for the broad
-    `AD-2` query used by DEV0.4.1.0/1.1. DEV0.4.1.2 therefore uses valid
+    `AD-2` query used by DEV0.4.1.0/1.1. DEV0.4.1.3 therefore uses valid
     three-character ICAO-prefix searches (LFA ... LFZ). If the catalogue is
     filtered, capped or served differently to GitHub Actions, a deterministic
     range-probe sweep of the immutable AIRAC DVD provides an independent
@@ -540,6 +571,253 @@ def extract_pdf_text(content: bytes, max_pages: int = 5) -> str:
     return "\n".join(pages)
 
 
+def extract_aip_radio_text(content: bytes, icao: str, max_pages: int = 40) -> str:
+    """Extract only enough eAIP pages to reach the AD 2.18 radio table.
+
+    Full eAIP AD 2 PDFs use a reliable Unicode text layer, unlike many Atlas
+    VAC chart PDFs whose embedded cartographic fonts decode as gibberish.
+    AD 2.18 is normally within the first pages; stop as soon as AD 2.19 is
+    present to avoid parsing handling, navigation aids or unrelated channels.
+    """
+    reader = PdfReader(io.BytesIO(content), strict=False)
+    pages: list[str] = []
+    marker_18 = re.compile(rf"AD\s*2\s*{re.escape(icao)}\.18", re.I)
+    marker_19 = re.compile(rf"AD\s*2\s*{re.escape(icao)}\.19", re.I)
+    reached_18 = False
+    for page in reader.pages[:max_pages]:
+        try:
+            text = page.extract_text() or ""
+        except Exception:
+            continue
+        pages.append(text)
+        combined = "\n".join(pages)
+        if marker_18.search(combined) or "ATS radiocommunication facilities" in combined:
+            reached_18 = True
+        if reached_18 and (marker_19.search(combined) or "Radio navigation and landing aids" in combined):
+            break
+    return "\n".join(pages)
+
+
+def extract_aip_airport_name(text: str, icao: str) -> str:
+    """Read the AD 2.1 aerodrome title without mistaking generic page headers."""
+    normalized_icao = icao.upper()
+    for raw_line in text.splitlines():
+        line = norm_text(raw_line)
+        match = re.match(
+            rf"^{re.escape(normalized_icao)}\s*[-–—]\s*(.+?)\s*$",
+            line,
+            re.I,
+        )
+        if match:
+            name = norm_text(match.group(1))
+            if 2 <= len(name) <= 100 and not FREQ_RE.search(name):
+                return name
+    return infer_airport_name(text, normalized_icao)
+
+
+def extract_aip_radio_section(text: str, icao: str) -> str:
+    """Return the official AD 2.18 block and exclude AD 2.19 navigation aids."""
+    marker_18 = re.search(rf"AD\s*2\s*{re.escape(icao)}\.18", text, re.I)
+    if marker_18 is None:
+        marker_18 = re.search(r"ATS radiocommunication facilities", text, re.I)
+    if marker_18 is None:
+        return ""
+    start = marker_18.start()
+    tail = text[start:]
+    endings = [
+        re.search(rf"AD\s*2\s*{re.escape(icao)}\.19", tail, re.I),
+        re.search(r"Radio navigation and landing aids", tail, re.I),
+    ]
+    positions = [match.start() for match in endings if match is not None and match.start() > 0]
+    end = start + min(positions) if positions else min(len(text), start + 12000)
+    return text[start:end]
+
+
+def parse_hours_before_frequency(section: str, frequency_start: int) -> str:
+    """Read compact eAIP working-hours codes immediately preceding a channel."""
+    prefix = upper_ascii(section[max(0, frequency_start - 80):frequency_start])
+    # The official tables normally use HO, HX, HJ or H24. Keep a bounded
+    # published expression rather than consuming remarks from the prior row.
+    match = re.search(r"(H24|HO|HX|HJ|HN)(?:\s*[+/-]\s*\d{1,4})?\s*$", prefix)
+    return norm_text(match.group(0)) if match else ""
+
+
+def extract_aip_callsign(entry: str) -> str:
+    """Extract the French call-sign independently of the table column order."""
+    match = re.search(r"MHZ\s*([^\r\n]{1,100}?)\s*\(FR\)", entry, re.I)
+    if match:
+        value = norm_text(match.group(1).strip(" :-/"))
+        if 2 <= len(value) <= 90:
+            return value
+    # HTML eAIP rows put service and call-sign before the FREQ column.
+    match = re.search(r"(?:^|\|)\s*([^|]{2,120}?)\s*\(FR\)", entry, re.I)
+    if match:
+        value = norm_text(match.group(1).strip(" :-/"))
+        value = re.sub(
+            r"^(?:ATIS|AWOS|AFIS|A/A|CTAF|UNICOM|TWR|TOUR|GND|SOL|APP|"
+            r"APPROCHE|DEP|DEPART|FIS|SIV|INFO|INFORMATION|PREVOL|CLEARANCE)\s+",
+            "",
+            value,
+            flags=re.I,
+        )
+        if 2 <= len(value) <= 90:
+            return value
+    return ""
+
+
+def callsign_from_aip_entry(entry: str, icao: str, kind: str) -> str:
+    """Extract the French call-sign, with a safe generic fallback."""
+    value = extract_aip_callsign(entry)
+    if value:
+        return value
+    return f"{icao} {KIND_NAMES[kind]}"
+
+
+def service_code_from_aip_entry(entry: str) -> str:
+    """Read the explicit Service column before interpreting free-text remarks."""
+    known = (
+        "D-ATIS", "ATIS", "AWOS", "AFIS", "A/A", "CTAF", "UNICOM",
+        "TWR", "GND", "APP", "DEP", "FIS", "SIV", "INFO", "CLD", "DEL",
+    )
+    cells = [upper_ascii(part.strip()) for part in entry.split("|") if part.strip()]
+    if cells:
+        first = cells[0]
+        for code in known:
+            if first == code or first.startswith(code + " "):
+                return code
+    code_pattern = "|".join(re.escape(code) for code in known)
+    matches = list(re.finditer(rf"\((?:EN|FR)\)\s*({code_pattern})\b", upper_ascii(entry)))
+    if matches:
+        return matches[0].group(1)
+    return ""
+
+
+def hours_from_aip_entry(entry: str) -> str:
+    """Extract one official AD 2.18 operating-hours code from a table row."""
+    up = upper_ascii(entry)
+    match = re.search(r"\b(H24|HO|HX|HJ|HN)\b(?:\s*[+/-]\s*\d{1,4})?", up)
+    return norm_text(match.group(0)) if match else ""
+
+
+def make_aip_frequency(
+    *,
+    match: re.Match[str],
+    entry: str,
+    icao: str,
+    source_url: str,
+    record_id: str,
+    confidence: float,
+    source_reference: str,
+    hours: str = "",
+) -> dict | None:
+    """Normalize one frequency found in an official AD 2.18 row."""
+    hours = hours or hours_from_aip_entry(entry)
+    code = service_code_from_aip_entry(entry)
+    raw_callsign = extract_aip_callsign(entry)
+    if code:
+        kind, scope, interactive, schedule = normalize_service(code, raw_callsign, "", hours)
+        if kind == "Unknown":
+            return None
+    else:
+        classified = classify_context(entry)
+        if classified is None:
+            return None
+        kind, scope, interactive, schedule, code = classified
+    if hours in {"HX", "HO", "HJ", "HN"} and interactive:
+        schedule = "PublishedNotEvaluated"
+    callsign = raw_callsign or f"{icao} {KIND_NAMES[kind]}"
+    digits = match.group(2)
+    channel_khz = int(match.group(1)) * 1000 + int(digits.ljust(3, "0"))
+    return make_frequency(
+        channel_khz,
+        code,
+        callsign,
+        kind,
+        scope,
+        interactive,
+        schedule,
+        hours,
+        norm_text(entry),
+        source_url,
+        record_id,
+        confidence,
+        source_reference=source_reference,
+    )
+
+
+def parse_aip_radio_html(html: str, icao: str, source_url: str) -> tuple[str, list[dict]]:
+    """Parse the compact official HTML table for AD 2.18.
+
+    The HTML publication is the preferred fallback because it preserves table
+    rows and service labels while transferring far less data than full AD PDFs.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    heading_pattern = re.compile(
+        rf"(?:AD\s*2\s*{re.escape(icao)}.*(?:2\.)?18|"
+        r"Moyens de radiocommunication ATS|ATS radiocommunication facilities)",
+        re.I,
+    )
+    heading = next(
+        (
+            tag
+            for tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
+            if heading_pattern.search(norm_text(tag.get_text(" ", strip=True)))
+        ),
+        None,
+    )
+    if heading is None:
+        return extract_aip_airport_name(soup.get_text("\n"), icao), []
+    table = heading.find_next("table")
+    if table is None:
+        return extract_aip_airport_name(soup.get_text("\n"), icao), []
+
+    frequencies: list[dict] = []
+    for row_index, row in enumerate(table.find_all("tr")):
+        cells = [norm_text(cell.get_text(" ", strip=True)) for cell in row.find_all(["th", "td"])]
+        entry = " | ".join(cell for cell in cells if cell)
+        if not entry:
+            continue
+        for frequency_index, match in enumerate(FREQ_RE.finditer(entry)):
+            record = make_aip_frequency(
+                match=match,
+                entry=entry,
+                icao=icao,
+                source_url=source_url,
+                record_id=f"AIPHTML:{icao}:AD2.18:{row_index}:{frequency_index}",
+                confidence=1.0,
+                source_reference="SIA eAIP HTML AD 2.18",
+            )
+            if record is not None:
+                frequencies.append(record)
+    return extract_aip_airport_name(soup.get_text("\n"), icao), dedupe_frequencies(frequencies)
+
+
+def parse_aip_radio_table(text: str, icao: str, source_url: str) -> list[dict]:
+    """Parse the official machine-readable AD 2.18 radiocommunication table."""
+    section = extract_aip_radio_section(text, icao)
+    if not section:
+        return []
+    matches = list(FREQ_RE.finditer(section))
+    frequencies: list[dict] = []
+    for index, match in enumerate(matches):
+        entry_end = matches[index + 1].start() if index + 1 < len(matches) else len(section)
+        entry = section[match.start():entry_end]
+        hours = parse_hours_before_frequency(section, match.start())
+        record = make_aip_frequency(
+            match=match,
+            entry=entry,
+            icao=icao,
+            source_url=source_url,
+            record_id=f"AIPPDF:{icao}:AD2.18:{index}:{match.start()}",
+            confidence=0.99,
+            source_reference="SIA eAIP PDF AD 2.18",
+            hours=hours,
+        )
+        if record is not None:
+            frequencies.append(record)
+    return dedupe_frequencies(frequencies)
+
+
 def infer_airport_name(text: str, icao: str) -> str:
     lines=[norm_text(line) for line in text.splitlines() if norm_text(line)]
     rejects=("AIP FRANCE","© SIA","SERVICE DE L'INFORMATION","ALT / HGT","AD 2 ","VAC")
@@ -569,18 +847,62 @@ def classify_context(context: str) -> tuple[str,str,bool,str,str] | None:
     return kind,scope,interactive,schedule,code
 
 
-def make_frequency(channel_khz:int, code:str, callsign:str, kind:str, scope:str, interactive:bool, schedule:str, hours:str, remarks:str, url:str, record_id:str, confidence:float) -> dict:
+def make_frequency(channel_khz:int, code:str, callsign:str, kind:str, scope:str, interactive:bool, schedule:str, hours:str, remarks:str, url:str, record_id:str, confidence:float, source_reference:str="SIA Atlas VAC") -> dict:
     channel=f"{channel_khz/1000:.3f}"
     return {"channel":channel,"channelKhz":channel_khz,"carrierHz":carrier_hz(channel_khz),
             "serviceCode":code or KIND_NAMES[kind],"callsign":norm_text(callsign),"kind":kind,"scope":scope,
             "interactive":interactive,"scheduleState":schedule,"hoursText":norm_text(hours),"remarks":norm_text(remarks),
-            "sourceReference":"SIA Atlas VAC","sourceUrl":url,"sourceRecordId":record_id,"confidence":confidence}
+            "sourceReference":source_reference,"sourceUrl":url,"sourceRecordId":record_id,"confidence":confidence}
 
 
 def carrier_hz(channel_khz:int) -> int:
     mhz=channel_khz//1000; within=channel_khz%1000; hundred=(within//100)*100; rem=within-hundred
     offsets={0:0,5:0,10:8333,15:16667,25:25000,30:25000,35:33333,40:41667,50:50000,55:50000,60:58333,65:66667,75:75000,80:75000,85:83333,90:91667}
     return mhz*1_000_000+hundred*1000+offsets.get(rem,rem*1000)
+
+
+def parse_official_airport_document(session: requests.Session, cycle: Cycle, doc: PdfDocument) -> dict:
+    """Prefer eAIP HTML, then eAIP PDF, and finally the Atlas VAC chart."""
+    html_url = aip_airport_html_url(cycle, doc.icao)
+    try:
+        response = get(session, html_url, timeout=60)
+        content_type = upper_ascii(response.headers.get("Content-Type", ""))
+        if "HTML" in content_type or "<HTML" in upper_ascii(response.text[:500]):
+            name, frequencies = parse_aip_radio_html(response.text, doc.icao, response.url)
+            if frequencies:
+                return {
+                    "icao": doc.icao,
+                    "name": name,
+                    "latitude": float("nan"),
+                    "longitude": float("nan"),
+                    "sourceReference": "SIA eAIP HTML AD 2",
+                    "sourceUrl": response.url,
+                    "frequencies": frequencies,
+                }
+    except (requests.RequestException, ValueError, OSError, UnicodeError):
+        pass
+
+    pdf_url = aip_airport_pdf_url(cycle, doc.icao)
+    try:
+        response = get(session, pdf_url, timeout=120)
+        if response.content.startswith(b"%PDF"):
+            text = extract_aip_radio_text(response.content, doc.icao)
+            frequencies = parse_aip_radio_table(text, doc.icao, response.url)
+            if frequencies:
+                return {
+                    "icao": doc.icao,
+                    "name": extract_aip_airport_name(text, doc.icao),
+                    "latitude": float("nan"),
+                    "longitude": float("nan"),
+                    "sourceReference": "SIA eAIP PDF AD 2",
+                    "sourceUrl": response.url,
+                    "frequencies": frequencies,
+                }
+    except (requests.RequestException, PdfReadError, ValueError, OSError, UnicodeError):
+        # Some VAC-only aerodromes may not expose a full eAIP PDF. Preserve the
+        # Atlas fallback, but never pretend its garbled text is complete.
+        pass
+    return parse_vac_document(session, doc)
 
 
 def parse_vac_document(session: requests.Session, doc: PdfDocument) -> dict:
@@ -644,7 +966,7 @@ def build_from_vac(session: requests.Session, cycle: Cycle, workers: int, max_pa
     airports=[]; errors=[]
     def task(doc:PdfDocument):
         local=create_session()
-        return parse_vac_document(local,doc)
+        return parse_official_airport_document(local,cycle,doc)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         future_map={executor.submit(task,doc):doc for doc in documents}
         for number,future in enumerate(concurrent.futures.as_completed(future_map),1):
@@ -654,7 +976,21 @@ def build_from_vac(session: requests.Session, cycle: Cycle, workers: int, max_pa
             if number%25==0: print(f"SIA VAC: {number}/{len(documents)} traités.")
     if errors:
         print("Documents VAC en échec:",*errors[:20],sep="\n- ",file=sys.stderr)
-    return finalize_airports(airports)
+    airports = finalize_airports(airports)
+    source_counts: dict[str, int] = {}
+    source_frequencies: dict[str, int] = {}
+    for airport in airports:
+        source = airport.get("sourceReference", "Inconnu")
+        source_counts[source] = source_counts.get(source, 0) + 1
+        source_frequencies[source] = source_frequencies.get(source, 0) + len(airport.get("frequencies", []))
+    for source in sorted(source_counts):
+        print(
+            f"SIA radio: {source}: {source_counts[source]} aérodromes, "
+            f"{source_frequencies[source]} fréquences."
+        )
+    empty = sum(1 for airport in airports if not airport.get("frequencies"))
+    print(f"SIA radio: {empty} aérodromes sans fréquence publiée/extractible.")
+    return airports
 
 
 def descriptor(path:Path,dataset:dict,relative:str)->dict:
@@ -730,10 +1066,33 @@ def main()->int:
     parser.add_argument("--max-pages",type=int,default=30)
     parser.add_argument("--min-airports",type=int,default=200)
     parser.add_argument("--min-frequencies",type=int,default=150)
+    parser.add_argument(
+        "--probe-airports",
+        default="",
+        help="Comma-separated ICAO validation cases; parse official AD 2.18 and exit.",
+    )
     args=parser.parse_args()
     today=dt.date.fromisoformat(args.today) if args.today else dt.datetime.now(dt.timezone.utc).date()
     session=create_session()
     cycles=discover_cycles(session); cycle=choose_cycle(cycles,args.cycle,today)
+    if args.probe_airports:
+        icaos = [upper_ascii(value.strip()) for value in args.probe_airports.split(",") if value.strip()]
+        if not icaos or any(not re.fullmatch(r"LF[A-Z0-9]{2}", icao) for icao in icaos):
+            raise RuntimeError("Liste --probe-airports invalide.")
+        for icao in icaos:
+            airport = parse_official_airport_document(
+                session,
+                cycle,
+                PdfDocument(icao, f"{atlas_vac_directory(cycle)}/AD-2.{icao}.pdf"),
+            )
+            if not airport.get("frequencies"):
+                raise RuntimeError(f"Sonde eAIP sans fréquence exploitable pour {icao}.")
+            print(
+                f"Sonde eAIP {icao}: {len(airport['frequencies'])} fréquences via "
+                f"{airport.get('sourceReference', 'source inconnue')}."
+            )
+        print(f"Sonde eAIP AIRAC {cycle.name} OK pour {len(icaos)} aérodromes.")
+        return 0
     archive_url=args.source_url or try_discover_archive_url(session,cycle)
     archive_bytes=extract_archive_bytes(session,args.source_archive,archive_url)
     if archive_bytes:
@@ -741,9 +1100,9 @@ def main()->int:
         airports=parse_aixm(xml_bytes,cycle,archive_url or str(Path(args.source_archive).resolve()))
         source_url=archive_url or AIM_CATALOG
     else:
-        source_kind="SIA Atlas VAC officiel (secours lorsque l'export XML direct n'est pas accessible)"
+        source_kind="SIA eAIP HTML/PDF AD 2.18 + Atlas VAC officiel (secours lorsque l'export XML direct n'est pas accessible)"
         airports=build_from_vac(session,cycle,args.workers,args.max_pages)
-        source_url=atlas_vac_directory(cycle)
+        source_url=aip_html_directory(cycle)
     write_database(Path(args.output),cycle,airports,source_kind,source_url,args.slot,args.min_airports,args.min_frequencies)
     return 0
 

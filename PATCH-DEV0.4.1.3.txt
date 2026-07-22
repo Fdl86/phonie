@@ -1,0 +1,18 @@
+PHONIE DEV0.4.1.3 - eAIP AD 2.18 RADIO HOTFIX
+
+Cause corrigée :
+- les 420 aérodromes étaient bien découverts ;
+- les PDF Atlas VAC ne restituaient que 113 fréquences exploitables ;
+- le seuil national de 150 a correctement bloqué la base incomplète.
+
+Correction :
+- eAIP HTML AD 2.18 comme source radio principale ;
+- PDF eAIP complet AD 2 en repli ;
+- Atlas VAC en dernier secours ;
+- exclusion stricte de la rubrique AD 2.19 ;
+- sonde officielle LFBI/LFOU avant la génération nationale ;
+- seuils de sécurité inchangés ;
+- aucune fréquence opérationnelle codée dans la production.
+
+Commit conseillé :
+PHONIE DEV0.4.1.3 - eAIP AD 2.18 radio hotfix

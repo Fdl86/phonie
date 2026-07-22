@@ -1,0 +1,47 @@
+PHONIE DEV0.4.1.3 - VALIDATION STATIQUE ET PARSEUR SIA
+
+Cause confirmée dans le workflow précédent
+- catalogue SIA opérationnel : 420 aérodromes découverts et traités
+- échec après extraction : 113 fréquences, sous le minimum de sécurité 150
+- cause : couche texte incomplète ou illisible de nombreuses cartes Atlas VAC
+- seuil national non abaissé
+
+Correctif contrôlé
+- extraction prioritaire depuis l'eAIP HTML AD 2.18
+- repli sur le PDF eAIP complet AD 2
+- Atlas VAC conservé uniquement en dernier secours
+- arrêt du parseur avant AD 2.19 pour exclure VOR, DME, ILS et autres aides de navigation
+- priorité donnée à la colonne Service officielle sur les mots contenus dans les remarques
+- distinction TWR / SOL / PREVOL à partir du service et de l'indicatif publiés
+- extraction du nom dans AD 2.1
+- diagnostics séparés eAIP HTML, eAIP PDF et Atlas VAC
+- sonde en ligne LFBI/LFOU ajoutée avant la génération nationale
+- aucune fréquence opérationnelle ajoutée au code de production
+
+Contrôles exécutés dans cet environnement
+- 61 fichiers C# présents
+- 9 fichiers JSON valides
+- 9 fichiers XML/XAML/CSProj/manifest valides
+- 2 workflows YAML valides
+- scripts Python compilés syntaxiquement
+- tests AIXM et génération déterministe réussis
+- test pagination catalogue réussi
+- test repli direct DVD réussi
+- test eAIP HTML AD 2.18 réussi
+- test eAIP PDF AD 2.18 réussi
+- test de priorité de la colonne Service réussi
+- aucune fréquence 118-136 MHz codée dans src/*.cs
+- aucun dossier bin, obj, dist, node_modules ou __pycache__ inclus
+
+Validation sur publications SIA réelles
+- LFBI : 5 entrées radio extraites, Tour / Approche / ATIS / FIS / A/A
+- LFOU : 2 entrées radio extraites, AFIS / A/A
+- LFPB : 7 entrées radio extraites, Tour / Approche / Sol / Prévol / ATIS / FIS
+- noms AD 2.1 correctement extraits pour les trois aérodromes
+- fréquences de navigation AD 2.19 exclues
+
+Limite honnête
+- cet environnement ne dispose pas du SDK .NET/WPF Windows
+- il ne peut pas exécuter ici la génération nationale en ligne des 420 aérodromes
+- le workflow GitHub doit encore valider la sonde eAIP active, la génération nationale, la compilation .NET, les Smoke Tests, les Core Tests et la publication Windows x64
+- le code C# fonctionnel n'a pas été modifié, hors numéros de version ; le correctif porte sur le générateur et le workflow SIA

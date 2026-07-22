@@ -1,17 +1,20 @@
-# PHONIE DEV0.4.1.2 - SIA DIRECT DVD FALLBACK & CONTROLLER VOICES
+# PHONIE DEV0.4.1.3 - eAIP AD 2.18 RADIO HOTFIX & CONTROLLER VOICES
 
 Application ATC VFR locale, portable et sans installation pour MSFS 2020 et MSFS 2024.
 
-## Correctif DEV0.4.1.2
+## Correctif DEV0.4.1.3
 
-La génération SIA ne dépend plus d'une recherche globale `AD-2` qui renvoie zéro document dans GitHub Actions.
+La découverte SIA fonctionne désormais : le workflow DEV0.4.1.2 a trouvé et traité 420 aérodromes. Son échec venait ensuite de l'extraction radio des cartes Atlas VAC : plusieurs PDF utilisent des polices cartographiques dont la couche texte ne restitue pas correctement les tableaux, ce qui limitait la base à 113 fréquences.
 
-Le générateur utilise maintenant deux voies indépendantes :
+Le générateur utilise maintenant cette chaîne officielle :
 
-- recherches catalogue par préfixes ICAO `LFA` à `LFZ` ;
-- repli déterministe sur les PDF du DVD AIRAC officiel, sondés par requêtes partielles avant téléchargement.
+- export SIA XML/AIXM 4.5 lorsqu'il est directement accessible ;
+- découverte des ICAO par le catalogue Atlas VAC ;
+- extraction prioritaire de la rubrique eAIP AD 2.18 depuis la page HTML officielle ;
+- repli sur le PDF eAIP complet AD 2 si le HTML n'est pas disponible ;
+- Atlas VAC uniquement en dernier secours.
 
-La base reste produite uniquement à partir des publications officielles SIA. Aucune fréquence opérationnelle et aucune liste d'aérodromes de production ne sont intégrées au code.
+Le seuil national de 200 aérodromes et 150 fréquences n'a pas été abaissé. Aucune fréquence opérationnelle et aucune liste d'aérodromes de production ne sont intégrées au code.
 
 ## Fonctionnalités principales
 
@@ -26,13 +29,13 @@ La base reste produite uniquement à partir des publications officielles SIA. Au
 
 ## Compilation
 
-Le workflow GitHub génère la base SIA active lorsque le dépôt est encore en mode amorçage, valide les données, compile, exécute les tests puis publie l'artefact Windows x64 autonome.
+Le workflow commence par les tests hors ligne, puis sonde en direct les rubriques AD 2.18 de deux aérodromes de validation avant de lancer la génération nationale. Il valide ensuite la base, compile tous les projets sans avertissement, exécute les Smoke Tests et Core Tests, puis publie l'artefact Windows x64 autonome.
 
 Aucune version ne doit être considérée comme testable avant que le workflow complet soit vert.
 
 ## Test
 
-Commencer par `TEST-DEV0.4.1.2.md`.
+Commencer par `TEST-DEV0.4.1.3.md`.
 
 ## Stockage portable
 
