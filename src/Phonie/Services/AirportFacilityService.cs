@@ -704,7 +704,7 @@ public sealed class AirportFacilityService : IDisposable
         File.WriteAllText(Path.Combine(diagnosticDirectory, "taxipath-fields.csv"), fieldsCsv.ToString(), new UTF8Encoding(false));
 
         var readme = new StringBuilder();
-        readme.AppendLine("PHONIE DEV0.4.1.3 - SIA RADIO & CONTROLLER VOICES");
+        readme.AppendLine("PHONIE DEV0.4.1.4 - SIA RADIO & CONTROLLER VOICES");
         readme.AppendLine();
         readme.AppendLine("Ce dossier contient la capture brute SimConnect Facilities de la demande aérodrome.");
         readme.AppendLine("Ne modifier aucun fichier avant transmission pour analyse.");
@@ -789,7 +789,7 @@ public sealed class AirportFacilityService : IDisposable
     private static string BuildTextReport(AirportFacilityReport report)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("PHONIE DEV0.4.1.3 - SIA RADIO & CONTROLLER VOICES");
+        builder.AppendLine("PHONIE DEV0.4.1.4 - SIA RADIO & CONTROLLER VOICES");
         builder.AppendLine($"Date : {report.Timestamp:yyyy-MM-dd HH:mm:ss zzz}");
         builder.AppendLine($"Simulateur : {report.Simulator}");
         builder.AppendLine($"Source : {report.Source}");

@@ -1,0 +1,20 @@
+PHONIE DEV0.4.1.4 - C# NULLABLE COMPILE HOTFIX
+
+Correctif ciblé après le workflow DEV0.4.1.3.
+
+La génération radio SIA est validée par le journal GitHub :
+- 420 aérodromes détectés ;
+- 672 fréquences extraites ;
+- validation nationale réussie ;
+- aucune fréquence opérationnelle codée dans src.
+
+Correction de compilation :
+- OfficialRadioCatalogService.cs : déclaration explicite DateTimeOffset? pour nextDate ;
+- correction de CS0173 entre DateTimeOffset et null.
+
+Correction du workflow :
+- restore, compilation zéro avertissement et tests C# sont désormais lancés avant la génération SIA ;
+- une erreur C# est donc signalée rapidement, sans attendre plusieurs minutes de collecte réseau ;
+- la présence du payload SIA généré reste vérifiée avant publication.
+
+Aucun changement de logique radio, de Ground Operations, d'ASR, de voix ou de stockage portable.

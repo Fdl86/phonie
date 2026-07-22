@@ -1,0 +1,8 @@
+PHONIE DEV0.4.1.4 - VALIDATION STATIQUE
+
+- Correctif CS0173 appliqué : DateTimeOffset? nextDate.
+- Recherche des expressions conditionnelles valeur/null effectuée dans src et tests.
+- Workflow réordonné : compilation et tests C# avant génération réseau SIA.
+- JSON, XML/XAML et YAML vérifiés localement.
+- Tests Python du générateur SIA exécutés localement.
+- Compilation Windows définitive à confirmer par GitHub Actions.

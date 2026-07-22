@@ -77,7 +77,7 @@ public static class OfficialRadioCatalogService
                         var stale = now >= dataset.EffectiveUntil;
                         var next = manifest.Next;
                         var nextCycle = next is not null && next.EffectiveFrom > now ? next.AiracCycle : null;
-                        var nextDate = next is not null && next.EffectiveFrom > now ? next.EffectiveFrom : null;
+                        DateTimeOffset? nextDate = next is not null && next.EffectiveFrom > now ? next.EffectiveFrom : null;
                         var message = stale
                             ? "Dernière base SIA validée utilisée hors période AIRAC : vérifier la mise à jour."
                             : candidate.Label == "current"

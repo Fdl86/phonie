@@ -1,8 +1,13 @@
-# PHONIE DEV0.4.1.3 - eAIP AD 2.18 RADIO HOTFIX & CONTROLLER VOICES
+# PHONIE DEV0.4.1.4 - C# NULLABLE COMPILE HOTFIX
+
+## Correctif DEV0.4.1.4
+
+DEV0.4.1.3 a correctement généré et validé la base SIA nationale, mais la compilation des Smoke Tests a révélé `CS0173` dans `OfficialRadioCatalogService.cs`. DEV0.4.1.4 type explicitement la date optionnelle en `DateTimeOffset?` et lance désormais toute la compilation C# avant la collecte SIA coûteuse.
+
 
 Application ATC VFR locale, portable et sans installation pour MSFS 2020 et MSFS 2024.
 
-## Correctif DEV0.4.1.3
+## Fonctionnalités radio héritées de DEV0.4.1.3
 
 La découverte SIA fonctionne désormais : le workflow DEV0.4.1.2 a trouvé et traité 420 aérodromes. Son échec venait ensuite de l'extraction radio des cartes Atlas VAC : plusieurs PDF utilisent des polices cartographiques dont la couche texte ne restitue pas correctement les tableaux, ce qui limitait la base à 113 fréquences.
 
@@ -29,13 +34,13 @@ Le seuil national de 200 aérodromes et 150 fréquences n'a pas été abaissé. 
 
 ## Compilation
 
-Le workflow commence par les tests hors ligne, puis sonde en direct les rubriques AD 2.18 de deux aérodromes de validation avant de lancer la génération nationale. Il valide ensuite la base, compile tous les projets sans avertissement, exécute les Smoke Tests et Core Tests, puis publie l'artefact Windows x64 autonome.
+Le workflow restaure et compile d’abord tous les projets avec les avertissements traités comme erreurs, puis exécute les Smoke Tests et Core Tests. Seulement après cette validation C#, il lance les tests Python, les sondes eAIP et la génération nationale SIA, avant de publier l’artefact Windows x64 autonome.
 
 Aucune version ne doit être considérée comme testable avant que le workflow complet soit vert.
 
 ## Test
 
-Commencer par `TEST-DEV0.4.1.3.md`.
+Commencer par `TEST-DEV0.4.1.4.md`.
 
 ## Stockage portable
 
