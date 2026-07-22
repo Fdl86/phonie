@@ -1,4 +1,4 @@
-name: Build PHONIE DEV0.4.1.4 - C# Nullable Compile Hotfix
+name: Build PHONIE DEV0.4.1.5 - Full Build Closure Hotfix
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build-portable-windows:
-    name: Compile first, generate SIA, test and publish Windows x64
+    name: Compile, test, preflight publish, generate SIA and publish Windows x64
     runs-on: windows-2022
     timeout-minutes: 75
 
@@ -49,44 +49,53 @@ jobs:
             "tools/sia_radio_builder.py",
             "tools/validate_sia_radio.py",
             "README.md",
-            "TEST-DEV0.4.1.4.md",
-            "SIA-RADIO-DATABASE-DEV0.4.1.4.md",
-            "CONTROLLER-VOICES-DEV0.4.1.4.md",
-            "CHANGELOG-DEV0.4.1.4.md",
-            "STATIC-VALIDATION-DEV0.4.1.4.txt",
-            "SOURCE-MANIFEST-DEV0.4.1.4.txt"
+            "TEST-DEV0.4.1.5.md",
+            "SIA-RADIO-DATABASE-DEV0.4.1.5.md",
+            "CONTROLLER-VOICES-DEV0.4.1.5.md",
+            "CHANGELOG-DEV0.4.1.5.md",
+            "STATIC-VALIDATION-DEV0.4.1.5.txt",
+            "SOURCE-MANIFEST-DEV0.4.1.5.txt"
           )
           $missing = @($required | Where-Object { -not (Test-Path $_) })
           if ($missing.Count -gt 0) {
             throw "Fichiers source manquants : $($missing -join ', ')"
           }
-          Write-Host "Précontrôle source OK - $($required.Count) éléments requis présents avant génération réseau."
+          $radioSource = Get-Content "src/Phonie/Services/RadioDataUpdateService.cs" -Raw
+          if ($radioSource -notmatch 'using System\.Net\.Http;') {
+            throw "Import System.Net.Http absent de RadioDataUpdateService.cs."
+          }
+          Write-Host "Précontrôle source OK - $($required.Count) éléments requis et import HttpClient présents."
           dotnet --info
 
       - name: Restore projects
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          dotnet restore src/Phonie.Core/Phonie.Core.csproj
+          dotnet restore src/Phonie/Phonie.csproj
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet restore tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet restore tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet restore src/Phonie/Phonie.csproj
+          dotnet restore src/Phonie.Core/Phonie.Core.csproj
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build all projects with zero warnings
+      - name: Build PHONIE app first with zero warnings
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          dotnet build src/Phonie.Core/Phonie.Core.csproj --configuration Release --no-restore -warnaserror
+          dotnet build src/Phonie/Phonie.csproj --configuration Release --no-restore -warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build test projects with zero warnings
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
           dotnet build tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-restore -warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj --configuration Release --no-restore -warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build src/Phonie/Phonie.csproj --configuration Release --no-restore -warnaserror
+          dotnet build src/Phonie.Core/Phonie.Core.csproj --configuration Release --no-restore -warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run smoke tests
@@ -94,6 +103,29 @@ jobs:
 
       - name: Run core tests
         run: dotnet run --project tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj --configuration Release --no-build --no-restore
+
+      - name: Preflight autonomous Windows x64 publish
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $preflight = "dist-preflight/PHONIE-DEV0.4.1.5-win-x64"
+          dotnet publish src/Phonie/Phonie.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --no-restore `
+            --output $preflight `
+            -p:PublishSingleFile=false `
+            -p:PublishTrimmed=false `
+            -p:PublishReadyToRun=false `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "$preflight/PHONIE.exe")) {
+            throw "Prépublication invalide : PHONIE.exe absent."
+          }
+          Write-Host "Prépublication Windows x64 OK."
+          Remove-Item "dist-preflight" -Recurse -Force
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -145,7 +177,7 @@ jobs:
           --runtime win-x64
           --self-contained true
           --no-restore
-          --output dist/PHONIE-DEV0.4.1.4-win-x64
+          --output dist/PHONIE-DEV0.4.1.5-win-x64
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
@@ -155,7 +187,7 @@ jobs:
       - name: Add portable folders and documentation
         shell: pwsh
         run: |
-          $root = "dist/PHONIE-DEV0.4.1.4-win-x64"
+          $root = "dist/PHONIE-DEV0.4.1.5-win-x64"
           $folders = @(
             "config",
             "logs",
@@ -175,7 +207,7 @@ jobs:
           }
           $commit = "${{ github.sha }}".Substring(0, 7)
           @"
-          PHONIE DEV0.4.1.4 - C# NULLABLE COMPILE HOTFIX & CONTROLLER VOICES
+          PHONIE DEV0.4.1.5 - FULL BUILD CLOSURE HOTFIX & CONTROLLER VOICES
           Commit: $commit
           Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
           Runtime: Windows x64 autonome
@@ -197,12 +229,12 @@ jobs:
           "@ | Set-Content -Encoding UTF8 "$root/models/vosk/LISEZ-MOI.txt"
           $docs = @(
             "README.md",
-            "TEST-DEV0.4.1.4.md",
-            "SIA-RADIO-DATABASE-DEV0.4.1.4.md",
-            "CONTROLLER-VOICES-DEV0.4.1.4.md",
-            "CHANGELOG-DEV0.4.1.4.md",
-            "STATIC-VALIDATION-DEV0.4.1.4.txt",
-            "SOURCE-MANIFEST-DEV0.4.1.4.txt",
+            "TEST-DEV0.4.1.5.md",
+            "SIA-RADIO-DATABASE-DEV0.4.1.5.md",
+            "CONTROLLER-VOICES-DEV0.4.1.5.md",
+            "CHANGELOG-DEV0.4.1.5.md",
+            "STATIC-VALIDATION-DEV0.4.1.5.txt",
+            "SOURCE-MANIFEST-DEV0.4.1.5.txt",
             "GROUND-OPERATIONS-DEV0.4.0.9.md",
             "FACILITIES-NORMALIZATION-DEV0.4.0.9.md",
             "CALLSIGN-RULES-DEV0.4.0.9.md",
@@ -217,7 +249,7 @@ jobs:
       - name: Verify portable artifact
         shell: pwsh
         run: |
-          $root = "dist/PHONIE-DEV0.4.1.4-win-x64"
+          $root = "dist/PHONIE-DEV0.4.1.5-win-x64"
           $required = @(
             "$root/PHONIE.exe",
             "$root/config",
@@ -242,7 +274,7 @@ jobs:
       - name: Upload portable artifact - single extraction
         uses: actions/upload-artifact@v4
         with:
-          name: PHONIE-DEV0.4.1.4-win-x64
-          path: dist/PHONIE-DEV0.4.1.4-win-x64/**
+          name: PHONIE-DEV0.4.1.5-win-x64
+          path: dist/PHONIE-DEV0.4.1.5-win-x64/**
           if-no-files-found: error
           retention-days: 14

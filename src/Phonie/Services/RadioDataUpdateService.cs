@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -25,7 +26,7 @@ public sealed class RadioDataUpdateService : IDisposable
         {
             Timeout = TimeSpan.FromSeconds(45),
         };
-        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("PHONIE", "0.4.1.4"));
+        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("PHONIE", "0.4.1.5"));
     }
 
     public event EventHandler<string>? LogMessage;

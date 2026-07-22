@@ -79,7 +79,7 @@ assert any("page=2" in url for url in fake.urls)
 
 print("Tests générateur SIA OK")
 
-# Regression DEV0.4.1.4: deterministic direct-DVD fallback retained.
+# Regression DEV0.4.1.5: deterministic direct-DVD fallback retained.
 groups = b.direct_vac_candidates()
 assert len(groups) == 26 and all(len(group) == 26 for group in groups)
 assert groups[0][0] == "LFAA" and groups[-1][-1] == "LFZZ"
@@ -130,9 +130,9 @@ finally:
     b.discover_vac_catalog_query = original_catalog
     b.discover_vac_documents_direct = original_direct
 
-print("Tests fallback DVD DEV0.4.1.4 OK")
+print("Tests fallback DVD DEV0.4.1.5 OK")
 
-# Regression DEV0.4.1.4: the Atlas VAC catalogue can be complete while chart
+# Regression DEV0.4.1.5: the Atlas VAC catalogue can be complete while chart
 # PDF text layers still lose most radio rows. The authoritative eAIP AD 2.18
 # HTML/PDF table must therefore be the primary parser.
 assert b.aip_airport_html_url(cycle, "LFBI").endswith(
@@ -193,7 +193,7 @@ assert {(row["channelKhz"], row["kind"]) for row in lfou_rows} == {
 }
 assert all(row["channelKhz"] != 116200 for row in lfou_rows)
 
-print("Tests eAIP AD 2.18 DEV0.4.1.4 OK")
+print("Tests eAIP AD 2.18 DEV0.4.1.5 OK")
 
 # Explicit Service column must win over words contained in free-text remarks.
 lfpb_pdf_text = """
@@ -222,7 +222,7 @@ assert by_channel[121955]["kind"] == "Clearance"
 assert by_channel[121905]["kind"] == "Ground"
 assert by_channel[120005]["serviceCode"] == "ATIS"
 
-print("Tests priorité colonne Service DEV0.4.1.4 OK")
+print("Tests priorité colonne Service DEV0.4.1.5 OK")
 
 class FakeOfficialResponse:
     def __init__(self, text: str, url: str, content_type: str = "text/html; charset=utf-8"):
@@ -249,4 +249,4 @@ assert lfbi_official["sourceReference"] == "SIA eAIP HTML AD 2"
 assert lfbi_official["name"] == "POITIERS BIARD"
 assert len(lfbi_official["frequencies"]) == 5
 
-print("Tests sélection source eAIP HTML DEV0.4.1.4 OK")
+print("Tests sélection source eAIP HTML DEV0.4.1.5 OK")
