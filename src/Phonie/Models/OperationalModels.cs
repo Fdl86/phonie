@@ -21,7 +21,9 @@ public sealed record OperationalFrequency(
     string StationKey = "",
     string Scope = "Local",
     string DataRevision = "",
-    string Channel = "");
+    string Channel = "",
+    string ServiceCode = "",
+    string AirportIcao = "");
 
 public sealed record AtisInformation(
     string AirportIcao,

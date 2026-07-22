@@ -89,7 +89,8 @@ public sealed record SiaRadioResolution(
     SiaAirportRadioRecord? Airport,
     SiaRadioFrequencyRecord? Frequency,
     IReadOnlyList<SiaRadioFrequencyRecord> Candidates,
-    string Reason);
+    string Reason,
+    bool ServiceConfirmed = false);
 
 public static class RadioChannel
 {
@@ -209,7 +210,7 @@ public sealed class SiaRadioCatalog
     public SiaAirportRadioRecord? GetAirport(string? icao) =>
         airports.TryGetValue(NormalizeIcao(icao), out var airport) ? airport : null;
 
-    public SiaRadioResolution Resolve(string? icao, double activeMhz, bool preferLocal)
+    public SiaRadioResolution Resolve(string? icao, double activeMhz, bool preferLocal, SiaRadioServiceKind? preferredServiceKind = null)
     {
         var normalized = NormalizeIcao(icao);
         if (!airports.TryGetValue(normalized, out var airport))
@@ -228,6 +229,27 @@ public sealed class SiaRadioCatalog
             return new SiaRadioResolution(true, false, false, airport, null, matches, "Canal actif absent des moyens radio SIA publiés pour cet aérodrome.");
         }
 
+        var confirmedMatches = preferredServiceKind is null
+            ? Array.Empty<SiaRadioFrequencyRecord>()
+            : matches.Where(item => IsCompatibleService(item.Kind, preferredServiceKind.Value)).ToArray();
+        if (confirmedMatches.Length > 0)
+        {
+            var selectedConfirmed = confirmedMatches
+                .OrderByDescending(item => ScopePriority(item.Scope, preferLocal))
+                .ThenByDescending(item => item.Interactive)
+                .ThenBy(item => item.ServiceCode, StringComparer.OrdinalIgnoreCase)
+                .First();
+            return new SiaRadioResolution(
+                true,
+                true,
+                false,
+                airport,
+                selectedConfirmed,
+                matches,
+                $"Canal SIA départagé par le type de service Facilities actif ({preferredServiceKind}).",
+                true);
+        }
+
         var groupedOperationalModes = matches
             .Select(item => (item.Kind, item.Interactive, item.ScheduleState, item.Scope))
             .Distinct()
@@ -235,16 +257,9 @@ public sealed class SiaRadioCatalog
         var ambiguous = groupedOperationalModes.Length > 1
             && matches.Any(item => item.ScheduleState == SiaRadioScheduleState.PublishedNotEvaluated);
 
-        SiaRadioFrequencyRecord selected;
-        if (ambiguous)
-        {
-            selected = matches.FirstOrDefault(item => !item.Interactive)
-                ?? matches[0];
-        }
-        else
-        {
-            selected = matches[0];
-        }
+        var selected = ambiguous
+            ? matches.FirstOrDefault(item => !item.Interactive) ?? matches[0]
+            : matches[0];
 
         return new SiaRadioResolution(
             true,
@@ -328,6 +343,19 @@ public sealed class SiaRadioCatalog
             }
         }
     }
+
+
+    private static bool IsCompatibleService(SiaRadioServiceKind published, SiaRadioServiceKind preferred) =>
+        published == preferred
+        || (preferred == SiaRadioServiceKind.ControlledOther
+            && published is (SiaRadioServiceKind.Tower
+                or SiaRadioServiceKind.Ground
+                or SiaRadioServiceKind.Clearance
+                or SiaRadioServiceKind.Approach
+                or SiaRadioServiceKind.Departure
+                or SiaRadioServiceKind.ControlledOther))
+        || (preferred == SiaRadioServiceKind.Information
+            && published is (SiaRadioServiceKind.Information or SiaRadioServiceKind.FlightInformation));
 
     private static int RecommendationPriority(SiaRadioFrequencyRecord item, bool isOnGround)
     {

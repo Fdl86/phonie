@@ -1,4 +1,4 @@
-# Base radio SIA DEV0.4.1.6
+# Base radio SIA DEV0.4.1.7
 
 Les jeux de données référencés par un manifest sont vérifiés sur leurs octets exacts. Git ne doit appliquer aucune conversion de fin de ligne aux fichiers concernés.
 

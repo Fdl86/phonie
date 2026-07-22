@@ -1,11 +1,19 @@
-# PHONIE DEV0.4.1.6 - SHA-256 INTEGRITY & RADIO CORRECTNESS
+# PHONIE DEV0.4.1.7 - RADIO CONTEXT, CONTACT HISTORY & FLIGHT RESET
 
-DEV0.4.1.6 ferme la cause racine du smoke test Windows : Git ne peut plus convertir en CRLF les jeux de données dont le SHA-256 est déclaré dans un manifest.
+Cette version ferme les blocages observés pendant le premier essai national de DEV0.4.1.6.
 
-Cette version corrige également la recommandation des services régionaux, la sérialisation camelCase du manifest, la bascule AIRAC en mémoire sur dossier non inscriptible et les chemins de cache voix incompatibles avec Windows.
+Principaux changements :
 
-Le workflow compile et exécute tous les tests avant la génération réseau. Il vérifie désormais les attributs Git, les fins de ligne et chaque SHA-256 avec un diagnostic explicite.
+- départage d'un canal SIA Tour/A-A par le type Facilities réellement actif ;
+- identification de l'organisme par la fréquence, sans exiger que son nom soit parfaitement reconnu ;
+- silence lorsqu'une autre station est clairement appelée ;
+- historique des contacts, salutations et indicatifs abrégés séparé par organisme ;
+- conservation du contact après une écoute ATIS ou un changement normal d'aérodrome ;
+- remise à zéro complète lors d'un nouveau vol, Restart Flight, retour menu, reconnexion, changement d'appareil ou d'indicatif ;
+- bouton manuel `Nouvelle session` dans le diagnostic ;
+- refus des instructions sol sur un SIV/FIS régional ;
+- phraséologie sol et départ revue à partir du manuel DSNA/ENAC et de la fiche de l'Aéroclub du Poitou fournis au projet.
 
-Commencer par `TEST-DEV0.4.1.6.md`.
+Commencer par `TEST-DEV0.4.1.7.md`.
 
-Après extraction dans le dépôt en conservant `.git`, exécuter une fois `RENORMALIZE-GIT-INDEX-DEV0.4.1.6.cmd`, puis vérifier et pousser avec GitHub Desktop. Le script refuse de continuer si un attribut Git, une fin de ligne ou un SHA-256 radio n’est pas exact.
+Après extraction à la racine du dépôt en conservant `.git`, exécuter `RENORMALIZE-GIT-INDEX-DEV0.4.1.7.cmd`. Le script vérifie les attributs Git, les fins de ligne et les SHA-256 radio avant le commit.

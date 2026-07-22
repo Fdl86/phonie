@@ -1,0 +1,13 @@
+PHONIE DEV0.4.1.7
+RADIO CONTEXT - CONTACT HISTORY - FLIGHT SESSION RESET - PHRASEOLOGY
+
+Correctifs bloquants :
+- canal SIA partagé Tour/A-A départagé par Facilities ;
+- historique par organisme ;
+- salutations et indicatifs abrégés par station ;
+- remise à zéro Restart Flight / menu principal / nouveau vol ;
+- station facultative, autre station clairement appelée = silence ;
+- SIV régional interdit pour les opérations au sol ;
+- suppression des réponses Poitiers codées en dur.
+
+Validation exécutable obligatoire : GitHub Actions build-windows.yml.

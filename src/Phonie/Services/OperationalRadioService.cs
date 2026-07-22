@@ -19,10 +19,16 @@ public static class OperationalRadioService
             string.IsNullOrWhiteSpace(radioAirportIcao)
                 ? snapshot.RadioAirportIcao
                 : radioAirportIcao);
+        var matchingFacility = airportReport?.Frequencies
+            .Where(item => MatchesLegacy(item.FrequencyMhz, frequency))
+            .OrderBy(item => Math.Abs(item.FrequencyMhz - frequency))
+            .FirstOrDefault();
+        var preferredServiceKind = ResolvePreferredSiaKind(snapshot.Com1StationType, matchingFacility);
         var official = OfficialRadioCatalogService.Resolve(
             resolvedIcao,
             frequency,
-            snapshot.Timestamp);
+            snapshot.Timestamp,
+            preferredServiceKind);
         if (official.Frequency is not null)
         {
             return official.Frequency;
@@ -41,10 +47,7 @@ public static class OperationalRadioService
         }
 
         // Hors périmètre français, les Facilities restent un secours diagnostique générique.
-        var facilityFrequency = airportReport?.Frequencies
-            .Where(item => MatchesLegacy(item.FrequencyMhz, frequency))
-            .OrderBy(item => Math.Abs(item.FrequencyMhz - frequency))
-            .FirstOrDefault();
+        var facilityFrequency = matchingFacility;
         var facilityResolution = facilityFrequency is not null && airportReport is not null
             ? ResolveFacilityFrequency(facilityFrequency, airportReport, resolvedIcao)
             : null;
@@ -241,6 +244,44 @@ public static class OperationalRadioService
             ? (string.IsNullOrWhiteSpace(report.Icao) ? report.RequestedIcao : report.Icao)
             : resolvedIcao);
         return string.IsNullOrWhiteSpace(icao) ? "STATION" : icao;
+    }
+
+    private static SiaRadioServiceKind? ResolvePreferredSiaKind(
+        string? stationType,
+        AirportFrequencyData? facility)
+    {
+        if (facility is not null)
+        {
+            return facility.Type switch
+            {
+                1 or 12 or 13 => SiaRadioServiceKind.AutomaticBroadcast,
+                2 or 3 or 4 => SiaRadioServiceKind.SelfInformation,
+                5 => SiaRadioServiceKind.Clearance,
+                6 => SiaRadioServiceKind.Tower,
+                7 => SiaRadioServiceKind.Ground,
+                8 => SiaRadioServiceKind.Approach,
+                9 => SiaRadioServiceKind.Departure,
+                10 or 14 or 15 => SiaRadioServiceKind.ControlledOther,
+                11 => SiaRadioServiceKind.Information,
+                _ => InferPreferredKind(facility.Name),
+            };
+        }
+
+        return InferPreferredKind(stationType);
+    }
+
+    private static SiaRadioServiceKind? InferPreferredKind(string? value)
+    {
+        var name = value?.Trim().ToUpperInvariant() ?? string.Empty;
+        if (ContainsAny(name, "TOWER", "TOUR", "TWR")) return SiaRadioServiceKind.Tower;
+        if (ContainsAny(name, "GROUND", "SOL", "GND")) return SiaRadioServiceKind.Ground;
+        if (ContainsAny(name, "CLEARANCE", "DELIVERY", "PREVOL", "PRÉVOL")) return SiaRadioServiceKind.Clearance;
+        if (ContainsAny(name, "APPROACH", "APPROCHE", "APP")) return SiaRadioServiceKind.Approach;
+        if (ContainsAny(name, "DEPARTURE", "DEPART", "DÉPART")) return SiaRadioServiceKind.Departure;
+        if (ContainsAny(name, "ATIS", "AWOS", "ASOS", "AWS")) return SiaRadioServiceKind.AutomaticBroadcast;
+        if (ContainsAny(name, "CTAF", "UNICOM", "MULTICOM", "AUTO-INFO", "AUTO INFO", "A/A", "A-A")) return SiaRadioServiceKind.SelfInformation;
+        if (ContainsAny(name, "AFIS", "INFORMATION", "INFO", "FSS", "SIV", "FIS")) return SiaRadioServiceKind.Information;
+        return null;
     }
 
     private static bool MatchesLegacy(double left, double right) =>

@@ -1,4 +1,4 @@
-name: Build PHONIE DEV0.4.1.6 - SHA-256 Integrity and Radio Correctness
+name: Build PHONIE DEV0.4.1.7 - Radio Context, Contact History and Flight Reset
 
 on:
   workflow_dispatch:
@@ -40,6 +40,7 @@ jobs:
             "src/Phonie.Core/SiaRadioCatalog.cs",
             "src/Phonie.Core/WindowsPathSegment.cs",
             "src/Phonie/Models/SiaRadioDataModels.cs",
+            "src/Phonie/Models/FlightSessionModels.cs",
             "src/Phonie/Services/NearbyAirportService.cs",
             "src/Phonie/Services/OfficialRadioCatalogService.cs",
             "src/Phonie/Services/RadioDataUpdateService.cs",
@@ -51,14 +52,15 @@ jobs:
             "tools/sia_radio_builder.py",
             "tools/validate_sia_radio.py",
             "README.md",
-            "RENORMALIZE-GIT-INDEX-DEV0.4.1.6.cmd",
-            "RENORMALIZE-GIT-INDEX-DEV0.4.1.6.ps1",
-            "TEST-DEV0.4.1.6.md",
-            "SIA-RADIO-DATABASE-DEV0.4.1.6.md",
-            "CONTROLLER-VOICES-DEV0.4.1.6.md",
-            "CHANGELOG-DEV0.4.1.6.md",
-            "STATIC-VALIDATION-DEV0.4.1.6.txt",
-            "SOURCE-MANIFEST-DEV0.4.1.6.txt"
+            "RENORMALIZE-GIT-INDEX-DEV0.4.1.7.cmd",
+            "RENORMALIZE-GIT-INDEX-DEV0.4.1.7.ps1",
+            "TEST-DEV0.4.1.7.md",
+            "SIA-RADIO-DATABASE-DEV0.4.1.7.md",
+            "CONTROLLER-VOICES-DEV0.4.1.7.md",
+            "RADIO-CONTACT-HISTORY-DEV0.4.1.7.md",
+            "CHANGELOG-DEV0.4.1.7.md",
+            "STATIC-VALIDATION-DEV0.4.1.7.txt",
+            "SOURCE-MANIFEST-DEV0.4.1.7.txt"
           )
           $missing = @($required | Where-Object { -not (Test-Path $_) })
           if ($missing.Count -gt 0) {
@@ -67,6 +69,18 @@ jobs:
           $radioSource = Get-Content "src/Phonie/Services/RadioDataUpdateService.cs" -Raw
           if ($radioSource -notmatch 'using System\.Net\.Http;') {
             throw "Import System.Net.Http absent de RadioDataUpdateService.cs."
+          }
+          $groundSource = Get-Content "src/Phonie.Core/GroundOperationsEngine.cs" -Raw
+          $simConnectSource = Get-Content "src/Phonie/Services/SimConnectService.cs" -Raw
+          $siaSource = Get-Content "src/Phonie.Core/SiaRadioCatalog.cs" -Raw
+          if ($groundSource -notmatch 'ResetFlightSession' -or $groundSource -notmatch 'CALLED_STATION_MISMATCH') {
+            throw "Historique radio ou réinitialisation de session absent du moteur sol."
+          }
+          if ($simConnectSource -notmatch 'FlightLoaded' -or $simConnectSource -notmatch 'SimStop') {
+            throw "Détection des changements de session MSFS absente."
+          }
+          if ($siaSource -notmatch 'ServiceConfirmed' -or $siaSource -notmatch 'preferredServiceKind') {
+            throw "Départage Facilities/SIA absent."
           }
 
           $frozenPaths = @(
@@ -152,7 +166,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $preflight = "dist-preflight/PHONIE-DEV0.4.1.6-win-x64"
+          $preflight = "dist-preflight/PHONIE-DEV0.4.1.7-win-x64"
           dotnet publish src/Phonie/Phonie.csproj `
             --configuration Release `
             --runtime win-x64 `
@@ -221,7 +235,7 @@ jobs:
           --runtime win-x64
           --self-contained true
           --no-restore
-          --output dist/PHONIE-DEV0.4.1.6-win-x64
+          --output dist/PHONIE-DEV0.4.1.7-win-x64
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
@@ -231,7 +245,7 @@ jobs:
       - name: Add portable folders and documentation
         shell: pwsh
         run: |
-          $root = "dist/PHONIE-DEV0.4.1.6-win-x64"
+          $root = "dist/PHONIE-DEV0.4.1.7-win-x64"
           $folders = @(
             "config",
             "logs",
@@ -251,12 +265,13 @@ jobs:
           }
           $commit = "${{ github.sha }}".Substring(0, 7)
           @"
-          PHONIE DEV0.4.1.6 - SHA-256 INTEGRITY & RADIO CORRECTNESS
+          PHONIE DEV0.4.1.7 - RADIO CONTEXT, CONTACT HISTORY & FLIGHT RESET
           Commit: $commit
           Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
           Runtime: Windows x64 autonome
           Radio France: base nationale générée depuis les publications officielles SIA, aucune fréquence d'aérodrome codée dans l'application
-          Sécurité radio: dernière base SIA validée comme seul secours français, silence si donnée absente ou ambiguë
+          Sécurité radio: le type Facilities actif départage un canal SIA multimode; silence si la station appelée est incompatible
+          Historique: contacts, salutations et indicatifs abrégés mémorisés par organisme; remise à zéro à chaque nouvelle session de vol
           Voix: attribution aléatoire homme/femme par station, stable pendant la session, cache séparé par voix
           Aérodromes: moteur dynamique DEV0.4.0.9 conservé
           "@ | Set-Content -Encoding UTF8 "$root/BUILD-INFO.txt"
@@ -273,12 +288,13 @@ jobs:
           "@ | Set-Content -Encoding UTF8 "$root/models/vosk/LISEZ-MOI.txt"
           $docs = @(
             "README.md",
-            "TEST-DEV0.4.1.6.md",
-            "SIA-RADIO-DATABASE-DEV0.4.1.6.md",
-            "CONTROLLER-VOICES-DEV0.4.1.6.md",
-            "CHANGELOG-DEV0.4.1.6.md",
-            "STATIC-VALIDATION-DEV0.4.1.6.txt",
-            "SOURCE-MANIFEST-DEV0.4.1.6.txt",
+            "TEST-DEV0.4.1.7.md",
+            "SIA-RADIO-DATABASE-DEV0.4.1.7.md",
+            "CONTROLLER-VOICES-DEV0.4.1.7.md",
+            "RADIO-CONTACT-HISTORY-DEV0.4.1.7.md",
+            "CHANGELOG-DEV0.4.1.7.md",
+            "STATIC-VALIDATION-DEV0.4.1.7.txt",
+            "SOURCE-MANIFEST-DEV0.4.1.7.txt",
             "GROUND-OPERATIONS-DEV0.4.0.9.md",
             "FACILITIES-NORMALIZATION-DEV0.4.0.9.md",
             "CALLSIGN-RULES-DEV0.4.0.9.md",
@@ -293,7 +309,7 @@ jobs:
       - name: Verify portable artifact
         shell: pwsh
         run: |
-          $root = "dist/PHONIE-DEV0.4.1.6-win-x64"
+          $root = "dist/PHONIE-DEV0.4.1.7-win-x64"
           $required = @(
             "$root/PHONIE.exe",
             "$root/config",
@@ -318,7 +334,7 @@ jobs:
       - name: Upload portable artifact - single extraction
         uses: actions/upload-artifact@v4
         with:
-          name: PHONIE-DEV0.4.1.6-win-x64
-          path: dist/PHONIE-DEV0.4.1.6-win-x64/**
+          name: PHONIE-DEV0.4.1.7-win-x64
+          path: dist/PHONIE-DEV0.4.1.7-win-x64/**
           if-no-files-found: error
           retention-days: 14

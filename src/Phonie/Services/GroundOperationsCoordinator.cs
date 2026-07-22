@@ -75,10 +75,37 @@ public sealed class GroundOperationsCoordinator
                 DateTimeOffset.UtcNow,
                 "Graphe du nouvel aérodrome en attente.");
             this.occupancyDiagnostics = Array.Empty<GroundTrafficOccupancyDiagnostic>();
-            this.engine.Reset();
+            this.engine.ResetGroundContext();
         }
 
         this.PublishLog($"Moteur sol réinitialisé : {reason}");
+    }
+
+    public void ResetFlightSession(string reason)
+    {
+        lock (this.sync)
+        {
+            this.engine.ResetFlightSession();
+            this.airport = null;
+            this.profile = null;
+            this.lastDecision = null;
+            this.aircraft = null;
+            this.location = null;
+            this.ownLatitude = 0;
+            this.ownLongitude = 0;
+            this.hasOwnPosition = false;
+            this.ownCallsign = string.Empty;
+            this.runway = new RunwaySelection(false, null, "Piste en attente.", 0);
+            this.traffic = new GroundTrafficSnapshot(
+                DateTimeOffset.UtcNow,
+                false,
+                Array.Empty<GroundTrafficContactData>(),
+                "Nouvelle session de vol.");
+            this.occupancy = GroundOccupancySnapshot.Unknown(DateTimeOffset.UtcNow, "Nouvelle session de vol.");
+            this.occupancyDiagnostics = Array.Empty<GroundTrafficOccupancyDiagnostic>();
+        }
+
+        this.PublishLog($"Session de vol réinitialisée : {reason}");
     }
 
     public void UpdateAirport(AirportFacilityReport report)
@@ -92,7 +119,7 @@ public sealed class GroundOperationsCoordinator
             if (this.airport is not null
                 && !string.Equals(this.airport.Icao, incomingIcao, StringComparison.OrdinalIgnoreCase))
             {
-                this.engine.Reset();
+                this.engine.ResetGroundContext();
                 this.lastDecision = null;
             }
 
@@ -650,7 +677,12 @@ public sealed class GroundOperationsCoordinator
             },
             frequency.ServiceName,
             frequency.DialogueAllowed,
-            frequency.Source);
+            frequency.Source,
+            frequency.StationKey,
+            frequency.ServiceCode,
+            frequency.AirportIcao,
+            frequency.FrequencyMhz,
+            frequency.Scope);
 
     private void PublishLog(string message) => this.LogMessage?.Invoke(this, message);
 

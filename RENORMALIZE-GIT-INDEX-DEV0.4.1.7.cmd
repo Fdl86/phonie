@@ -1,5 +1,5 @@
 @echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0RENORMALIZE-GIT-INDEX-DEV0.4.1.6.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0RENORMALIZE-GIT-INDEX-DEV0.4.1.7.ps1"
 if errorlevel 1 (
   echo.
   echo ECHEC - ne pas pousser le depot.

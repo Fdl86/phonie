@@ -345,7 +345,25 @@ public sealed record RadioContext(
     ServiceCapability Capability,
     string StationName,
     bool DialogueAllowed,
-    string Source);
+    string Source,
+    string StationKey = "",
+    string ServiceRole = "",
+    string AirportIcao = "",
+    double FrequencyMhz = 0,
+    string Scope = "Local");
+
+public sealed class RadioContactState
+{
+    public string StationKey { get; init; } = string.Empty;
+    public string StationName { get; set; } = string.Empty;
+    public bool ContactEstablished { get; set; }
+    public bool FullCallsignExchanged { get; set; }
+    public string AuthorizedShortCallsign { get; set; } = string.Empty;
+    public int GreetingCount { get; set; }
+    public string LastGreeting { get; set; } = string.Empty;
+    public DateTimeOffset? FirstContactAt { get; set; }
+    public DateTimeOffset? LastContactAt { get; set; }
+}
 
 public sealed record ControllerDecision(
     ControllerAction Action,

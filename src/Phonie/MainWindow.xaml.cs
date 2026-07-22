@@ -103,6 +103,7 @@ public partial class MainWindow : Window
         this.simConnectService.AirportDataReceived += this.SimConnectService_OnAirportDataReceived;
         this.simConnectService.GroundTrafficReceived += this.SimConnectService_OnGroundTrafficReceived;
         this.simConnectService.AirportContextChanged += this.SimConnectService_OnAirportContextChanged;
+        this.simConnectService.FlightSessionReset += this.SimConnectService_OnFlightSessionReset;
 
         this.audioService.LogMessage += this.Service_OnLogMessage;
         this.audioService.RecordingStateChanged += this.AudioService_OnRecordingStateChanged;
@@ -398,7 +399,12 @@ public partial class MainWindow : Window
         this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Marque ajoutée : {markerName}.");
     }
 
-    private void RequestLfbiAirportDataButton_OnClick(object sender, RoutedEventArgs e)
+    private void ResetFlightSessionButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        this.ResetFlightSessionState("réinitialisation manuelle depuis le diagnostic");
+    }
+
+    private void RequestAirportDataButton_OnClick(object sender, RoutedEventArgs e)
     {
         var icao = !string.IsNullOrWhiteSpace(this.currentGeographicIcao)
             ? this.currentGeographicIcao
@@ -1180,7 +1186,7 @@ public partial class MainWindow : Window
             this.lastAtisAudioSignature = null;
             this.lastRadioSignature = null;
             this.atisService.Reset();
-            this.groundOperationsCoordinator.ClearAirport("connexion SimConnect inactive");
+            this.groundOperationsCoordinator.ResetFlightSession("connexion SimConnect inactive");
         }
 
         _ = this.Dispatcher.BeginInvoke(() =>
@@ -1312,6 +1318,54 @@ public partial class MainWindow : Window
                 this.AppendLog($"[{DateTime.Now:HH:mm:ss}] COM1 : {snapshot.Com1ActiveMhz:F3} - {this.currentOperationalFrequency.ServiceName} - {this.currentOperationalFrequency.Guidance}");
             }
         });
+    }
+
+    private void SimConnectService_OnFlightSessionReset(object? sender, FlightSessionResetEvent resetEvent)
+    {
+        _ = this.Dispatcher.BeginInvoke(() => this.ResetFlightSessionState(resetEvent.Detail));
+    }
+
+    private void ResetFlightSessionState(string reason)
+    {
+        this.airportReports.Clear();
+        this.latestGroundAirportReport = null;
+        this.latestRadioAirportReport = null;
+        this.currentGeographicIcao = string.Empty;
+        this.currentRadioIcao = string.Empty;
+        this.currentRadioContextSource = "Station radio non résolue";
+        this.currentRecommendedFrequency = null;
+        this.currentOperationalFrequency = new OperationalFrequency(
+            0,
+            "FRÉQUENCE NON IDENTIFIÉE",
+            OperationalRadioKind.Unknown,
+            false,
+            "PHONIE reste silencieux tant que le service n'est pas déterminé.",
+            "Nouvelle session de vol");
+        this.latestSnapshot = null;
+        this.currentAtis = null;
+        this.lastAtisAudioSignature = null;
+        this.lastRadioSignature = null;
+        this.transcriptionCancellation?.Cancel();
+        this.speechSynthesisCancellation?.Cancel();
+        if (this.pttHeld)
+        {
+            this.audioService.StopRecording();
+        }
+
+        this.activePttSources.Clear();
+        this.activePttSourceLabels.Clear();
+        this.pttHeld = false;
+        this.currentPttAcknowledgementOnly = false;
+        this.diagnosticsPttSource = "Aucun";
+        this.atisService.Reset();
+        this.groundOperationsCoordinator.ResetFlightSession(reason);
+        this.AirportNameText.Text = "Aérodrome - nouvelle session en attente";
+        this.AirportSummaryText.Text = "Historique radio, roulage, ATIS et collationnements remis à zéro.";
+        this.FrequencySummaryText.Text = "Fréquences : en attente du nouveau contexte MSFS.";
+        this.AirportDataText.Text = "Contexte : nouvelle session de vol";
+        this.UpdateGroundOperationsUi();
+        this.UpdateAtisUi();
+        this.AppendLog($"[{DateTime.Now:HH:mm:ss}] Session de vol remise à zéro : {reason}");
     }
 
     private void SimConnectService_OnAirportContextChanged(object? sender, AirportContextChanged context)
@@ -1685,7 +1739,7 @@ public partial class MainWindow : Window
     private void ProcessPilotText(string text, bool fromMicrophone, TimeSpan processingTime)
     {
         var cleanText = text.Trim();
-        var analysis = PhraseologyService.Analyze(cleanText, this.latestSnapshot?.AircraftAtcId);
+        var analysis = PhraseologyService.Analyze(cleanText, this.latestSnapshot?.AircraftAtcId, this.currentOperationalFrequency.ServiceName);
         var decision = this.groundOperationsCoordinator.Process(
             cleanText,
             this.latestSnapshot,

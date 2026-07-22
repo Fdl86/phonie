@@ -123,7 +123,8 @@ public static class OfficialRadioCatalogService
     public static OfficialRadioLookup Resolve(
         string? icao,
         double frequencyMhz,
-        DateTimeOffset timestamp)
+        DateTimeOffset timestamp,
+        SiaRadioServiceKind? preferredServiceKind = null)
     {
         EnsureLoaded(timestamp);
         lock (Gate)
@@ -134,7 +135,7 @@ public static class OfficialRadioCatalogService
                 return new OfficialRadioLookup(false, false, null, status.Message);
             }
 
-            var resolution = catalog.Resolve(normalized, frequencyMhz, preferLocal: true);
+            var resolution = catalog.Resolve(normalized, frequencyMhz, preferLocal: true, preferredServiceKind: preferredServiceKind);
             if (!resolution.FrequencyKnown || resolution.Frequency is null)
             {
                 return new OfficialRadioLookup(true, resolution.AirportKnown, null, resolution.Reason);
@@ -249,7 +250,7 @@ public static class OfficialRadioCatalogService
         var airport = resolution.Airport!;
         var kind = MapKind(record.Kind);
         var dialogueAllowed = record.Interactive
-            && record.ScheduleState != SiaRadioScheduleState.PublishedNotEvaluated
+            && (record.ScheduleState != SiaRadioScheduleState.PublishedNotEvaluated || resolution.ServiceConfirmed)
             && !resolution.Ambiguous
             && kind is OperationalRadioKind.Controlled or OperationalRadioKind.InformationService;
         var serviceName = string.IsNullOrWhiteSpace(record.Callsign)
@@ -279,7 +280,9 @@ public static class OfficialRadioCatalogService
             stationKey,
             record.Scope.ToString(),
             dataset.Revision,
-            record.Channel);
+            record.Channel,
+            record.ServiceCode,
+            airport.Icao);
     }
 
     private static OperationalRadioKind MapKind(SiaRadioServiceKind kind) => kind switch

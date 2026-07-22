@@ -36,6 +36,15 @@ var tests = new List<(string Name, Action Test)>
     ("décollage parking refusé", TestTakeoffFromParkingRefused),
     ("indicatif complet premier contact", TestFullCallsignInitialContact),
     ("indicatif abrégé après contact", TestShortCallsignAfterContact),
+    ("première demande roulage traite bonjour sans répétition", TestFirstTaxiMessageAndGreetingHistory),
+    ("bonjour non répété sur le même organisme", TestGreetingNotRepeatedOnSameStation),
+    ("changement Sol Tour ouvre un nouveau contact", TestGroundToTowerNewContact),
+    ("retour après ATIS conserve le contact Tour", TestAtisReturnKeepsTowerContact),
+    ("réinitialisation du contexte conserve l'historique", TestGroundContextResetKeepsHistory),
+    ("nouvelle session efface l'historique", TestFlightSessionResetClearsHistory),
+    ("appel clair d'un autre service reste silencieux", TestClearlyCalledOtherServiceSilent),
+    ("appel clair d'un autre aérodrome reste silencieux", TestClearlyCalledOtherAirportSilent),
+    ("SIV régional refuse les demandes sol", TestRegionalFisRejectsGroundRequest),
     ("ATIS sans dialogue", TestAtisSilent),
     ("CTAF sans dialogue", TestCtafSilent),
     ("station inconnue sans clairance", TestUnknownStationSilent),
@@ -57,6 +66,7 @@ var tests = new List<(string Name, Action Test)>
     ("catalogue SIA recommande le FIS régional en vol", TestSiaFlightInformationPriority),
     ("portée locale départage deux services de même priorité", TestSiaScopeTieBreak),
     ("horaires non évalués sur canal partagé imposent le silence", TestSiaAmbiguousScheduleSafety),
+    ("Facilities Tour départage un canal SIA Tour A-A", TestSiaFacilitiesTowerTieBreak),
     ("canalisation 8,33 utilise une représentation entière", TestSiaChannelNormalization),
     ("segments cache Windows neutralisent noms réservés et suffixes interdits", TestWindowsPathSegment),
 };
@@ -195,6 +205,28 @@ static void TestSiaAmbiguousScheduleSafety()
     var resolution = new SiaRadioCatalog(dataset).Resolve("LFXX", 120.405, preferLocal: true);
     Assert(resolution.Ambiguous, resolution.Reason);
     Assert(resolution.Frequency is { Interactive: false }, "le mode silencieux n'a pas été retenu");
+}
+
+static void TestSiaFacilitiesTowerTieBreak()
+{
+    var dataset = BuildSiaDataset();
+    var airport = dataset.Airports.Single(item => item.Icao == "LFXX");
+    airport.Frequencies.Add(new SiaRadioFrequencyRecord
+    {
+        Channel = "118.505", ChannelKhz = 118505, ServiceCode = "A/A", Callsign = "ALPHA AUTO-INFORMATION",
+        Kind = SiaRadioServiceKind.SelfInformation, Scope = SiaRadioStationScope.Local,
+        Interactive = false, ScheduleState = SiaRadioScheduleState.NotApplicable,
+    });
+    airport.Frequencies.Single(item => item.ServiceCode == "TWR").ScheduleState = SiaRadioScheduleState.PublishedNotEvaluated;
+
+    var catalogue = new SiaRadioCatalog(dataset);
+    var safe = catalogue.Resolve("LFXX", 118.505, preferLocal: true);
+    Assert(safe.Ambiguous && safe.Frequency is { Interactive: false }, safe.Reason);
+
+    var confirmed = catalogue.Resolve("LFXX", 118.505, preferLocal: true, SiaRadioServiceKind.Tower);
+    Assert(!confirmed.Ambiguous, confirmed.Reason);
+    Assert(confirmed.ServiceConfirmed, confirmed.Reason);
+    Assert(confirmed.Frequency?.Kind == SiaRadioServiceKind.Tower, confirmed.Frequency?.Callsign);
 }
 
 static void TestSiaChannelNormalization()
@@ -1175,6 +1207,113 @@ static void TestShortCallsignAfterContact()
     Assert(!decision.SpokenText.Contains("via ", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
 }
 
+static void TestFirstTaxiMessageAndGreetingHistory()
+{
+    var engine = new GroundOperationsEngine();
+    var decision = engine.Process(
+        "Poitiers Tour de F-HNNY bonjour, au parking demande roulage",
+        "F-HNNY",
+        ControlledRadio(),
+        BuildAirport(),
+        ParkingObservation(),
+        AvailableOccupancy(),
+        210,
+        10);
+    Assert(decision.Action == ControllerAction.Speak, decision.SystemMessage);
+    Assert(decision.SpokenText.Contains("Poitiers Tour, bonjour", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.SpokenText.Contains("roulez au point d'attente", StringComparison.Ordinal), decision.SpokenText);
+    Assert(engine.ContactHistory.Count == 1);
+}
+
+static void TestGreetingNotRepeatedOnSameStation()
+{
+    var engine = new GroundOperationsEngine();
+    _ = engine.Process("Poitiers Tour bonjour au parking", "F-HNNY", ControlledRadio(), BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    var second = engine.Process("Poitiers Tour bonjour", "F-HNNY", ControlledRadio(), BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    Assert(!second.SpokenText.Contains("bonjour", StringComparison.OrdinalIgnoreCase), second.SpokenText);
+    Assert(engine.ContactHistory.Single().GreetingCount == 1);
+}
+
+static void TestGroundToTowerNewContact()
+{
+    var engine = new GroundOperationsEngine();
+    var ground = new RadioContext(ServiceCapability.Controlled, "Poitiers Sol", true, "test", "LFXX|GROUND", "GND", "LFXX", 121.700, "Local");
+    var tower = ControlledRadio();
+    _ = engine.Process("Poitiers Sol bonjour au parking", "F-HNNY", ground, BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    var towerContact = engine.Process("Poitiers Tour bonjour au parking", "F-HNNY", tower, BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    Assert(towerContact.SpokenText.Contains("Poitiers Tour, bonjour", StringComparison.Ordinal), towerContact.SpokenText);
+    Assert(engine.ContactHistory.Count == 2);
+}
+
+static void TestAtisReturnKeepsTowerContact()
+{
+    var engine = new GroundOperationsEngine();
+    var tower = ControlledRadio();
+    _ = engine.Process("Poitiers Tour bonjour au parking", "F-HNNY", tower, BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    _ = engine.Process(
+        "information Bravo",
+        "F-HNNY",
+        new RadioContext(ServiceCapability.AutomaticBroadcast, "Poitiers ATIS", false, "test", "LFXX|ATIS", "ATIS", "LFXX", 121.780, "Local"),
+        BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    var back = engine.Process("Poitiers Tour de retour avec vous", "F-HNNY", tower, BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    Assert(back.SpokenText.Contains("rebonjour", StringComparison.OrdinalIgnoreCase), back.SpokenText);
+    Assert(back.SpokenText.StartsWith("Fox Novembre Yankee", StringComparison.Ordinal), back.SpokenText);
+}
+
+static void TestGroundContextResetKeepsHistory()
+{
+    var engine = new GroundOperationsEngine();
+    _ = engine.Process("Poitiers Tour bonjour au parking", "F-HNNY", ControlledRadio(), BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    engine.ResetGroundContext();
+    var decision = engine.Process("Poitiers Tour bonjour", "F-HNNY", ControlledRadio(), BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    Assert(!decision.SpokenText.Contains("bonjour", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+    Assert(engine.ContactHistory.Count == 1);
+}
+
+static void TestFlightSessionResetClearsHistory()
+{
+    var engine = new GroundOperationsEngine();
+    _ = engine.Process("Poitiers Tour bonjour au parking", "F-HNNY", ControlledRadio(), BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    engine.ResetFlightSession();
+    var decision = engine.Process("Poitiers Tour bonjour", "F-HNNY", ControlledRadio(), BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    Assert(decision.SpokenText.Contains("Poitiers Tour, bonjour", StringComparison.Ordinal), decision.SpokenText);
+    Assert(engine.ContactHistory.Count == 1);
+}
+
+static void TestClearlyCalledOtherServiceSilent()
+{
+    var decision = new GroundOperationsEngine().Process(
+        "Poitiers Sol de F-HNNY bonjour",
+        "F-HNNY",
+        ControlledRadio(),
+        BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    Assert(decision.Action == ControllerAction.Silent, decision.ReasonCode);
+    Assert(decision.ReasonCode == "CALLED_STATION_MISMATCH", decision.ReasonCode);
+}
+
+static void TestClearlyCalledOtherAirportSilent()
+{
+    var decision = new GroundOperationsEngine().Process(
+        "Nantes Tour de F-HNNY bonjour",
+        "F-HNNY",
+        ControlledRadio(),
+        BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    Assert(decision.Action == ControllerAction.Silent, decision.ReasonCode);
+    Assert(decision.ReasonCode == "CALLED_STATION_MISMATCH", decision.ReasonCode);
+}
+
+static void TestRegionalFisRejectsGroundRequest()
+{
+    var fis = new RadioContext(ServiceCapability.InformationOnly, "Nantes Information", true, "test", "REGIONAL|NANTES|FIS", "FIS", string.Empty, 130.275, "Regional");
+    var decision = new GroundOperationsEngine().Process(
+        "Nantes Information bonjour demande roulage",
+        "F-HNNY",
+        fis,
+        BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    Assert(decision.Action == ControllerAction.Unable, decision.ReasonCode);
+    Assert(decision.ReasonCode == "REGIONAL_FIS_GROUND_REQUEST", decision.ReasonCode);
+}
+
 static void TestAtisSilent()
 {
     var decision = new GroundOperationsEngine().Process(
@@ -1392,7 +1531,7 @@ static GroundOccupancySnapshot AvailableOccupancy() => new(
     "test");
 
 static RadioContext ControlledRadio() =>
-    new(ServiceCapability.Controlled, "Poitiers Tour", true, "test");
+    new(ServiceCapability.Controlled, "Poitiers Tour", true, "test", "LFXX|TOWER", "TWR", "LFXX", 118.505, "Local");
 
 static void Assert(bool condition, string? message = null)
 {

@@ -335,6 +335,23 @@ void RunOperationalRadioTests()
         failures.Add("Une fréquence Facilities française absente de la base SIA ne doit jamais devenir dialoguée.");
     }
 
+    var lfbiReport = new Phonie.Models.AirportFacilityReport { RequestedIcao = "LFBI", Icao = "LFBI" };
+    lfbiReport.Frequencies.Add(new Phonie.Models.AirportFrequencyData(0, 6, 118500000, 118.505, "POITIERS TOUR"));
+    var lfbiActive = OperationalRadioService.Resolve(snapshot with
+    {
+        Com1ActiveMhz = 118.505,
+        Com1StationIdent = "POITIERS",
+        Com1StationType = "TOWER",
+        GeographicAirportIcao = "LFBI",
+        RadioAirportIcao = "LFBI",
+    }, lfbiReport, "LFBI");
+    if (lfbiActive.Kind != Phonie.Models.OperationalRadioKind.Controlled
+        || !lfbiActive.DialogueAllowed
+        || !lfbiActive.ServiceName.Contains("TOUR", StringComparison.OrdinalIgnoreCase))
+    {
+        failures.Add($"LFBI 118.505 Facilities Tour doit départager le canal SIA partagé : {lfbiActive.Kind}, dialogue={lfbiActive.DialogueAllowed}, {lfbiActive.ServiceName}.");
+    }
+
     var lfbiRecommendation = OperationalRadioService.Recommend(null, "LFBI", true, snapshot.Timestamp);
     if (lfbiRecommendation is null
         || Math.Abs(lfbiRecommendation.FrequencyMhz - 118.505) > 0.001

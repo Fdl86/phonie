@@ -2,12 +2,17 @@ using System.Collections.Concurrent;
 using Phonie.Core;
 using Phonie.Models;
 using SimConnect.NET;
+using SimConnect.NET.Events;
 
 namespace Phonie.Services;
 
 public sealed class SimConnectService : IAsyncDisposable
 {
     private static readonly TimeSpan OptionalRetryDelay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan FlightResetDebounce = TimeSpan.FromSeconds(2);
+    private const uint SimStartEventId = 41_001;
+    private const uint SimStopEventId = 41_002;
+    private const uint FlightLoadedEventId = 41_003;
 
     private readonly SemaphoreSlim lifecycleGate = new(1, 1);
     private readonly ConcurrentDictionary<string, byte> optionalReadWarnings = new(StringComparer.Ordinal);
@@ -31,6 +36,8 @@ public sealed class SimConnectService : IAsyncDisposable
     private string currentRadioIcao = string.Empty;
     private string currentRadioSource = "Station radio non résolue";
     private bool disposed;
+    private DateTimeOffset lastFlightReset = DateTimeOffset.MinValue;
+    private FlightSessionResetReason? lastFlightResetReason;
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
 
@@ -43,6 +50,8 @@ public sealed class SimConnectService : IAsyncDisposable
     public event EventHandler<GroundTrafficSnapshot>? GroundTrafficReceived;
 
     public event EventHandler<AirportContextChanged>? AirportContextChanged;
+
+    public event EventHandler<FlightSessionResetEvent>? FlightSessionReset;
 
     public SimConnectService()
     {
@@ -80,7 +89,7 @@ public sealed class SimConnectService : IAsyncDisposable
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         this.PublishStatus(ConnectionState.Waiting, "En attente de Microsoft Flight Simulator");
-        this.PublishLog("PHONIE DEV0.4.1.6 démarrée. Détection dynamique des contextes aérodrome et radio.");
+        this.PublishLog("PHONIE DEV0.4.1.7 démarrée. Détection dynamique des contextes aérodrome et radio.");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -94,6 +103,28 @@ public sealed class SimConnectService : IAsyncDisposable
                 if (this.client is { IsConnected: true } connectedClient)
                 {
                     var snapshot = await this.ReadSnapshotAsync(connectedClient, cancellationToken).ConfigureAwait(false);
+                    var previous = this.previousSnapshot;
+                    if (previous is not null
+                        && !string.Equals(previous.AircraftTitle, snapshot.AircraftTitle, StringComparison.OrdinalIgnoreCase))
+                    {
+                        this.NotifyFlightSessionReset(
+                            FlightSessionResetReason.AircraftChanged,
+                            $"Appareil remplacé : {previous.AircraftTitle} -> {snapshot.AircraftTitle}.");
+                    }
+                    else if (previous is not null)
+                    {
+                        var previousAtcId = NormalizeAtcId(previous.AircraftAtcId);
+                        var currentAtcId = NormalizeAtcId(snapshot.AircraftAtcId);
+                        if (!string.IsNullOrWhiteSpace(previousAtcId)
+                            && !string.IsNullOrWhiteSpace(currentAtcId)
+                            && !string.Equals(previousAtcId, currentAtcId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            this.NotifyFlightSessionReset(
+                                FlightSessionResetReason.CallsignChanged,
+                                $"Indicatif SimConnect remplacé : {previousAtcId} -> {currentAtcId}.");
+                        }
+                    }
+
                     var teleported = this.IsTeleport(snapshot);
                     _ = this.nearbyAirportService.RequestRefresh(teleported || this.previousSnapshot is null);
                     snapshot = this.ResolveAirportContexts(snapshot);
@@ -139,7 +170,7 @@ public sealed class SimConnectService : IAsyncDisposable
     {
         this.PublishStatus(ConnectionState.Connecting, "Connexion à SimConnect...");
 
-        var newClient = new SimConnectClient("PHONIE DEV0.4.1.6")
+        var newClient = new SimConnectClient("PHONIE DEV0.4.1.7")
         {
             AutoReconnectEnabled = false,
         };
@@ -152,6 +183,12 @@ public sealed class SimConnectService : IAsyncDisposable
             // A single warm-up read prevents a burst of parallel 10-second timeouts.
             await Task.Delay(TimeSpan.FromMilliseconds(1200), cancellationToken).ConfigureAwait(false);
             _ = await newClient.SimVars.GetAsync<string>("TITLE", string.Empty, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            newClient.SystemEventReceived += this.SimConnectClient_OnSystemEventReceived;
+            newClient.FilenameEventReceived += this.SimConnectClient_OnFilenameEventReceived;
+            await newClient.SubscribeToEventAsync("SimStart", SimStartEventId, cancellationToken).ConfigureAwait(false);
+            await newClient.SubscribeToEventAsync("SimStop", SimStopEventId, cancellationToken).ConfigureAwait(false);
+            await newClient.SubscribeToEventAsync("FlightLoaded", FlightLoadedEventId, cancellationToken).ConfigureAwait(false);
 
             await this.lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
@@ -629,6 +666,10 @@ public sealed class SimConnectService : IAsyncDisposable
 
             var oldClient = this.client;
             this.client = null;
+            if (!this.disposed && this.connectedAtLeastOnce)
+            {
+                this.NotifyFlightSessionReset(FlightSessionResetReason.ConnectionLost, "Connexion SimConnect interrompue.");
+            }
             this.airportFacilityService.Detach();
             this.groundTrafficService.Detach();
             this.nearbyAirportService.Detach();
@@ -655,6 +696,44 @@ public sealed class SimConnectService : IAsyncDisposable
         {
             this.lifecycleGate.Release();
         }
+    }
+
+    private void SimConnectClient_OnSystemEventReceived(object? sender, SimSystemEventReceivedEventArgs eventArgs)
+    {
+        if (eventArgs.EventId == SimStopEventId)
+        {
+            this.NotifyFlightSessionReset(FlightSessionResetReason.SimStopped, "MSFS a quitté ou arrêté la session de vol.");
+        }
+        else if (eventArgs.EventId == SimStartEventId)
+        {
+            this.NotifyFlightSessionReset(FlightSessionResetReason.SimStarted, "MSFS a démarré ou redémarré la session de vol.");
+        }
+    }
+
+    private void SimConnectClient_OnFilenameEventReceived(object? sender, SimSystemEventFilenameReceivedEventArgs eventArgs)
+    {
+        var detail = string.IsNullOrWhiteSpace(eventArgs.FileName)
+            ? "Nouveau vol chargé par MSFS."
+            : $"Nouveau vol chargé : {Path.GetFileName(eventArgs.FileName)}.";
+        this.NotifyFlightSessionReset(FlightSessionResetReason.FlightLoaded, detail);
+    }
+
+    private void NotifyFlightSessionReset(FlightSessionResetReason reason, string detail)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (this.lastFlightResetReason == reason && now - this.lastFlightReset < FlightResetDebounce)
+        {
+            return;
+        }
+
+        this.lastFlightResetReason = reason;
+        this.lastFlightReset = now;
+        this.previousSnapshot = null;
+        this.currentGeographicIcao = string.Empty;
+        this.currentRadioIcao = string.Empty;
+        this.currentRadioSource = "Station radio non résolue";
+        this.FlightSessionReset?.Invoke(this, new FlightSessionResetEvent(now, reason, detail));
+        this.PublishLog($"Nouvelle session de vol : {detail}");
     }
 
     private void PublishRepeatedErrorWhenUseful(string message)

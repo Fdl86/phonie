@@ -81,21 +81,21 @@ public static partial class PhraseologyService
         ["foxtrotgolf"] = ["foxtrot", "golf"],
     };
 
-    public static PilotMessageAnalysis Analyze(string rawText, string? expectedCallsign = null)
+    public static PilotMessageAnalysis Analyze(string rawText, string? expectedCallsign = null, string? expectedStationName = null)
     {
         var normalized = Normalize(rawText);
-        var station = DetectStation(normalized);
+        var station = DetectStation(normalized, expectedStationName);
         var callsignResult = DetectCallsign(rawText, normalized, expectedCallsign, station);
         var position = DetectPosition(normalized);
         var intention = DetectIntention(normalized);
         var atis = DetectAtis(normalized);
         var missing = new List<string>();
         if (string.IsNullOrWhiteSpace(callsignResult.Callsign)) missing.Add("indicatif");
-        if (string.IsNullOrWhiteSpace(station)) missing.Add("station appelée");
+        // Le nom de la station est facultatif : la fréquence active route la communication.
         if (string.IsNullOrWhiteSpace(intention)) missing.Add("intention");
 
         var recognized = 0.0;
-        if (station is not null) recognized += 1.0;
+        if (station is not null || !string.IsNullOrWhiteSpace(expectedStationName)) recognized += 1.0;
         if (callsignResult.Callsign is not null) recognized += Math.Max(0.5, callsignResult.Confidence);
         if (position is not null) recognized += 1.0;
         if (intention is not null) recognized += 1.0;
@@ -136,22 +136,22 @@ public static partial class PhraseologyService
 
         if (analysis.Callsign is null)
         {
-            return "Station appelante, Poitiers, répétez votre indicatif.";
+            return $"Station appelante, {frequency.ServiceName}, répétez votre indicatif.";
         }
 
         if (analysis.Intention is null)
         {
-            return $"{analysis.Callsign}, Poitiers, précisez vos intentions.";
+            return $"{analysis.Callsign}, {frequency.ServiceName}, précisez vos intentions.";
         }
 
         if (frequency.Kind == OperationalRadioKind.InformationService)
         {
-            return $"{analysis.Callsign}, Poitiers Information, bonjour. Transmettez votre position, altitude et destination.";
+            return $"{analysis.Callsign}, {frequency.ServiceName}, bonjour. Transmettez votre position, altitude et destination.";
         }
 
         if (frequency.Kind != OperationalRadioKind.Controlled)
         {
-            return $"{analysis.Callsign}, Poitiers, message reçu.";
+            return $"{analysis.Callsign}, {frequency.ServiceName}, message reçu.";
         }
 
         var qnh = atis is not null
@@ -167,13 +167,13 @@ public static partial class PhraseologyService
         {
             if (!string.IsNullOrWhiteSpace(runway) && qnh is not null)
             {
-                return $"{analysis.Callsign}, Poitiers Tour, bonjour. Roulez vers le point d'attente piste {runway}, QNH {qnh}.";
+                return $"{analysis.Callsign}, {frequency.ServiceName}, bonjour. Roulez vers le point d'attente piste {runway}, QNH {qnh}.";
             }
 
-            return $"{analysis.Callsign}, Poitiers Tour, bonjour. Maintenez position, paramètres en cours d'acquisition.";
+            return $"{analysis.Callsign}, {frequency.ServiceName}, bonjour. Maintenez position, paramètres en cours d'acquisition.";
         }
 
-        return $"{analysis.Callsign}, Poitiers, bonjour. Message reçu, rappelez prêt au roulage.";
+        return $"{analysis.Callsign}, {frequency.ServiceName}, bonjour. Message reçu, rappelez prêt au roulage.";
     }
 
     private static string Normalize(string value)
@@ -193,12 +193,28 @@ public static partial class PhraseologyService
         return Regex.Replace(normalized, "\\s+", " ").Trim();
     }
 
-    private static string? DetectStation(string text)
+    private static string? DetectStation(string text, string? expectedStationName)
     {
-        if (text.Contains("poitiers tour", StringComparison.Ordinal)) return "Poitiers Tour";
-        if (text.Contains("poitiers approche", StringComparison.Ordinal) || text.Contains("poitiers siv", StringComparison.Ordinal)) return "Poitiers Approche / SIV";
-        if (text.Contains("poitiers", StringComparison.Ordinal)) return "Poitiers";
-        return null;
+        if (!string.IsNullOrWhiteSpace(expectedStationName))
+        {
+            var normalizedExpected = Normalize(expectedStationName);
+            var significant = normalizedExpected
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(token => token.Length >= 3)
+                .ToArray();
+            if (significant.Length > 0 && significant.All(token => text.Contains(token, StringComparison.Ordinal)))
+            {
+                return expectedStationName.Trim();
+            }
+        }
+
+        var match = StationRegex().Match(text);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(match.Value.Trim());
     }
 
     private static CallsignDetection DetectCallsign(
@@ -260,15 +276,11 @@ public static partial class PhraseologyService
         var text = normalized;
         if (!string.IsNullOrWhiteSpace(detectedStation))
         {
-            text = detectedStation switch
+            var normalizedStation = Normalize(detectedStation);
+            if (!string.IsNullOrWhiteSpace(normalizedStation))
             {
-                "Poitiers Tour" => text.Replace("poitiers tour", " ", StringComparison.Ordinal),
-                "Poitiers Approche / SIV" => text
-                    .Replace("poitiers approche", " ", StringComparison.Ordinal)
-                    .Replace("poitiers siv", " ", StringComparison.Ordinal),
-                "Poitiers" => text.Replace("poitiers", " ", StringComparison.Ordinal),
-                _ => text,
-            };
+                text = text.Replace(normalizedStation, " ", StringComparison.Ordinal);
+            }
         }
 
         return Regex.Replace(text, "\\s+", " ").Trim();
@@ -567,6 +579,9 @@ public static partial class PhraseologyService
         return null;
     }
 
+
+    [GeneratedRegex(@"\b[a-z0-9-]{2,}(?:\s+[a-z0-9-]{2,}){0,3}\s+(?:tour|sol|approche|depart|information|info|afis|siv)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex StationRegex();
     [GeneratedRegex(@"\b([A-Z])\s*-\s*([A-Z0-9]{3,5})\b", RegexOptions.CultureInvariant)]
     private static partial Regex DirectCallsignRegex();
 

@@ -4,12 +4,29 @@ public sealed class GroundOperationsEngine
 {
     private static readonly TimeSpan AcknowledgementReminderInterval = TimeSpan.FromSeconds(9);
     private readonly GroundSession session = new();
+    private readonly Dictionary<string, RadioContactState> contacts = new(StringComparer.OrdinalIgnoreCase);
+    private RadioContactState? currentContact;
+    private string aircraftIdentity = string.Empty;
 
     public GroundSession Session => this.session;
 
-    public void Reset()
+    public IReadOnlyCollection<RadioContactState> ContactHistory => this.contacts.Values.ToArray();
+
+    public void Reset() => this.ResetFlightSession();
+
+    public void ResetFlightSession()
     {
-        this.session.FullCallsign = string.Empty;
+        this.contacts.Clear();
+        this.currentContact = null;
+        this.aircraftIdentity = string.Empty;
+        this.ResetGroundContext(clearAircraftIdentity: true);
+    }
+
+    public void ResetGroundContext() => this.ResetGroundContext(clearAircraftIdentity: false);
+
+    private void ResetGroundContext(bool clearAircraftIdentity)
+    {
+        this.session.FullCallsign = clearAircraftIdentity ? string.Empty : this.aircraftIdentity;
         this.session.AuthorizedShortCallsign = string.Empty;
         this.session.ContactEstablished = false;
         this.session.State = GroundSessionState.Unknown;
@@ -41,10 +58,18 @@ public sealed class GroundOperationsEngine
         var fullCallsign = CallsignFormatter.Normalize(simulatorCallsign);
         if (!string.IsNullOrWhiteSpace(fullCallsign))
         {
+            if (!string.IsNullOrWhiteSpace(this.aircraftIdentity)
+                && !string.Equals(this.aircraftIdentity, fullCallsign, StringComparison.OrdinalIgnoreCase))
+            {
+                this.ResetFlightSession();
+            }
+
+            this.aircraftIdentity = fullCallsign;
             this.session.FullCallsign = fullCallsign;
-            this.session.AuthorizedShortCallsign = CallsignFormatter.BuildShort(fullCallsign);
         }
 
+        this.currentContact = this.GetOrCreateContact(radio);
+        this.SyncSessionContact();
         var spokenFull = CallsignFormatter.SpeakFull(this.session.FullCallsign);
         var spokenShort = CallsignFormatter.SpeakShort(this.session.FullCallsign);
         var intentDetails = PilotIntentParser.ParseDetailed(pilotText);
@@ -72,6 +97,20 @@ public sealed class GroundOperationsEngine
                 false);
         }
 
+        if (ClearlyCallsAnotherService(pilotText, radio))
+        {
+            return Decision(
+                ControllerAction.Silent,
+                "CALLED_STATION_MISMATCH",
+                string.Empty,
+                "Une autre station ou un autre service est clairement appelé : PHONIE ne répond pas.",
+                stateBefore,
+                stateBefore,
+                null,
+                1,
+                false);
+        }
+
         if (string.IsNullOrWhiteSpace(this.session.FullCallsign))
         {
             return Decision(
@@ -84,6 +123,20 @@ public sealed class GroundOperationsEngine
                 null,
                 0.4,
                 requiresAcknowledgement);
+        }
+
+        if (IsRegionalInformation(radio)
+            && intent is PilotIntent.StartupRequest or PilotIntent.TaxiRequest or PilotIntent.ReadyAtHoldShort
+                or PilotIntent.ReadyForIntersectionDeparture or PilotIntent.LineUpRequest
+                or PilotIntent.LineUpAndTakeoffRequest or PilotIntent.TakeoffRequest or PilotIntent.BacktrackRequest)
+        {
+            return Message(
+                ControllerAction.Unable,
+                "REGIONAL_FIS_GROUND_REQUEST",
+                $"{CurrentCallsign(spokenFull, spokenShort)}, impossible, service d'information de vol régional.",
+                "Un SIV/FIS régional ne délivre aucune instruction de roulage, d'alignement ou de décollage.",
+                null,
+                1);
         }
 
         if (airport is null || !airport.IsUsable)
@@ -169,7 +222,6 @@ public sealed class GroundOperationsEngine
             var startupText = radio.Capability == ServiceCapability.InformationOnly
                 ? $"{CurrentCallsign(spokenFull, spokenShort)}, mise en route à votre convenance, rappelez prêt au roulage."
                 : $"{CurrentCallsign(spokenFull, spokenShort)}, mise en route approuvée, rappelez prêt au roulage.";
-            this.EstablishContact(startupText);
             return Message(
                 ControllerAction.Speak,
                 radio.Capability == ServiceCapability.InformationOnly ? "AFIS_STARTUP_INFORMATION" : "STARTUP_APPROVED",
@@ -183,16 +235,26 @@ public sealed class GroundOperationsEngine
 
         if (intent == PilotIntent.InitialContact)
         {
+            var alreadyKnown = this.currentContact?.ContactEstablished == true;
+            var explicitReturn = ContainsReturnGreeting(pilotText);
+            var greeting = explicitReturn ? "rebonjour" : DetectGreeting(pilotText);
+            var callsign = CurrentCallsign(spokenFull, spokenShort);
+            var contactPhrase = !alreadyKnown
+                ? $"{radio.StationName}, {greeting}"
+                : explicitReturn
+                    ? "rebonjour"
+                    : string.Empty;
+            var address = string.IsNullOrWhiteSpace(contactPhrase) ? callsign : $"{callsign}, {contactPhrase}";
             var text = location.Kind switch
             {
                 GroundPositionKind.Parking => radio.Capability == ServiceCapability.InformationOnly
-                    ? $"{spokenFull}, {radio.StationName}, bonjour, transmettez vos intentions."
-                    : $"{spokenFull}, {radio.StationName}, bonjour, rappelez prêt au roulage.",
-                GroundPositionKind.HoldShort => $"{spokenFull}, {radio.StationName}, bonjour, rappelez prêt au départ.",
-                _ => $"{spokenFull}, {radio.StationName}, bonjour, précisez vos intentions.",
+                    ? $"{address}, transmettez vos intentions."
+                    : $"{address}, rappelez prêt au roulage.",
+                GroundPositionKind.HoldShort => $"{address}, rappelez prêt au départ.",
+                _ => $"{address}, précisez vos intentions.",
             };
-            this.EstablishContact(text);
-            return Message(ControllerAction.Speak, "INITIAL_CONTACT", text, string.Empty, null, 0.9);
+            this.EstablishContact(text, greeting, countGreeting: !alreadyKnown || explicitReturn);
+            return Message(ControllerAction.Speak, explicitReturn ? "RETURN_CONTACT" : "INITIAL_CONTACT", text, string.Empty, null, 0.9);
         }
 
         if (intent == PilotIntent.TaxiRequest)
@@ -268,7 +330,6 @@ public sealed class GroundOperationsEngine
                     "L'appellation locale n'est volontairement pas prononcée.";
             }
 
-            this.EstablishContact(text);
             return Message(ControllerAction.Speak, reason, text, system, route, route.Confidence);
         }
 
@@ -334,8 +395,8 @@ public sealed class GroundOperationsEngine
 
             this.session.State = GroundSessionState.TakeoffCleared;
             var takeoffText =
-                $"{CurrentCallsign(spokenFull, spokenShort)}, alignez-vous piste {SpeakRunway(this.session.AssignedRunway.Designator)}, " +
-                $"vent {SpeakWind(windDirectionDegrees, windSpeedKnots)}, autorisé décollage.";
+                $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(this.session.AssignedRunway.Designator)}, " +
+                $"alignez-vous et autorisé décollage, vent {SpeakWind(windDirectionDegrees, windSpeedKnots)}.";
             return Message(
                 ControllerAction.Speak,
                 "LINEUP_TAKEOFF_CLEARED_FROM_HOLD",
@@ -392,7 +453,7 @@ public sealed class GroundOperationsEngine
 
             this.session.State = GroundSessionState.LineUpCleared;
             var text =
-                $"{CurrentCallsign(spokenFull, spokenShort)}, alignez-vous piste {SpeakRunway(this.session.AssignedRunway.Designator)} et attendez.";
+                $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(this.session.AssignedRunway.Designator)}, alignez-vous et attendez.";
             return Message(ControllerAction.Speak, "LINEUP_CLEARED", text, string.Empty, this.session.AssignedTaxiRoute, 0.95);
         }
 
@@ -462,8 +523,8 @@ public sealed class GroundOperationsEngine
 
             this.session.State = GroundSessionState.TakeoffCleared;
             var text =
-                $"{CurrentCallsign(spokenFull, spokenShort)}, alignez-vous piste {SpeakRunway(this.session.AssignedRunway.Designator)}, " +
-                $"vent {SpeakWind(windDirectionDegrees, windSpeedKnots)}, autorisé décollage.";
+                $"{CurrentCallsign(spokenFull, spokenShort)}, piste {SpeakRunway(this.session.AssignedRunway.Designator)}, " +
+                $"alignez-vous et autorisé décollage, vent {SpeakWind(windDirectionDegrees, windSpeedKnots)}.";
             return Message(
                 ControllerAction.Speak,
                 "LINEUP_TAKEOFF_CLEARED_FROM_HOLD",
@@ -491,7 +552,9 @@ public sealed class GroundOperationsEngine
         {
             if (!string.IsNullOrWhiteSpace(text))
             {
+                text = this.DecorateFirstResponse(text, pilotText, radio, spokenFull);
                 this.session.LastControllerInstruction = text;
+                this.EstablishContact(text, DetectGreeting(pilotText), countGreeting: this.currentContact?.GreetingCount == 0);
             }
 
             return Decision(
@@ -663,10 +726,26 @@ public sealed class GroundOperationsEngine
         return occupancy.OccupiedEdgeIds.Any(runwayEdgeIds.Contains);
     }
 
-    private void EstablishContact(string instruction)
+    private void EstablishContact(string instruction, string greeting = "", bool countGreeting = false)
     {
         this.session.ContactEstablished = true;
         this.session.LastControllerInstruction = instruction;
+        if (this.currentContact is not null)
+        {
+            var now = DateTimeOffset.UtcNow;
+            this.currentContact.ContactEstablished = true;
+            this.currentContact.FullCallsignExchanged = true;
+            this.currentContact.AuthorizedShortCallsign = CallsignFormatter.BuildShort(this.session.FullCallsign);
+            this.currentContact.FirstContactAt ??= now;
+            this.currentContact.LastContactAt = now;
+            if (countGreeting)
+            {
+                this.currentContact.GreetingCount++;
+                this.currentContact.LastGreeting = greeting;
+            }
+        }
+
+        this.SyncSessionContact();
         if (this.session.State == GroundSessionState.Unknown)
         {
             this.session.State = GroundSessionState.Parked;
@@ -674,7 +753,152 @@ public sealed class GroundOperationsEngine
     }
 
     private string CurrentCallsign(string full, string shortForm) =>
-        this.session.ContactEstablished && !string.IsNullOrWhiteSpace(shortForm) ? shortForm : full;
+        this.currentContact?.ContactEstablished == true
+            && this.currentContact.FullCallsignExchanged
+            && !string.IsNullOrWhiteSpace(shortForm)
+                ? shortForm
+                : full;
+
+    private RadioContactState GetOrCreateContact(RadioContext radio)
+    {
+        var key = BuildStationKey(radio);
+        if (!this.contacts.TryGetValue(key, out var contact))
+        {
+            contact = new RadioContactState
+            {
+                StationKey = key,
+                StationName = radio.StationName,
+            };
+            this.contacts[key] = contact;
+        }
+        else if (!string.IsNullOrWhiteSpace(radio.StationName))
+        {
+            contact.StationName = radio.StationName;
+        }
+
+        return contact;
+    }
+
+    private void SyncSessionContact()
+    {
+        this.session.ContactEstablished = this.currentContact?.ContactEstablished == true;
+        this.session.AuthorizedShortCallsign = this.currentContact?.AuthorizedShortCallsign ?? string.Empty;
+    }
+
+    private string DecorateFirstResponse(string text, string pilotText, RadioContext radio, string spokenFull)
+    {
+        if (this.currentContact?.ContactEstablished == true || string.IsNullOrWhiteSpace(text))
+        {
+            return text;
+        }
+
+        var greeting = DetectGreeting(pilotText);
+        var prefix = $"{spokenFull}, {radio.StationName}, {greeting}";
+        var comma = text.IndexOf(',');
+        return comma >= 0 ? prefix + text[comma..] : prefix + ", " + text;
+    }
+
+    private static string BuildStationKey(RadioContext radio)
+    {
+        if (!string.IsNullOrWhiteSpace(radio.StationKey))
+        {
+            return radio.StationKey.Trim().ToUpperInvariant();
+        }
+
+        return string.Join("|",
+            string.IsNullOrWhiteSpace(radio.AirportIcao) ? "REGIONAL" : radio.AirportIcao.Trim().ToUpperInvariant(),
+            radio.StationName.Trim().ToUpperInvariant(),
+            radio.ServiceRole.Trim().ToUpperInvariant());
+    }
+
+    private static string DetectGreeting(string text)
+    {
+        var normalized = NormalizeRadioText(text);
+        if (normalized.Contains("bonsoir", StringComparison.Ordinal)) return "bonsoir";
+        if (normalized.Contains("rebonjour", StringComparison.Ordinal)
+            || normalized.Contains("re bonjour", StringComparison.Ordinal)
+            || normalized.Contains("de retour", StringComparison.Ordinal)) return "rebonjour";
+        return "bonjour";
+    }
+
+    private static bool ContainsReturnGreeting(string text)
+    {
+        var normalized = NormalizeRadioText(text);
+        return normalized.Contains("rebonjour", StringComparison.Ordinal)
+            || normalized.Contains("re bonjour", StringComparison.Ordinal)
+            || normalized.Contains("de retour", StringComparison.Ordinal);
+    }
+
+    private static bool IsRegionalInformation(RadioContext radio) =>
+        radio.Capability == ServiceCapability.InformationOnly
+        && (radio.Scope.Equals("Regional", StringComparison.OrdinalIgnoreCase)
+            || radio.ServiceRole.Contains("SIV", StringComparison.OrdinalIgnoreCase)
+            || radio.ServiceRole.Contains("FIS", StringComparison.OrdinalIgnoreCase)
+            || radio.ServiceRole.Contains("FLIGHT", StringComparison.OrdinalIgnoreCase));
+
+    private static bool ClearlyCallsAnotherService(string text, RadioContext radio)
+    {
+        var normalized = NormalizeRadioText(text);
+        var tokenArray = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var tokens = tokenArray.ToHashSet(StringComparer.Ordinal);
+        var roleToken = tokens.Contains("tour") ? "tour"
+            : tokens.Contains("sol") ? "sol"
+            : tokens.Contains("approche") ? "approche"
+            : tokens.Contains("depart") ? "depart"
+            : tokens.Contains("information") ? "information"
+            : tokens.Contains("info") ? "info"
+            : tokens.Contains("afis") ? "afis"
+            : tokens.Contains("siv") ? "siv"
+            : string.Empty;
+        var calledRole = roleToken switch
+        {
+            "tour" => "TOWER",
+            "sol" => "GROUND",
+            "approche" => "APPROACH",
+            "depart" => "DEPARTURE",
+            "information" or "info" or "afis" or "siv" => "INFORMATION",
+            _ => string.Empty,
+        };
+        if (string.IsNullOrWhiteSpace(calledRole))
+        {
+            return false;
+        }
+
+        var roleIndex = Array.IndexOf(tokenArray, roleToken);
+        if (roleIndex is > 0 and <= 3)
+        {
+            var calledPlace = tokenArray[roleIndex - 1];
+            var currentStation = NormalizeRadioText(radio.StationName);
+            if (calledPlace.Length >= 4
+                && !currentStation.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(calledPlace, StringComparer.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        var role = radio.ServiceRole.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(role))
+        {
+            role = radio.StationName.Trim().ToUpperInvariant();
+        }
+
+        return calledRole switch
+        {
+            "TOWER" => !role.Contains("TWR", StringComparison.Ordinal) && !role.Contains("TOUR", StringComparison.Ordinal) && !role.Contains("TOWER", StringComparison.Ordinal),
+            "GROUND" => !role.Contains("GND", StringComparison.Ordinal) && !role.Contains("SOL", StringComparison.Ordinal) && !role.Contains("GROUND", StringComparison.Ordinal),
+            "APPROACH" => !role.Contains("APP", StringComparison.Ordinal) && !role.Contains("APPROCHE", StringComparison.Ordinal),
+            "DEPARTURE" => !role.Contains("DEP", StringComparison.Ordinal) && !role.Contains("DEPART", StringComparison.Ordinal),
+            "INFORMATION" => !role.Contains("INFO", StringComparison.Ordinal) && !role.Contains("AFIS", StringComparison.Ordinal) && !role.Contains("SIV", StringComparison.Ordinal) && !role.Contains("FIS", StringComparison.Ordinal),
+            _ => false,
+        };
+    }
+
+    private static string NormalizeRadioText(string value)
+    {
+        var normalized = (value ?? string.Empty).ToLowerInvariant()
+            .Replace('é', 'e').Replace('è', 'e').Replace('ê', 'e').Replace('à', 'a').Replace('ù', 'u').Replace('ô', 'o').Replace('î', 'i');
+        return string.Join(' ', normalized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
 
     private ControllerDecision Decision(
         ControllerAction action,
