@@ -76,7 +76,19 @@ public static partial class PilotIntentParser
             return Details(PilotIntent.StartupRequest);
         }
 
-        if (ContainsAny(normalized, "bonjour", "premier contact", "au parking", "avec information"))
+        // Toutes les salutations ouvrant ou reprenant un contact doivent atteindre
+        // GroundOperationsEngine. Sinon DetectGreeting et ContainsReturnGreeting
+        // resteraient inaccessibles pour « bonsoir » et « de retour ».
+        if (ContainsAny(
+                normalized,
+                "bonjour",
+                "bonsoir",
+                "rebonjour",
+                "re bonjour",
+                "de retour",
+                "premier contact",
+                "au parking",
+                "avec information"))
         {
             return Details(PilotIntent.InitialContact);
         }

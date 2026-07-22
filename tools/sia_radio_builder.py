@@ -37,7 +37,7 @@ from bs4 import BeautifulSoup
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-VERSION = "DEV0.4.1.7"
+VERSION = "DEV0.4.1.9"
 AIM_CATALOG = "https://www.sia.aviation-civile.gouv.fr/produits-numeriques-en-libre-disposition/les-bases-de-donnees-sia.html"
 VAC_SEARCH = "https://www.sia.aviation-civile.gouv.fr/catalogsearch/result/"
 SESSION_HEADERS = {
@@ -528,7 +528,7 @@ def discover_vac_documents(
     """Discover the official Atlas VAC set with two independent methods.
 
     The SIA catalogue search no longer returns useful results for the broad
-    `AD-2` query used by DEV0.4.1.0/1.1. DEV0.4.1.7 therefore uses valid
+    `AD-2` query used by DEV0.4.1.0/1.1. DEV0.4.1.9 therefore uses valid
     three-character ICAO-prefix searches (LFA ... LFZ). If the catalogue is
     filtered, capped or served differently to GitHub Actions, a deterministic
     range-probe sweep of the immutable AIRAC DVD provides an independent

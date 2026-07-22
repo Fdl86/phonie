@@ -1,0 +1,23 @@
+PHONIE DEV0.4.1.9
+RADIO CONTEXT - CONTACT HISTORY - FLIGHT SESSION RESET - PHRASEOLOGY
+
+Correctifs bloquants :
+- canal SIA partagé Tour/A-A départagé par Facilities ;
+- historique par organisme ;
+- salutations et indicatifs abrégés par station ;
+- remise à zéro Restart Flight / menu principal / nouveau vol ;
+- station facultative, autre station clairement appelée = silence ;
+- SIV régional interdit pour les opérations au sol ;
+- suppression des réponses Poitiers codées en dur.
+
+Validation exécutable obligatoire : GitHub Actions build-windows.yml.
+
+Fermeture CI DEV0.4.1.9 :
+- correction du parseur « de retour avec vous » ;
+- correction du test d'ordre de phraséologie piste/alignement/décollage ;
+- 65 cas Core enregistrés après ajout de la régression de reprise de contact.
+
+Fermeture complémentaire DEV0.4.1.9 :
+- bonsoir reconnu comme premier contact ;
+- test de clairance départ vérifié élément par élément ;
+- profils data/airports protégés contre la conversion LF/CRLF.

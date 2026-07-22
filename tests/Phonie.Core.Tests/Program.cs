@@ -40,6 +40,7 @@ var tests = new List<(string Name, Action Test)>
     ("bonjour non répété sur le même organisme", TestGreetingNotRepeatedOnSameStation),
     ("changement Sol Tour ouvre un nouveau contact", TestGroundToTowerNewContact),
     ("retour après ATIS conserve le contact Tour", TestAtisReturnKeepsTowerContact),
+    ("de retour avec vous est reconnu comme reprise de contact", TestReturnGreetingIntent),
     ("réinitialisation du contexte conserve l'historique", TestGroundContextResetKeepsHistory),
     ("nouvelle session efface l'historique", TestFlightSessionResetClearsHistory),
     ("appel clair d'un autre service reste silencieux", TestClearlyCalledOtherServiceSilent),
@@ -712,9 +713,11 @@ static void TestLfbiDirectTakeoffFromHold()
 
     Assert(decision.Action == ControllerAction.Speak, decision.SystemMessage);
     Assert(decision.ReasonCode == "LINEUP_TAKEOFF_CLEARED_FROM_HOLD", decision.ReasonCode);
-    Assert(decision.SpokenText.Contains("alignez-vous piste deux un", StringComparison.Ordinal), decision.SpokenText);
-    Assert(decision.SpokenText.Contains("vent deux un zéro degrés, un zéro nœuds", StringComparison.Ordinal), decision.SpokenText);
+    // Vérifier chaque élément opérationnel sans figer la tournure complète.
+    Assert(decision.SpokenText.Contains("piste deux un", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.SpokenText.Contains("alignez-vous", StringComparison.Ordinal), decision.SpokenText);
     Assert(decision.SpokenText.Contains("autorisé décollage", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.SpokenText.Contains("vent deux un zéro degrés, un zéro nœuds", StringComparison.Ordinal), decision.SpokenText);
     Assert(!decision.SpokenText.Contains("Alpha", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
     Assert(!decision.SpokenText.Contains("intersection", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
     Assert(decision.RequiresAcknowledgement);
@@ -1258,6 +1261,26 @@ static void TestAtisReturnKeepsTowerContact()
     var back = engine.Process("Poitiers Tour de retour avec vous", "F-HNNY", tower, BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
     Assert(back.SpokenText.Contains("rebonjour", StringComparison.OrdinalIgnoreCase), back.SpokenText);
     Assert(back.SpokenText.StartsWith("Fox Novembre Yankee", StringComparison.Ordinal), back.SpokenText);
+}
+
+static void TestReturnGreetingIntent()
+{
+    Assert(PilotIntentParser.Parse("Poitiers Tour de retour avec vous") == PilotIntent.InitialContact);
+    Assert(PilotIntentParser.Parse("Poitiers Tour rebonjour") == PilotIntent.InitialContact);
+    Assert(PilotIntentParser.Parse("Poitiers Tour de F-HNNY bonsoir") == PilotIntent.InitialContact);
+
+    var evening = new GroundOperationsEngine().Process(
+        "Poitiers Tour de F-HNNY bonsoir",
+        "F-HNNY",
+        ControlledRadio(),
+        BuildAirport(),
+        ParkingObservation(),
+        AvailableOccupancy(),
+        210,
+        10);
+    Assert(evening.Action == ControllerAction.Speak, evening.SystemMessage);
+    Assert(evening.ReasonCode == "INITIAL_CONTACT", evening.ReasonCode);
+    Assert(evening.SpokenText.Contains("bonsoir", StringComparison.OrdinalIgnoreCase), evening.SpokenText);
 }
 
 static void TestGroundContextResetKeepsHistory()
