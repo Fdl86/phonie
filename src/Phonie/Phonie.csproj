@@ -10,10 +10,10 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AssemblyName>PHONIE</AssemblyName>
     <RootNamespace>Phonie</RootNamespace>
-    <Version>0.4.1.1</Version>
-    <AssemblyVersion>0.4.1.1</AssemblyVersion>
-    <FileVersion>0.4.1.1</FileVersion>
-    <InformationalVersion>DEV0.4.1.1</InformationalVersion>
+    <Version>0.4.1.2</Version>
+    <AssemblyVersion>0.4.1.2</AssemblyVersion>
+    <FileVersion>0.4.1.2</FileVersion>
+    <InformationalVersion>DEV0.4.1.2</InformationalVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\Phonie.ico</ApplicationIcon>
     <SelfContained>true</SelfContained>

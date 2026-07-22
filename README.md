@@ -1,19 +1,23 @@
-# PHONIE DEV0.4.1.1 - SIA CATALOG HOTFIX & CONTROLLER VOICES
+# PHONIE DEV0.4.1.2 - SIA DIRECT DVD FALLBACK & CONTROLLER VOICES
 
 Application ATC VFR locale, portable et sans installation pour MSFS 2020 et MSFS 2024.
 
-## Correctif DEV0.4.1.1
+## Correctif DEV0.4.1.2
 
-- Découverte du catalogue Atlas VAC compatible avec la pagination SIA actuelle.
-- Téléchargements épinglés sur le DVD immuable du cycle AIRAC sélectionné.
-- Reprises réseau et génération indépendante de la langue du runner Windows.
+La génération SIA ne dépend plus d'une recherche globale `AD-2` qui renvoie zéro document dans GitHub Actions.
+
+Le générateur utilise maintenant deux voies indépendantes :
+
+- recherches catalogue par préfixes ICAO `LFA` à `LFZ` ;
+- repli déterministe sur les PDF du DVD AIRAC officiel, sondés par requêtes partielles avant téléchargement.
+
+La base reste produite uniquement à partir des publications officielles SIA. Aucune fréquence opérationnelle et aucune liste d'aérodromes de production ne sont intégrées au code.
 
 ## Fonctionnalités principales
 
 - Détection dynamique des aérodromes conservée depuis DEV0.4.0.9.
 - Base radio France générée exclusivement depuis les publications officielles du SIA.
-- Aucune fréquence opérationnelle codée dans l'application pour LFBI, LFOU, LFJB, LFFW ou tout autre terrain.
-- Facilities MSFS reste utilisé pour la géométrie, le trafic et la fréquence COM active, jamais comme source radio française de vérité.
+- Facilities MSFS utilisé pour la géométrie, le trafic et la fréquence COM active, jamais comme source radio française de vérité.
 - Gestion AIRAC `previous / current / next`, validation SHA-256 et retour à la dernière base SIA valide.
 - Mise à jour portable depuis GitHub avec bouton `MAJ SIA` et contrôle automatique léger.
 - Séparation entre station locale et service régional.
@@ -28,7 +32,7 @@ Aucune version ne doit être considérée comme testable avant que le workflow c
 
 ## Test
 
-Commencer par `TEST-DEV0.4.1.1.md`.
+Commencer par `TEST-DEV0.4.1.2.md`.
 
 ## Stockage portable
 

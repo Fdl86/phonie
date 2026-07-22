@@ -78,3 +78,56 @@ assert documents["LFAA"].url.endswith("/eAIP_09_JUL_2026/Atlas-VAC/PDF_AIPparSSe
 assert any("page=2" in url for url in fake.urls)
 
 print("Tests générateur SIA OK")
+
+# Regression DEV0.4.1.2: deterministic direct-DVD fallback.
+groups = b.direct_vac_candidates()
+assert len(groups) == 26 and all(len(group) == 26 for group in groups)
+assert groups[0][0] == "LFAA" and groups[-1][-1] == "LFZZ"
+
+class FakeProbeResponse:
+    def __init__(self, status_code: int, content: bytes):
+        self.status_code = status_code
+        self._content = content
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400 and self.status_code not in {404, 410}:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def iter_content(self, chunk_size: int = 16):
+        yield self._content[:chunk_size]
+
+    def close(self) -> None:
+        return None
+
+class FakeProbeSession:
+    def get(self, url: str, **_: object) -> FakeProbeResponse:
+        if url.endswith("AD-2.LFAA.pdf"):
+            return FakeProbeResponse(206, b"%PDF-1.7 fixture")
+        return FakeProbeResponse(404, b"not found")
+
+original_create_session = b.create_session
+b.create_session = lambda: FakeProbeSession()
+try:
+    direct, probe_errors = b.probe_vac_pdf_group(cycle, ["LFAA", "LFAB"])
+    assert sorted(direct) == ["LFAA"] and not probe_errors
+finally:
+    b.create_session = original_create_session
+
+original_catalog = b.discover_vac_catalog_query
+original_direct = b.discover_vac_documents_direct
+b.discover_vac_catalog_query = lambda *_args, **_kwargs: {}
+b.discover_vac_documents_direct = lambda *_args, **_kwargs: {
+    f"LF{chr(65 + (index // 26))}{chr(65 + (index % 26))}": b.PdfDocument(
+        f"LF{chr(65 + (index // 26))}{chr(65 + (index % 26))}",
+        f"fixture://{index}.pdf",
+    )
+    for index in range(201)
+}
+try:
+    fallback_docs = b.discover_vac_documents(fake, cycle, 4, 8)
+    assert len(fallback_docs) == 201
+finally:
+    b.discover_vac_catalog_query = original_catalog
+    b.discover_vac_documents_direct = original_direct
+
+print("Tests fallback DVD DEV0.4.1.2 OK")

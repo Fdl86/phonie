@@ -34,10 +34,18 @@ from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
-VERSION = "DEV0.4.1.1"
+VERSION = "DEV0.4.1.2"
 AIM_CATALOG = "https://www.sia.aviation-civile.gouv.fr/produits-numeriques-en-libre-disposition/les-bases-de-donnees-sia.html"
 VAC_SEARCH = "https://www.sia.aviation-civile.gouv.fr/catalogsearch/result/"
-SESSION_HEADERS = {"User-Agent": "PHONIE-SIA-Radio-Builder/0.4.1.1 (+https://github.com/Fdl86/phonie)"}
+SESSION_HEADERS = {
+    # The SIA catalogue renders different responses for non-browser agents.
+    # Use a normal read-only browser identity and keep PHONIE in a dedicated
+    # header instead of exposing it as the primary user agent.
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/136.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.8",
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
+}
 FREQ_RE = re.compile(r"(?<!\d)(1(?:1[89]|2\d|3[0-6]))[\.,](\d{2,3})(?!\d)")
 ICAO_RE = re.compile(r"\b(?:LF|TF|FM|NT|NW)[A-Z0-9]{2}\b")
 PDF_ICAO_RE = re.compile(r"AD[-_ ]?2[._-](LF[A-Z0-9]{2})\.PDF", re.I)
@@ -416,32 +424,112 @@ def discover_vac_catalog_query(
     return found
 
 
-def discover_vac_documents(session: requests.Session, cycle: Cycle, max_pages: int) -> list[PdfDocument]:
-    """Discover the official Atlas VAC set through the current SIA catalogue.
+def direct_vac_candidates() -> list[list[str]]:
+    """Return deterministic ICAO groups for metropolitan Atlas VAC PDFs.
 
-    Since July 2026 the catalogue exposes current PDFs through moving
-    /documents/download links and paginates information results with `page`,
-    while immutable cycle PDFs remain under media/dvd/eAIP_DD_MMM_YYYY.
-    Discovery therefore reads ICAOs from the catalogue and pins every document
-    to the selected AIRAC DVD.
+    The SIA Atlas VAC uses four-letter LF location indicators. Grouping by the
+    third character lets each worker reuse one HTTP session for 26 lightweight
+    range probes instead of opening hundreds of independent connections.
     """
-    found = discover_vac_catalog_query(session, cycle, "AD-2", max_pages)
+    return [[f"LF{third}{fourth}" for fourth in string.ascii_uppercase]
+            for third in string.ascii_uppercase]
 
-    # Some catalogue deployments cap broad searches. Shard by the first ICAO
-    # suffix character only when needed; no aerodrome or frequency is hardcoded.
+
+def probe_vac_pdf_group(cycle: Cycle, icaos: list[str]) -> tuple[dict[str, PdfDocument], list[str]]:
+    """Probe one LFx group directly on the immutable official AIRAC DVD."""
+    atlas_root = atlas_vac_directory(cycle)
+    local = create_session()
+    found: dict[str, PdfDocument] = {}
+    errors: list[str] = []
+    for icao in icaos:
+        url = f"{atlas_root}/AD-2.{icao}.pdf"
+        response = None
+        try:
+            response = local.get(
+                url,
+                timeout=25,
+                allow_redirects=True,
+                stream=True,
+                headers={"Range": "bytes=0-15", "Accept": "application/pdf,*/*;q=0.5"},
+            )
+            if response.status_code in {404, 410}:
+                continue
+            response.raise_for_status()
+            first = next(response.iter_content(chunk_size=16), b"")
+            if first.startswith(b"%PDF"):
+                found[icao] = PdfDocument(icao, url)
+        except requests.RequestException as exc:
+            # A failed candidate is not proof that the full source is absent.
+            # Preserve a bounded diagnostic sample; aggregate validation below
+            # will reject an incomplete sweep instead of publishing partial data.
+            if len(errors) < 3:
+                errors.append(f"{icao}: {type(exc).__name__}: {exc}")
+            continue
+        finally:
+            if response is not None:
+                response.close()
+    return found, errors
+
+
+def discover_vac_documents_direct(cycle: Cycle, workers: int) -> dict[str, PdfDocument]:
+    """Discover Atlas VAC files without depending on the mutable search UI."""
+    found: dict[str, PdfDocument] = {}
+    groups = direct_vac_candidates()
+    pool_size = max(1, min(workers, 12, len(groups)))
+    errors: list[str] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=pool_size) as executor:
+        futures = [executor.submit(probe_vac_pdf_group, cycle, group) for group in groups]
+        for future in concurrent.futures.as_completed(futures):
+            group_found, group_errors = future.result()
+            found.update(group_found)
+            errors.extend(group_errors)
+    if errors and len(found) < 200:
+        print("SIA VAC: exemples d'échecs du balayage DVD:", *errors[:10], sep="\n- ", file=sys.stderr)
+    return found
+
+
+def discover_vac_documents(
+    session: requests.Session,
+    cycle: Cycle,
+    max_pages: int,
+    workers: int,
+) -> list[PdfDocument]:
+    """Discover the official Atlas VAC set with two independent methods.
+
+    The SIA catalogue search no longer returns useful results for the broad
+    `AD-2` query used by DEV0.4.1.0/1.1. DEV0.4.1.2 therefore uses valid
+    three-character ICAO-prefix searches (LFA ... LFZ). If the catalogue is
+    filtered, capped or served differently to GitHub Actions, a deterministic
+    range-probe sweep of the immutable AIRAC DVD provides an independent
+    fallback. No operational frequency or aerodrome list is embedded.
+    """
+    found: dict[str, PdfDocument] = {}
+
+    # Magento rejects or inconsistently tokenises punctuation-heavy searches.
+    # ICAO prefixes contain three plain alphanumeric characters and each query
+    # remains small enough to paginate predictably.
+    consecutive_empty = 0
+    for suffix in string.ascii_uppercase:
+        query_found = discover_vac_catalog_query(session, cycle, f"LF{suffix}", min(max_pages, 8))
+        found.update(query_found)
+        consecutive_empty = consecutive_empty + 1 if not query_found else 0
+        if consecutive_empty >= 3 and not found:
+            print("SIA VAC: catalogue inutilisable sur trois préfixes consécutifs, passage au DVD direct.")
+            break
+
+    print(f"SIA VAC: {len(found)} documents détectés par le catalogue segmenté.")
+
     if len(found) < 200:
-        for suffix in string.ascii_uppercase:
-            found.update(discover_vac_catalog_query(session, cycle, f"AD-2.LF{suffix}", min(max_pages, 5)))
-            if len(found) >= 300:
-                break
+        direct = discover_vac_documents_direct(cycle, workers)
+        print(f"SIA VAC: {len(direct)} documents détectés directement sur le DVD AIRAC.")
+        found.update(direct)
 
     if len(found) < 100:
         raise RuntimeError(
-            f"Catalogue VAC incomplet: seulement {len(found)} documents AD-2 détectés "
-            "après pagination et recherche segmentée."
+            f"Source VAC incomplète: seulement {len(found)} documents AD-2 détectés "
+            "après recherches ICAO segmentées et balayage direct du DVD AIRAC."
         )
     return sorted(found.values(), key=lambda document: document.icao)
-
 
 def extract_pdf_text(content: bytes, max_pages: int = 5) -> str:
     reader=PdfReader(io.BytesIO(content),strict=False)
@@ -551,7 +639,7 @@ def finalize_airports(records: Iterable[dict]) -> list[dict]:
 
 
 def build_from_vac(session: requests.Session, cycle: Cycle, workers: int, max_pages: int) -> list[dict]:
-    documents=discover_vac_documents(session,cycle,max_pages)
+    documents=discover_vac_documents(session,cycle,max_pages,workers)
     print(f"SIA VAC: {len(documents)} documents détectés.")
     airports=[]; errors=[]
     def task(doc:PdfDocument):

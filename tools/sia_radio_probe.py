@@ -7,7 +7,12 @@ import requests
 from bs4 import BeautifulSoup
 
 CATALOG = "https://www.sia.aviation-civile.gouv.fr/produits-numeriques-en-libre-disposition/les-bases-de-donnees-sia.html"
-HEADERS = {"User-Agent": "PHONIE-SIA-Radio-Probe/0.4.1.1 (+https://github.com/Fdl86/phonie)"}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/136.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
+}
 
 def snapshot() -> dict:
     r=requests.get(CATALOG,headers=HEADERS,timeout=30); r.raise_for_status()

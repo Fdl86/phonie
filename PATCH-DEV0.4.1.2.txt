@@ -1,0 +1,11 @@
+PHONIE DEV0.4.1.2 - SIA DIRECT DVD FALLBACK HOTFIX
+
+Correctif de la génération initiale de la base radio :
+- abandon de la recherche globale AD-2 qui renvoie zéro résultat sur le catalogue SIA ;
+- recherches segmentées par préfixes ICAO LFA à LFZ ;
+- repli déterministe sur les PDF du DVD AIRAC officiel avec lecture partielle ;
+- diagnostics séparés catalogue / DVD ;
+- aucun aérodrome ni aucune fréquence opérationnelle codés comme source de données.
+
+Commit conseillé :
+PHONIE DEV0.4.1.2 - SIA direct DVD fallback hotfix
