@@ -12,12 +12,7 @@ public sealed class RadioDataUpdateService : IDisposable
 {
     private readonly HttpClient client;
     private readonly SemaphoreSlim gate = new(1, 1);
-    private readonly JsonSerializerOptions jsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
-    };
+    private readonly JsonSerializerOptions jsonOptions = SiaRadioManifestJson.Options;
     private bool disposed;
 
     public RadioDataUpdateService()
@@ -26,7 +21,7 @@ public sealed class RadioDataUpdateService : IDisposable
         {
             Timeout = TimeSpan.FromSeconds(45),
         };
-        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("PHONIE", "0.4.1.5"));
+        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("PHONIE", "0.4.1.6"));
     }
 
     public event EventHandler<string>? LogMessage;

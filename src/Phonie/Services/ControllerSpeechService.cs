@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Speech.Synthesis;
 using System.Text;
+using Phonie.Core;
 using Phonie.Models;
 
 namespace Phonie.Services;
@@ -55,7 +56,7 @@ public sealed class ControllerSpeechService : IDisposable
             return;
         }
 
-        var key = string.IsNullOrWhiteSpace(stationKey) ? stationName : stationKey;
+        var key = NormalizeStationKey(stationKey, stationName);
         var assignment = GetOrAssignVoice(key, stationName);
         var voiceCache = string.IsNullOrWhiteSpace(assignment.VoiceName)
             ? "default"
@@ -66,8 +67,8 @@ public sealed class ControllerSpeechService : IDisposable
             voiceCache,
             Path.Combine(
                 AppPaths.ControllerVoiceCacheDirectory,
-                SafeSegment(key),
-                SafeSegment(voiceCache)),
+                WindowsPathSegment.Sanitize(assignment.StationKey),
+                WindowsPathSegment.Sanitize(voiceCache)),
             rate: 0,
             cancellationToken).ConfigureAwait(false);
 
@@ -85,8 +86,8 @@ public sealed class ControllerSpeechService : IDisposable
         var voiceName = SelectAtisVoiceName();
         var directory = Path.Combine(
             AppPaths.AtisCacheDirectory,
-            SafeSegment(information.AirportIcao),
-            SafeSegment(string.IsNullOrWhiteSpace(voiceName) ? "default" : voiceName));
+            WindowsPathSegment.Sanitize(information.AirportIcao),
+            WindowsPathSegment.Sanitize(string.IsNullOrWhiteSpace(voiceName) ? "default" : voiceName));
         return EnsureSpeechAsync(
             information.Text,
             $"{information.AirportIcao} ATIS",
@@ -275,13 +276,6 @@ public sealed class ControllerSpeechService : IDisposable
         VoiceGender.Neutral => "Neutre",
         _ => "Non renseigné",
     };
-
-    private static string SafeSegment(string value)
-    {
-        var invalid = Path.GetInvalidFileNameChars().ToHashSet();
-        var clean = new string(value.Trim().Select(character => invalid.Contains(character) ? '_' : character).ToArray());
-        return string.IsNullOrWhiteSpace(clean) ? "station" : clean;
-    }
 
     private void PublishLog(string message) => LogMessage?.Invoke(this, message);
 

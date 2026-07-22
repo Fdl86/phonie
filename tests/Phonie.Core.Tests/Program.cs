@@ -53,8 +53,12 @@ var tests = new List<(string Name, Action Test)>
     ("A/A seule ne devient jamais dialoguée", TestRadioSelfInformationOnly),
     ("catalogue SIA résout une fréquence partagée par contexte ICAO", TestSiaSharedChannelByAirport),
     ("catalogue SIA préfère Tour à Approche au sol", TestSiaRecommendationPriority),
+    ("catalogue SIA recommande l'Approche régionale sans Tour locale", TestSiaRegionalRecommendationPriority),
+    ("catalogue SIA recommande le FIS régional en vol", TestSiaFlightInformationPriority),
+    ("portée locale départage deux services de même priorité", TestSiaScopeTieBreak),
     ("horaires non évalués sur canal partagé imposent le silence", TestSiaAmbiguousScheduleSafety),
     ("canalisation 8,33 utilise une représentation entière", TestSiaChannelNormalization),
+    ("segments cache Windows neutralisent noms réservés et suffixes interdits", TestWindowsPathSegment),
 };
 
 var failures = new List<string>();
@@ -99,6 +103,69 @@ static void TestSiaRecommendationPriority()
     Assert(recommended?.Kind == SiaRadioServiceKind.Tower, recommended?.Callsign ?? "aucune recommandation");
 }
 
+static void TestSiaRegionalRecommendationPriority()
+{
+    var catalogue = BuildSiaTestCatalog();
+    var recommended = catalogue.Recommend("LFYY", isOnGround: true, dialogueOnly: false);
+    Assert(recommended?.Kind == SiaRadioServiceKind.Approach, recommended?.Callsign ?? "aucune recommandation");
+}
+
+static void TestSiaFlightInformationPriority()
+{
+    var dataset = BuildSiaDataset();
+    dataset.Airports.Add(new SiaAirportRadioRecord
+    {
+        Icao = "LFWW",
+        Name = "DELTA",
+        Frequencies = new List<SiaRadioFrequencyRecord>
+        {
+            new()
+            {
+                Channel = "123.500", ChannelKhz = 123500, ServiceCode = "A/A", Callsign = "DELTA A/A",
+                Kind = SiaRadioServiceKind.SelfInformation, Scope = SiaRadioStationScope.Local,
+                Interactive = false, ScheduleState = SiaRadioScheduleState.NotApplicable,
+            },
+            new()
+            {
+                Channel = "130.275", ChannelKhz = 130275, ServiceCode = "FIS", Callsign = "DELTA INFORMATION",
+                Kind = SiaRadioServiceKind.FlightInformation, Scope = SiaRadioStationScope.Regional,
+                Interactive = true, ScheduleState = SiaRadioScheduleState.Always,
+            },
+        },
+    });
+
+    var recommended = new SiaRadioCatalog(dataset).Recommend("LFWW", isOnGround: false, dialogueOnly: false);
+    Assert(recommended?.Kind == SiaRadioServiceKind.FlightInformation, recommended?.Callsign ?? "aucune recommandation");
+}
+
+static void TestSiaScopeTieBreak()
+{
+    var dataset = BuildSiaDataset();
+    dataset.Airports.Add(new SiaAirportRadioRecord
+    {
+        Icao = "LFZZ",
+        Name = "CHARLIE",
+        Frequencies = new List<SiaRadioFrequencyRecord>
+        {
+            new()
+            {
+                Channel = "124.100", ChannelKhz = 124100, ServiceCode = "INFO", Callsign = "CHARLIE REGIONAL",
+                Kind = SiaRadioServiceKind.Information, Scope = SiaRadioStationScope.Regional,
+                Interactive = true, ScheduleState = SiaRadioScheduleState.Always,
+            },
+            new()
+            {
+                Channel = "124.200", ChannelKhz = 124200, ServiceCode = "INFO", Callsign = "CHARLIE LOCAL",
+                Kind = SiaRadioServiceKind.Information, Scope = SiaRadioStationScope.Local,
+                Interactive = true, ScheduleState = SiaRadioScheduleState.Always,
+            },
+        },
+    });
+
+    var recommended = new SiaRadioCatalog(dataset).Recommend("LFZZ", isOnGround: true, dialogueOnly: false);
+    Assert(recommended?.Scope == SiaRadioStationScope.Local, recommended?.Callsign ?? "aucune recommandation");
+}
+
 static void TestSiaAmbiguousScheduleSafety()
 {
     var dataset = BuildSiaDataset();
@@ -136,6 +203,15 @@ static void TestSiaChannelNormalization()
     Assert(RadioChannel.CarrierHzFromChannelKhz(118505) == 118500000);
     var record = new SiaRadioFrequencyRecord { ChannelKhz = 118505, Channel = "118.505" };
     Assert(RadioChannel.Matches(record, 118.505));
+}
+
+static void TestWindowsPathSegment()
+{
+    Assert(WindowsPathSegment.Sanitize("COM1") == "_COM1");
+    Assert(WindowsPathSegment.Sanitize("com1.cache") == "_com1.cache");
+    Assert(WindowsPathSegment.Sanitize("LFBI|TOUR. ") == "LFBI_TOUR");
+    Assert(!WindowsPathSegment.Sanitize(new string('X', 200)).EndsWith(".", StringComparison.Ordinal));
+    Assert(WindowsPathSegment.Sanitize("..") == "station");
 }
 
 static SiaRadioCatalog BuildSiaTestCatalog() => new(BuildSiaDataset());
@@ -189,6 +265,12 @@ static SiaRadioDataset BuildSiaDataset()
                         Channel = "123.500", ChannelKhz = 123500, ServiceCode = "A/A", Callsign = "BRAVO A/A",
                         Kind = SiaRadioServiceKind.SelfInformation, Scope = SiaRadioStationScope.Local,
                         Interactive = false, ScheduleState = SiaRadioScheduleState.NotApplicable,
+                    },
+                    new()
+                    {
+                        Channel = "124.800", ChannelKhz = 124800, ServiceCode = "APP", Callsign = "BRAVO APPROCHE",
+                        Kind = SiaRadioServiceKind.Approach, Scope = SiaRadioStationScope.Regional,
+                        Interactive = true, ScheduleState = SiaRadioScheduleState.Always,
                     },
                 },
             },

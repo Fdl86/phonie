@@ -1,0 +1,9 @@
+PHONIE DEV0.4.1.6
+
+- .gitattributes -text pour les données radio hachées
+- garde-fou CI CRLF + SHA-256 avant build
+- services régionaux conservés dans Recommend
+- manifest C# écrit en camelCase
+- bascule AIRAC conservée en mémoire si l'écriture échoue
+- cache voix basé sur la clé station normalisée
+- noms réservés Windows neutralisés

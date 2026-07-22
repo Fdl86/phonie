@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text.Json;
 using Phonie.Services;
 
 var failures = new List<string>();
@@ -111,6 +112,7 @@ Check(
     expectedIntention: "tours de piste");
 
 RunFacilityDecoderTests();
+RunManifestSerializationTests();
 RunOperationalRadioTests();
 
 var stationOnly = PhraseologyService.Analyze("Poitiers Tour, bonjour.", "F-HNNY");
@@ -258,6 +260,31 @@ void WriteInt32(byte[] buffer, int offset, int value) =>
 void WriteSingle(byte[] buffer, int offset, float value) =>
     BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(offset, 4), BitConverter.SingleToInt32Bits(value));
 
+void RunManifestSerializationTests()
+{
+    var manifest = new Phonie.Models.SiaRadioManifest
+    {
+        SchemaVersion = 2,
+        DatasetId = "test",
+        DatasetRevision = "revision",
+        Authority = "SIA",
+        GeneratedAt = DateTimeOffset.UtcNow,
+        GeneratorVersion = "TEST",
+        SourceCatalogUrl = "https://example.invalid/",
+        BootstrapRequired = false,
+    };
+
+    var json = JsonSerializer.Serialize(manifest, Phonie.Models.SiaRadioManifestJson.Options);
+    using var document = JsonDocument.Parse(json);
+    var root = document.RootElement;
+    if (!root.TryGetProperty("schemaVersion", out _)
+        || !root.TryGetProperty("datasetRevision", out _)
+        || root.TryGetProperty("SchemaVersion", out _))
+    {
+        failures.Add("Le manifest radio doit être sérialisé en camelCase stable.");
+    }
+}
+
 void RunOperationalRadioTests()
 {
     var status = OfficialRadioCatalogService.Reload(new DateTimeOffset(2026, 7, 21, 12, 0, 0, TimeSpan.Zero));
@@ -345,6 +372,14 @@ void RunOperationalRadioTests()
         || Math.Abs(montaiguLocal.FrequencyMhz - 123.500) > 0.001)
     {
         failures.Add("LFFW fixture : la recommandation locale doit rester l'A/A, pas le FIS régional.");
+    }
+
+    var montaiguInFlight = OperationalRadioService.Recommend(null, "LFFW", false, snapshot.Timestamp);
+    if (montaiguInFlight is null
+        || montaiguInFlight.Kind != Phonie.Models.OperationalRadioKind.InformationService
+        || Math.Abs(montaiguInFlight.FrequencyMhz - 130.275) > 0.001)
+    {
+        failures.Add("LFFW fixture : le FIS régional doit devenir prioritaire en vol.");
     }
 }
 

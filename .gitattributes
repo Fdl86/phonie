@@ -1,0 +1,4 @@
+# PHONIE - intégrité des jeux de données vérifiés par SHA-256.
+# Ces fichiers doivent conserver exactement leurs octets, sans conversion LF/CRLF.
+data/radio/france/** -text
+tests/Phonie.SmokeTests/Fixtures/radio/france/** -text

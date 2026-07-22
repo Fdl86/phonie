@@ -266,9 +266,9 @@ public sealed class SiaRadioCatalog
         }
 
         return airport.Frequencies
-            .Where(item => item.Scope == SiaRadioStationScope.Local)
             .Where(item => !dialogueOnly || item.Interactive)
             .OrderByDescending(item => RecommendationPriority(item, isOnGround))
+            .ThenByDescending(item => item.Scope == SiaRadioStationScope.Local)
             .ThenBy(item => item.ChannelKhz)
             .FirstOrDefault();
     }

@@ -1,4 +1,19 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace Phonie.Models;
+
+
+public static class SiaRadioManifestJson
+{
+    public static JsonSerializerOptions Options { get; } = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
+}
 
 public sealed class SiaRadioManifest
 {

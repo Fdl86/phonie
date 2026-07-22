@@ -14,12 +14,7 @@ namespace Phonie.Services;
 public static class OfficialRadioCatalogService
 {
     private static readonly object Gate = new();
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
-    };
+    private static readonly JsonSerializerOptions JsonOptions = SiaRadioManifestJson.Options;
 
     private static SiaRadioCatalog? catalog;
     private static SiaRadioManifest? manifest;
@@ -64,7 +59,7 @@ public static class OfficialRadioCatalogService
                     return PublishStatus(Unavailable("Base radio SIA à générer par le workflow officiel."));
                 }
 
-                ActivateDueNext(manifest, now, manifestPath);
+                var activationWarning = ActivateDueNext(manifest, now, manifestPath);
                 var candidates = BuildCandidateList(manifest, now);
                 var errors = new List<string>();
                 foreach (var candidate in candidates)
@@ -83,6 +78,10 @@ public static class OfficialRadioCatalogService
                             : candidate.Label == "current"
                                 ? "Base SIA active et intègre."
                                 : $"Base SIA de secours utilisée ({candidate.Label}).";
+                        if (!string.IsNullOrWhiteSpace(activationWarning))
+                        {
+                            message = $"{message} {activationWarning}";
+                        }
                         return PublishStatus(new SiaRadioDatabaseStatus(
                             true,
                             true,
@@ -168,7 +167,7 @@ public static class OfficialRadioCatalogService
             var frequency = catalog.Recommend(normalized, isOnGround, dialogueOnly);
             if (frequency is null)
             {
-                return new OfficialRadioLookup(true, airportKnown, null, "Aucune fréquence locale officielle répondant au filtre.");
+                return new OfficialRadioLookup(true, airportKnown, null, "Aucune fréquence officielle répondant au filtre.");
             }
 
             var airport = catalog.GetAirport(normalized)!;
@@ -179,7 +178,7 @@ public static class OfficialRadioCatalogService
                 airport,
                 frequency,
                 new[] { frequency },
-                "Fréquence locale recommandée depuis la base SIA active.");
+                "Fréquence recommandée depuis la base SIA active.");
             return new OfficialRadioLookup(
                 true,
                 true,
@@ -390,11 +389,11 @@ public static class OfficialRadioCatalogService
         return result;
     }
 
-    private static void ActivateDueNext(SiaRadioManifest value, DateTimeOffset now, string manifestPath)
+    private static string? ActivateDueNext(SiaRadioManifest value, DateTimeOffset now, string manifestPath)
     {
         if (value.Next is null || value.Next.EffectiveFrom > now)
         {
-            return;
+            return null;
         }
 
         _ = LoadDescriptor(value.Next);
@@ -402,14 +401,37 @@ public static class OfficialRadioCatalogService
         value.Current = value.Next;
         value.Next = null;
         value.DatasetRevision = value.Current.Revision;
-        WriteManifestAtomically(manifestPath, value);
+
+        try
+        {
+            WriteManifestAtomically(manifestPath, value);
+            return null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return $"Bascule AIRAC active en mémoire, mais manifest non réinscriptible : {Clean(exception)}";
+        }
     }
 
     private static void WriteManifestAtomically(string path, SiaRadioManifest value)
     {
         var temporary = path + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(value, JsonOptions));
-        File.Move(temporary, path, true);
+        try
+        {
+            File.WriteAllText(temporary, JsonSerializer.Serialize(value, JsonOptions));
+            File.Move(temporary, path, true);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(temporary);
+            }
+            catch
+            {
+                // Le manifest actif en mémoire reste valide ; le prochain passage remplacera ce temporaire.
+            }
+        }
     }
 
     private static void ValidateManifest(SiaRadioManifest value)
