@@ -1,4 +1,4 @@
-name: Build PHONIE DEV0.4.2.0 - Radio Intent and Contextual ASR
+name: Build PHONIE DEV0.4.2.0 R3 - Clean Source and Full CI
 
 on:
   workflow_dispatch:
@@ -59,21 +59,36 @@ jobs:
             "data/radio/france-update-source.json",
             "tools/sia_radio_builder.py",
             "tools/validate_sia_radio.py",
+            "PHONIE.sln",
             "README.md",
-            "RENORMALIZE-GIT-INDEX-DEV0.4.2.0.cmd",
-            "RENORMALIZE-GIT-INDEX-DEV0.4.2.0.ps1",
-            "TEST-DEV0.4.2.0.md",
-            "SIA-RADIO-DATABASE-DEV0.4.2.0.md",
-            "CONTROLLER-VOICES-DEV0.4.2.0.md",
-            "RADIO-CONTACT-HISTORY-DEV0.4.2.0.md",
-            "CONTEXTUAL-ASR-DEV0.4.2.0.md",
-            "CHANGELOG-DEV0.4.2.0.md",
-            "STATIC-VALIDATION-DEV0.4.2.0.txt",
-            "SOURCE-MANIFEST-DEV0.4.2.0.txt"
+            "docs/CHANGELOG-DEV0.4.2.0.md",
+            "docs/TEST-DEV0.4.2.0.md",
+            "docs/TECHNICAL-NOTES-DEV0.4.2.0.md",
+            "docs/SOURCE-MANIFEST-DEV0.4.2.0-R3.txt",
+            "THIRD-PARTY-NOTICES.md"
           )
           $missing = @($required | Where-Object { -not (Test-Path $_) })
           if ($missing.Count -gt 0) {
             throw "Fichiers source manquants : $($missing -join ', ')"
+          }
+
+          [xml]$smokeProject = Get-Content "tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj" -Raw
+          $smokeReferences = @($smokeProject.Project.ItemGroup.ProjectReference | ForEach-Object { [string]$_.Include })
+          if ($smokeReferences -notcontains '..\..\src\Phonie.Core\Phonie.Core.csproj') {
+            throw "Phonie.SmokeTests doit référencer explicitement Phonie.Core."
+          }
+          $linkedCoreSources = @($smokeProject.Project.ItemGroup.Compile | Where-Object {
+            ([string]$_.Include) -like '*src\Phonie.Core\*'
+          })
+          if ($linkedCoreSources.Count -gt 0) {
+            throw "Phonie.SmokeTests ne doit plus recopier des fichiers Phonie.Core comme sources liées."
+          }
+
+          $forbiddenRoot = @(Get-ChildItem -File | Where-Object {
+            $_.Name -match '^(?:CHANGELOG|TEST|STATIC-VALIDATION|SOURCE-MANIFEST|PATCH|RENORMALIZE|GROUND-OPERATIONS|FACILITIES|CALLSIGN|ASR-PROFILES|TURBO-PROFILE|GPU-BENCHMARK|ATC-ID|SIA-RADIO|RADIO-CONTACT|AIRPORT-|OPERATIONAL-|PERFORMANCE-|PORTABLE-|STARTUP-|VALIDATION-|WHISPER-).*'
+          })
+          if ($forbiddenRoot.Count -gt 0) {
+            throw "Fichiers historiques ou outils temporaires encore présents à la racine : $($forbiddenRoot.Name -join ', ')"
           }
           $radioSource = Get-Content "src/Phonie/Services/RadioDataUpdateService.cs" -Raw
           if ($radioSource -notmatch 'using System\.Net\.Http;') {
@@ -180,35 +195,18 @@ jobs:
           Write-Host "Précontrôle source et intégrité SHA-256 OK - $($required.Count) éléments requis."
           dotnet --info
 
-      - name: Restore projects
+      - name: Restore complete solution
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          dotnet restore src/Phonie/Phonie.csproj
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet restore tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet restore tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet restore src/Phonie.Core/Phonie.Core.csproj
+          dotnet restore PHONIE.sln
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build PHONIE app first with zero warnings
+      - name: Build complete solution with zero warnings
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          dotnet build src/Phonie/Phonie.csproj --configuration Release --no-restore -warnaserror
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Build test projects with zero warnings
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          dotnet build tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj --configuration Release --no-restore -warnaserror
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj --configuration Release --no-restore -warnaserror
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build src/Phonie.Core/Phonie.Core.csproj --configuration Release --no-restore -warnaserror
+          dotnet build PHONIE.sln --configuration Release --no-restore -warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run smoke tests
@@ -341,26 +339,11 @@ jobs:
 
           Le modèle n'est pas inclus. Utiliser le bouton d'installation du profil dans PHONIE.
           "@ | Set-Content -Encoding UTF8 "$root/models/vosk/LISEZ-MOI.txt"
-          $docs = @(
-            "README.md",
-            "TEST-DEV0.4.2.0.md",
-            "SIA-RADIO-DATABASE-DEV0.4.2.0.md",
-            "CONTROLLER-VOICES-DEV0.4.2.0.md",
-            "RADIO-CONTACT-HISTORY-DEV0.4.2.0.md",
-            "CONTEXTUAL-ASR-DEV0.4.2.0.md",
-            "CHANGELOG-DEV0.4.2.0.md",
-            "STATIC-VALIDATION-DEV0.4.2.0.txt",
-            "SOURCE-MANIFEST-DEV0.4.2.0.txt",
-            "GROUND-OPERATIONS-DEV0.4.0.9.md",
-            "FACILITIES-NORMALIZATION-DEV0.4.0.9.md",
-            "CALLSIGN-RULES-DEV0.4.0.9.md",
-            "ASR-PROFILES-DEV0.3.0.5.md",
-            "TURBO-PROFILE-DEV0.3.0.5.md",
-            "GPU-BENCHMARK-DEV0.3.0.5.md",
-            "ATC-ID-CALLSIGN-DEV0.3.0.5.md",
-            "THIRD-PARTY-NOTICES.md"
-          )
-          foreach ($doc in $docs) { Copy-Item $doc "$root/$doc" }
+          Copy-Item "README.md" "$root/README.md"
+          Copy-Item "THIRD-PARTY-NOTICES.md" "$root/THIRD-PARTY-NOTICES.md"
+          New-Item -ItemType Directory -Force "$root/docs" | Out-Null
+          Copy-Item "docs/*.md" "$root/docs/"
+          Copy-Item "docs/*.txt" "$root/docs/"
 
       - name: Verify portable artifact
         shell: pwsh

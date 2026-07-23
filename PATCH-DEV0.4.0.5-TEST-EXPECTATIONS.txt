@@ -1,7 +1,0 @@
-PHONIE DEV0.4.0.5 - Correctif attentes des tests radio
-
-- La compilation de l'application et du moteur réussit.
-- Les deux échecs provenaient uniquement des tests qui attendaient l'écriture écran "Alpha 2" alors que la phrase TTS correcte est "Alpha deux".
-- Les assertions LFBI Tour et AFIS attendent désormais la forme réellement prononcée.
-- Les trois avertissements nullable du projet de tests ont été supprimés par des assertions non-null explicites.
-- Aucun changement du comportement opérationnel de PHONIE.

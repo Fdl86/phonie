@@ -8,10 +8,14 @@
   </PropertyGroup>
 
   <!--
-    The smoke tests deliberately compile the phraseology engine and its plain
-    data models as linked sources. They must not reference the self-contained
-    WPF executable, otherwise .NET raises NETSDK1151.
+    The smoke tests compile selected non-WPF application sources as linked files,
+    and reference the shared Phonie.Core project for all core radio types.
+    They never reference the self-contained WPF executable.
   -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Phonie.Core\Phonie.Core.csproj" />
+  </ItemGroup>
+
   <ItemGroup>
     <Compile Include="..\..\src\Phonie\Services\PhraseologyService.cs" Link="Source\PhraseologyService.cs" />
     <Compile Include="..\..\src\Phonie\Models\SpeechRecognitionModels.cs" Link="Source\SpeechRecognitionModels.cs" />
@@ -26,8 +30,6 @@
     <Compile Include="..\..\src\Phonie\Services\RadioPolicyResolver.cs" Link="Source\RadioPolicyResolver.cs" />
     <Compile Include="..\..\src\Phonie\Models\RadioPolicy.cs" Link="Source\RadioPolicy.cs" />
     <Compile Include="..\..\src\Phonie\Models\SiaRadioDataModels.cs" Link="Source\SiaRadioDataModels.cs" />
-    <Compile Include="..\..\src\Phonie.Core\AirportRadioSelector.cs" Link="Source\AirportRadioSelector.cs" />
-    <Compile Include="..\..\src\Phonie.Core\SiaRadioCatalog.cs" Link="Source\SiaRadioCatalog.cs" />
   </ItemGroup>
 
   <ItemGroup>

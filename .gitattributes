@@ -1,8 +1,15 @@
-# PHONIE - intégrité des jeux de données vérifiés par SHA-256.
-# Le fichier d'attributs reste lui-même en LF, y compris avec core.autocrlf=true.
-.gitattributes text eol=lf
+# Dépôt portable : tous les fichiers texte sont stockés et extraits en LF.
+* text=auto eol=lf
 
-# Ces fichiers doivent conserver exactement leurs octets, sans conversion LF/CRLF.
+# Binaires.
+*.ico -text
+*.png -text
+*.wav -text
+*.bin -text
+*.dll -text
+*.exe -text
+
+# Jeux de données vérifiés par SHA-256 : octets strictement inchangés.
 data/radio/france/** -text
 tests/Phonie.SmokeTests/Fixtures/radio/france/** -text
 data/airports/**/*.json -text

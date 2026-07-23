@@ -1,8 +1,0 @@
-PHONIE DEV0.4.0.7 - PATCH DEPUIS DEV0.4.0.6
-
-1. Décompresser ce patch directement à la racine du dépôt PHONIE.
-2. Accepter le remplacement des fichiers existants.
-3. Commit conseillé : PHONIE DEV0.4.0.7 - Dynamic Airport and Radio Context
-4. Pousser avec GitHub Desktop puis attendre le résultat complet de GitHub Actions.
-
-Le patch ne contient aucun ZIP imbriqué et conserve les fichiers non modifiés de DEV0.4.0.6.
