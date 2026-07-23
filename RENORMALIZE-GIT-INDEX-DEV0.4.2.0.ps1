@@ -20,15 +20,29 @@ if ($LASTEXITCODE -ne 0) {
     throw "Ce dossier n'est pas le dépôt PHONIE. Conserver le dossier .git avant extraction."
 }
 
-& $gitPath add .gitattributes
+$unmerged = @(& $gitPath diff --name-only --diff-filter=U)
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-& $gitPath add --renormalize .
+if ($unmerged.Count -gt 0) {
+    throw "Conflits Git non résolus : $($unmerged -join ', ')"
+}
+
+# Important : enregistrer d'abord les ajouts ET les suppressions du nouveau ZIP.
+# Sans cette étape, --renormalize peut tenter de relire un ancien fichier suivi mais
+# désormais absent du dossier de travail et échouer avec « unable to stat ».
+& $gitPath -c core.autocrlf=false add -- .gitattributes
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $gitPath -c core.autocrlf=false add -A -- .
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# Réappliquer ensuite les règles de fins de ligne à tous les fichiers suivis restants.
+& $gitPath -c core.autocrlf=false add --renormalize -- .
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $frozenPaths = @(
     "data/radio/france/manifest.json",
     "tests/Phonie.SmokeTests/Fixtures/radio/france/manifest.json",
-    "tests/Phonie.SmokeTests/Fixtures/radio/france/current/airports-fr.json"
+    "tests/Phonie.SmokeTests/Fixtures/radio/france/current/airports-fr.json",
+    "data/airports/LFBI.json"
 )
 foreach ($path in $frozenPaths) {
     if (-not (Test-Path $path)) {
@@ -71,5 +85,5 @@ function Test-RadioManifestIntegrity([string]$manifestPath) {
 Test-RadioManifestIntegrity "tests/Phonie.SmokeTests/Fixtures/radio/france/manifest.json"
 Test-RadioManifestIntegrity "data/radio/france/manifest.json"
 
-Write-Host "Renormalisation Git, attributs -text, fins de ligne et SHA-256 : OK." -ForegroundColor Green
+Write-Host "Renormalisation Git, suppressions historiques, attributs -text, fins de ligne et SHA-256 : OK." -ForegroundColor Green
 & $gitPath status --short

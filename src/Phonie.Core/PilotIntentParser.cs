@@ -30,22 +30,41 @@ public static partial class PilotIntentParser
             return Details(PilotIntent.BacktrackRequest);
         }
 
+        // Une demande de roulage vers le point d'attente reste une demande de roulage.
+        // Elle doit être évaluée avant « au point d'attente », sinon une phrase comme
+        // « pour rouler jusqu'au point d'attente » devient à tort ReadyAtHoldShort.
+        if (ContainsAny(normalized, "roulage", "rouler", "pret a rouler", "pret au roulage", "consigne de roulage"))
+        {
+            return Details(PilotIntent.TaxiRequest);
+        }
+
         var lineUp = ContainsAny(normalized, "alignement", "m aligner", "nous aligner", "aligner", "aligne pret");
-        var takeoff = ContainsAny(normalized, "decollage", "decoller", "depart immediat", "autorisation de depart");
+        var takeoff = ContainsAny(normalized, "decollage", "decoller", "decolle", "je decolle", "depart immediat", "autorisation de depart");
         if (lineUp && takeoff)
         {
             return Details(PilotIntent.LineUpAndTakeoffRequest);
         }
 
+        var departureContext = ContainsAny(
+            normalized,
+            "pour un depart",
+            "pour depart",
+            "depart depuis l intersection",
+            "depart de l intersection");
         var ready = ContainsAny(
                 normalized,
                 "pret au point d attente",
                 "au point d attente",
                 "pret au depart",
                 "pret pour un depart",
-                "pret pour depart")
+                "pret pour depart",
+                "pare au depart",
+                "pare pour un depart")
             || (normalized.Contains("pret", StringComparison.Ordinal)
-                && reportedPoint is not null);
+                && reportedPoint is not null)
+            || (reportedPoint is not null && mentionsIntersection && departureContext)
+            || (mentionsIntersection && departureContext)
+            || (normalized.Contains("point d attente", StringComparison.Ordinal) && departureContext);
         if (ready && mentionsIntersection)
         {
             return Details(PilotIntent.ReadyForIntersectionDeparture);
@@ -66,11 +85,6 @@ public static partial class PilotIntentParser
             return Details(PilotIntent.TakeoffRequest);
         }
 
-        if (ContainsAny(normalized, "roulage", "rouler", "pret a rouler", "pret au roulage", "consigne de roulage"))
-        {
-            return Details(PilotIntent.TaxiRequest);
-        }
-
         if (ContainsAny(normalized, "mise en route", "demarrage", "demarrer moteur"))
         {
             return Details(PilotIntent.StartupRequest);
@@ -86,6 +100,7 @@ public static partial class PilotIntentParser
                 "rebonjour",
                 "re bonjour",
                 "de retour",
+                "retour avec vous",
                 "premier contact",
                 "au parking",
                 "avec information"))

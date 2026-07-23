@@ -4,6 +4,31 @@ using Phonie.Services;
 
 var failures = new List<string>();
 
+var phraseologyTower = new Phonie.Models.OperationalFrequency(
+    118.505,
+    "Poitiers Tour",
+    Phonie.Models.OperationalRadioKind.Controlled,
+    true,
+    "test",
+    "fixture",
+    StationKey: "LFBI|POITIERS TOUR|TWR",
+    ServiceCode: "TWR",
+    AirportIcao: "LFBI");
+var phraseologyStations = new[]
+{
+    phraseologyTower,
+    new Phonie.Models.OperationalFrequency(
+        118.655,
+        "Nantes Tour",
+        Phonie.Models.OperationalRadioKind.Controlled,
+        true,
+        "test",
+        "fixture",
+        StationKey: "LFRS|NANTES TOUR|TWR",
+        ServiceCode: "TWR",
+        AirportIcao: "LFRS"),
+};
+
 var turboProfile = Phonie.Models.SpeechRecognitionProfiles.Get(
     Phonie.Models.SpeechRecognitionProfile.WhisperLargeV3TurboVulkan);
 if (!turboProfile.UsesVulkan
@@ -115,7 +140,12 @@ RunFacilityDecoderTests();
 RunManifestSerializationTests();
 RunOperationalRadioTests();
 
-var stationOnly = PhraseologyService.Analyze("Poitiers Tour, bonjour.", "F-HNNY");
+var stationOnly = PhraseologyService.Analyze(
+    "Poitiers Tour, bonjour.",
+    "F-HNNY",
+    phraseologyTower.ServiceName,
+    phraseologyTower,
+    phraseologyStations);
 if (stationOnly.Callsign is not null)
 {
     failures.Add($"Station seule : aucun indicatif attendu, obtenu {stationOnly.Callsign}.");
@@ -123,14 +153,21 @@ if (stationOnly.Callsign is not null)
 
 var wrongAircraft = PhraseologyService.Analyze(
     "Poitiers Tour, Fox Golf Alpha Bravo Charlie, au parking pour tours de piste.",
-    "F-HNNY");
+    "F-HNNY",
+    phraseologyTower.ServiceName,
+    phraseologyTower,
+    phraseologyStations);
 if (wrongAircraft.Callsign is not null)
 {
     failures.Add($"Indicatif d'un autre avion : rejet attendu, obtenu {wrongAircraft.Callsign}.");
 }
 
 var noContext = PhraseologyService.Analyze(
-    "Poitiers Tour, Fox Golf Alpha Bravo Charlie, au parking pour tours de piste.");
+    "Poitiers Tour, Fox Golf Alpha Bravo Charlie, au parking pour tours de piste.",
+    null,
+    phraseologyTower.ServiceName,
+    phraseologyTower,
+    phraseologyStations);
 if (!string.Equals(noContext.Callsign, "F-GABC", StringComparison.Ordinal))
 {
     failures.Add($"Sans ATC ID : F-GABC attendu, obtenu {noContext.Callsign ?? "-"}.");
@@ -410,7 +447,12 @@ void Check(
     string? expectedIntention = null,
     string? expectedAtis = null)
 {
-    var analysis = PhraseologyService.Analyze(phrase, simulatorCallsign);
+    var analysis = PhraseologyService.Analyze(
+        phrase,
+        simulatorCallsign,
+        phraseologyTower.ServiceName,
+        phraseologyTower,
+        phraseologyStations);
     Assert(name, "station", expectedStation, analysis.CalledStation);
     Assert(name, "indicatif", expectedCallsign, analysis.Callsign);
     Assert(name, "position", expectedPosition, analysis.Position);

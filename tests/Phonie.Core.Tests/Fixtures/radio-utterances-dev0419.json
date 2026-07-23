@@ -1,0 +1,158 @@
+[
+  {
+    "id": 1,
+    "rawText": "Poitiers tour de Fox Hotel, novembre, novembre, brillant, qui bonjour.",
+    "expectedIntent": "InitialContact",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 2,
+    "rawText": "Poitiers tour de Fox, hôtel novembre, novembre-vrion, qu'il bonjour.",
+    "expectedIntent": "InitialContact",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 3,
+    "rawText": "Fox Hotel, N.A. au Parking Sud demande consignes de roulage pour des tours de pistes.",
+    "expectedIntent": "TaxiRequest",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 4,
+    "rawText": "Poitiers tour de Fox Hotel, novembre, bonne noeuvre et bienvenue, bonsoir.",
+    "expectedIntent": "InitialContact",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 5,
+    "rawText": "*Rire*",
+    "expectedIntent": "Unknown",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 6,
+    "rawText": "Poitiers tour de Fox-Temple, Brian Kidd, retour avec vous.",
+    "expectedIntent": "InitialContact",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 7,
+    "rawText": "Poitiers tours de Fox, novembre yankie, de retour avec vous.",
+    "expectedIntent": "InitialContact",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 8,
+    "rawText": "Nantes tour de Fox Hotel, novembre, novembre, et on quitte bonjour.",
+    "expectedIntent": "InitialContact",
+    "expectedOtherStation": true
+  },
+  {
+    "id": 9,
+    "rawText": "Poitiers tour de Fox Hotel novembre à novembre et on quitte bonjour",
+    "expectedIntent": "InitialContact",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 10,
+    "rawText": "Fox dans le bruyant qui préaut roulage",
+    "expectedIntent": "TaxiRequest",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 11,
+    "rawText": "FoxNV en QI, prêt en Alpha2 pour un départ depuis l'intersection.",
+    "expectedIntent": "ReadyForIntersectionDeparture",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 12,
+    "rawText": "Poitiers tour de Fox Hotel November Yankee",
+    "expectedIntent": "Unknown",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 13,
+    "rawText": "Fox nous envoyons qui ? Prends Alpha 2 pour un départ depuis l'intersection.",
+    "expectedIntent": "ReadyForIntersectionDeparture",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 14,
+    "rawText": "Poitiers tour de Fox Hotel, Normand-Briand, qui est prêt en Alpha 2 pour un départ depuis l'intersection.",
+    "expectedIntent": "ReadyForIntersectionDeparture",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 15,
+    "rawText": "Je m'adine, je décolle, il faut que ce soit en première pied.",
+    "expectedIntent": "TakeoffRequest",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 16,
+    "rawText": "\"Fox en voyant qui je m'allie de jeu d'école\"",
+    "expectedIntent": "Unknown",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 17,
+    "rawText": "Prôliette Tour de Fox Hotel, novembre 11, qui bonjour.",
+    "expectedIntent": "InitialContact",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 18,
+    "rawText": "Poitiers tours de Fox Hotel, novembre-novembre-et-en, qui bonjour.",
+    "expectedIntent": "InitialContact",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 19,
+    "rawText": "Fox, novembre yank, qui pré-roulage.",
+    "expectedIntent": "TaxiRequest",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 20,
+    "rawText": "Fox, novembre, yank, Ypres, en alpha 2 pour un départ depuis l'intersection.",
+    "expectedIntent": "ReadyForIntersectionDeparture",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 21,
+    "rawText": "Poitiers tour de Fox Hotel Nouvembre Yankee, après en Alpha 2 pour un départ depuis l'intersection.",
+    "expectedIntent": "ReadyForIntersectionDeparture",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 22,
+    "rawText": "Faut que c'est un moyen qui prend un Alpha2 pour un départ depuis l'intersection.",
+    "expectedIntent": "ReadyForIntersectionDeparture",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 23,
+    "rawText": "Poitiers tour de Fox, hôtel November, Brian Keep, R1, R2 pour un départ de plus d'intersections.",
+    "expectedIntent": "ReadyForIntersectionDeparture",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 24,
+    "rawText": "Chollé de Fox Hotel, novembre, novembre, et on quitte bonjour.",
+    "expectedIntent": "InitialContact",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 25,
+    "rawText": "Fox noir bruyant-quian, évector avec une personne à bord, à destination 2 poitiers, préau parking pour rouler jusqu'au point d'attente à fin.",
+    "expectedIntent": "TaxiRequest",
+    "expectedOtherStation": false
+  },
+  {
+    "id": 26,
+    "rawText": "FoxNorm, Brian, qui j'ai roulé au point d'attente, alpha ?",
+    "expectedIntent": "ReadyAtHoldShort",
+    "expectedOtherStation": false
+  }
+]

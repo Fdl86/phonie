@@ -1,4 +1,4 @@
-# Mémoire radio et session de vol - DEV0.4.1.7
+# Mémoire radio et session de vol - DEV0.4.2.0
 
 La session de vol globale conserve l'identité de l'aéronef et une collection de contacts radio. Chaque contact est indexé par la clé normalisée de l'organisme, et non par la fréquence seule.
 

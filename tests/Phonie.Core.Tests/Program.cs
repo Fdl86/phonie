@@ -38,13 +38,20 @@ var tests = new List<(string Name, Action Test)>
     ("indicatif abrégé après contact", TestShortCallsignAfterContact),
     ("première demande roulage traite bonjour sans répétition", TestFirstTaxiMessageAndGreetingHistory),
     ("bonjour non répété sur le même organisme", TestGreetingNotRepeatedOnSameStation),
+    ("nom de station inutile après contact", TestStationNameOptionalAfterContact),
+    ("fragments de phraséologie ne deviennent jamais une station", TestCommonPhraseologyFragmentsDoNotBecomeStation),
     ("changement Sol Tour ouvre un nouveau contact", TestGroundToTowerNewContact),
     ("retour après ATIS conserve le contact Tour", TestAtisReturnKeepsTowerContact),
     ("de retour avec vous est reconnu comme reprise de contact", TestReturnGreetingIntent),
     ("réinitialisation du contexte conserve l'historique", TestGroundContextResetKeepsHistory),
     ("nouvelle session efface l'historique", TestFlightSessionResetClearsHistory),
-    ("appel clair d'un autre service reste silencieux", TestClearlyCalledOtherServiceSilent),
-    ("appel clair d'un autre aérodrome reste silencieux", TestClearlyCalledOtherAirportSilent),
+    ("appel clair d'un autre service reçoit une correction", TestClearlyCalledOtherServiceCorrected),
+    ("appel clair d'un autre aérodrome reçoit la fréquence", TestClearlyCalledOtherAirportCorrected),
+    ("fragment pour un départ ne devient jamais une station", TestDeparturePhraseDoesNotBecomeStation),
+    ("station active déformée est rapprochée sans faux silence", TestDeformedActiveStationMatch),
+    ("station cible sans fréquence active demande vérification", TestKnownStationWithoutUsableFrequency),
+    ("départ intersection survit à la perte du mot prêt", TestIntersectionDepartureWithoutReadyWord),
+    ("corpus réel DEV0.4.1.9 rejoué sans stations fantômes", TestRealRadioCorpusReplay),
     ("SIV régional refuse les demandes sol", TestRegionalFisRejectsGroundRequest),
     ("ATIS sans dialogue", TestAtisSilent),
     ("CTAF sans dialogue", TestCtafSilent),
@@ -1237,6 +1244,41 @@ static void TestGreetingNotRepeatedOnSameStation()
     Assert(engine.ContactHistory.Single().GreetingCount == 1);
 }
 
+static void TestStationNameOptionalAfterContact()
+{
+    var engine = new GroundOperationsEngine();
+    _ = engine.Process(
+        "Poitiers Tour de F-HNNY bonjour",
+        "F-HNNY",
+        ControlledRadio(),
+        BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    var decision = engine.Process(
+        "Fox Novembre Yankee demande roulage pour des tours de piste",
+        "F-HNNY",
+        ControlledRadio(),
+        BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
+    Assert(decision.Action == ControllerAction.Speak, decision.SystemMessage);
+    Assert(decision.ReasonCode == "TAXI_CLEARANCE_GENERIC_HOLD", decision.ReasonCode);
+}
+
+static void TestCommonPhraseologyFragmentsDoNotBecomeStation()
+{
+    var radio = ControlledRadio();
+    var phrases = new[]
+    {
+        "Fox Novembre Yankee prêt au point d'attente pour un départ",
+        "Fox Novembre Yankee au parking sud avec information Alpha",
+        "Fox Novembre Yankee en approche finale piste zéro trois",
+        "Fox Novembre Yankee je suis au sol au parking",
+    };
+    foreach (var phrase in phrases)
+    {
+        var analysis = RadioUtteranceAnalyzer.Analyze(phrase, radio, KnownStations());
+        Assert(!analysis.StationCall.ExplicitlyCalled, $"{phrase} -> {analysis.StationCall.StationName}: {analysis.StationCall.Reason}");
+        Assert(!analysis.StationCall.IsOtherKnownStation, phrase);
+    }
+}
+
 static void TestGroundToTowerNewContact()
 {
     var engine = new GroundOperationsEngine();
@@ -1303,26 +1345,117 @@ static void TestFlightSessionResetClearsHistory()
     Assert(engine.ContactHistory.Count == 1);
 }
 
-static void TestClearlyCalledOtherServiceSilent()
+static void TestClearlyCalledOtherServiceCorrected()
 {
+    var radio = ControlledRadio();
+    var analysis = RadioUtteranceAnalyzer.Analyze(
+        "Poitiers Sol de F-HNNY bonjour",
+        radio,
+        KnownStations());
     var decision = new GroundOperationsEngine().Process(
         "Poitiers Sol de F-HNNY bonjour",
         "F-HNNY",
-        ControlledRadio(),
-        BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
-    Assert(decision.Action == ControllerAction.Silent, decision.ReasonCode);
-    Assert(decision.ReasonCode == "CALLED_STATION_MISMATCH", decision.ReasonCode);
+        radio,
+        BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10,
+        utteranceAnalysis: analysis);
+    Assert(decision.Action == ControllerAction.Speak, decision.ReasonCode);
+    Assert(decision.ReasonCode == "CALLED_STATION_CORRECTED_WITH_FREQUENCY", decision.ReasonCode);
+    Assert(decision.SpokenText.Contains("ici Poitiers Tour", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.SpokenText.Contains("Poitiers Sol", StringComparison.Ordinal), decision.SpokenText);
 }
 
-static void TestClearlyCalledOtherAirportSilent()
+static void TestClearlyCalledOtherAirportCorrected()
 {
+    var radio = ControlledRadio();
+    var analysis = RadioUtteranceAnalyzer.Analyze(
+        "Nantes Tour de F-HNNY bonjour",
+        radio,
+        KnownStations());
     var decision = new GroundOperationsEngine().Process(
         "Nantes Tour de F-HNNY bonjour",
         "F-HNNY",
-        ControlledRadio(),
-        BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10);
-    Assert(decision.Action == ControllerAction.Silent, decision.ReasonCode);
-    Assert(decision.ReasonCode == "CALLED_STATION_MISMATCH", decision.ReasonCode);
+        radio,
+        BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10,
+        utteranceAnalysis: analysis);
+    Assert(decision.Action == ControllerAction.Speak, decision.ReasonCode);
+    Assert(decision.ReasonCode == "CALLED_STATION_CORRECTED_WITH_FREQUENCY", decision.ReasonCode);
+    Assert(decision.SpokenText.Contains("Nantes Tour", StringComparison.Ordinal), decision.SpokenText);
+    Assert(decision.SpokenText.Contains("unité unité huit décimale six cinq cinq", StringComparison.Ordinal), decision.SpokenText);
+}
+
+static void TestDeparturePhraseDoesNotBecomeStation()
+{
+    var radio = ControlledRadio();
+    var analysis = RadioUtteranceAnalyzer.Analyze(
+        "Fox Novembre Yankee prêt en Alpha 2 pour un départ depuis l'intersection",
+        radio,
+        KnownStations());
+    Assert(!analysis.StationCall.ExplicitlyCalled, analysis.StationCall.Reason);
+    Assert(!analysis.StationCall.IsOtherKnownStation, analysis.StationCall.Reason);
+    Assert(analysis.IntentDetails.Intent == PilotIntent.ReadyForIntersectionDeparture, analysis.IntentDetails.Intent.ToString());
+}
+
+static void TestDeformedActiveStationMatch()
+{
+    var radio = ControlledRadio();
+    var analysis = RadioUtteranceAnalyzer.Analyze(
+        "Prôliette Tour de Fox Hotel novembre novembre Yankee bonjour",
+        radio,
+        KnownStations());
+    Assert(analysis.StationCall.ExplicitlyCalled, analysis.StationCall.Reason);
+    Assert(analysis.StationCall.MatchesActiveStation, analysis.StationCall.Reason);
+    Assert(!analysis.StationCall.IsOtherKnownStation, analysis.StationCall.Reason);
+}
+
+static void TestKnownStationWithoutUsableFrequency()
+{
+    var radio = ControlledRadio();
+    var candidates = KnownStations().Concat(new[]
+    {
+        new RadioStationCandidate("Tours Approche", "LFOT|TOURS APPROCHE|APP", "APP", "LFOT", 125.800, false),
+    }).ToArray();
+    var analysis = RadioUtteranceAnalyzer.Analyze("Tours Approche de F-HNNY bonjour", radio, candidates);
+    var decision = new GroundOperationsEngine().Process(
+        "Tours Approche de F-HNNY bonjour",
+        "F-HNNY",
+        radio,
+        BuildAirport(), ParkingObservation(), AvailableOccupancy(), 210, 10,
+        utteranceAnalysis: analysis);
+    Assert(decision.ReasonCode == "CALLED_STATION_CORRECTED_CHECK_FREQUENCY", decision.ReasonCode);
+    Assert(decision.SpokenText.Contains("vérifiez la fréquence", StringComparison.OrdinalIgnoreCase), decision.SpokenText);
+}
+
+static void TestIntersectionDepartureWithoutReadyWord()
+{
+    var details = PilotIntentParser.ParseDetailed("Fox Novembre Yankee prend Alpha 2 pour un départ depuis l'intersection");
+    Assert(details.Intent == PilotIntent.ReadyForIntersectionDeparture, details.Intent.ToString());
+    Assert(details.ReportedPoint == "A2", details.ReportedPoint);
+}
+
+static void TestRealRadioCorpusReplay()
+{
+    var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "radio-utterances-dev0419.json");
+    var cases = JsonSerializer.Deserialize<List<RadioCorpusCase>>(File.ReadAllText(path), new JsonSerializerOptions
+    {
+        PropertyNameCaseInsensitive = true,
+    }) ?? throw new InvalidDataException("Corpus radio illisible.");
+    var radio = ControlledRadio();
+    var useful = 0;
+    foreach (var item in cases)
+    {
+        var analysis = RadioUtteranceAnalyzer.Analyze(item.RawText, radio, KnownStations());
+        Assert(Enum.TryParse<PilotIntent>(item.ExpectedIntent, out var expected), $"intention inconnue fixture {item.Id}");
+        Assert(analysis.IntentDetails.Intent == expected,
+            $"cas {item.Id}: attendu {expected}, obtenu {analysis.IntentDetails.Intent} - {analysis.CorrectedText}");
+        Assert(analysis.StationCall.IsOtherKnownStation == item.ExpectedOtherStation,
+            $"cas {item.Id}: autre station={analysis.StationCall.IsOtherKnownStation} - {analysis.StationCall.Reason}");
+        if (analysis.IntentDetails.Intent != PilotIntent.Unknown)
+        {
+            useful++;
+        }
+    }
+    Assert(cases.Count == 26, $"corpus={cases.Count}");
+    Assert(useful >= 22, $"transmissions exploitables={useful}/26");
 }
 
 static void TestRegionalFisRejectsGroundRequest()
@@ -1553,6 +1686,14 @@ static GroundOccupancySnapshot AvailableOccupancy() => new(
     new HashSet<uint>(),
     "test");
 
+static IReadOnlyList<RadioStationCandidate> KnownStations() =>
+    new[]
+    {
+        new RadioStationCandidate("Poitiers Tour", "LFXX|POITIERS TOUR|TWR", "TWR", "LFXX", 118.505, true),
+        new RadioStationCandidate("Poitiers Sol", "LFXX|POITIERS SOL|GND", "GND", "LFXX", 121.700, true),
+        new RadioStationCandidate("Nantes Tour", "LFRS|NANTES TOUR|TWR", "TWR", "LFRS", 118.655, true),
+    };
+
 static RadioContext ControlledRadio() =>
     new(ServiceCapability.Controlled, "Poitiers Tour", true, "test", "LFXX|TOWER", "TWR", "LFXX", 118.505, "Local");
 
@@ -1563,3 +1704,5 @@ static void Assert(bool condition, string? message = null)
         throw new InvalidOperationException(message ?? "Assertion échouée.");
     }
 }
+
+sealed record RadioCorpusCase(int Id, string RawText, string ExpectedIntent, bool ExpectedOtherStation);

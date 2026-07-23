@@ -1,4 +1,4 @@
-name: Build PHONIE DEV0.4.1.9 - Radio Context, Contact History and Flight Reset
+name: Build PHONIE DEV0.4.2.0 - Radio Intent and Contextual ASR
 
 on:
   workflow_dispatch:
@@ -39,30 +39,37 @@ jobs:
             "src/Phonie.Core/AirportListPacketDecoder.cs",
             "src/Phonie.Core/SiaRadioCatalog.cs",
             "src/Phonie.Core/PilotIntentParser.cs",
+            "src/Phonie.Core/RadioUtteranceAnalysis.cs",
             "src/Phonie.Core/GroundOperationsEngine.cs",
             "src/Phonie.Core/WindowsPathSegment.cs",
             "src/Phonie/Models/SiaRadioDataModels.cs",
             "src/Phonie/Models/FlightSessionModels.cs",
+            "src/Phonie/Models/SpeechRecognitionModels.cs",
             "src/Phonie/Services/NearbyAirportService.cs",
             "src/Phonie/Services/OfficialRadioCatalogService.cs",
             "src/Phonie/Services/RadioDataUpdateService.cs",
             "src/Phonie/Services/ControllerSpeechService.cs",
+            "src/Phonie/Services/GroundOperationsCoordinator.cs",
+            "src/Phonie/Services/PhraseologyService.cs",
+            "src/Phonie/Services/WhisperService.cs",
             "tests/Phonie.SmokeTests/Phonie.SmokeTests.csproj",
             "tests/Phonie.Core.Tests/Phonie.Core.Tests.csproj",
+            "tests/Phonie.Core.Tests/Fixtures/radio-utterances-dev0419.json",
             "data/radio/france/manifest.json",
             "data/radio/france-update-source.json",
             "tools/sia_radio_builder.py",
             "tools/validate_sia_radio.py",
             "README.md",
-            "RENORMALIZE-GIT-INDEX-DEV0.4.1.9.cmd",
-            "RENORMALIZE-GIT-INDEX-DEV0.4.1.9.ps1",
-            "TEST-DEV0.4.1.9.md",
-            "SIA-RADIO-DATABASE-DEV0.4.1.9.md",
-            "CONTROLLER-VOICES-DEV0.4.1.9.md",
-            "RADIO-CONTACT-HISTORY-DEV0.4.1.9.md",
-            "CHANGELOG-DEV0.4.1.9.md",
-            "STATIC-VALIDATION-DEV0.4.1.9.txt",
-            "SOURCE-MANIFEST-DEV0.4.1.9.txt"
+            "RENORMALIZE-GIT-INDEX-DEV0.4.2.0.cmd",
+            "RENORMALIZE-GIT-INDEX-DEV0.4.2.0.ps1",
+            "TEST-DEV0.4.2.0.md",
+            "SIA-RADIO-DATABASE-DEV0.4.2.0.md",
+            "CONTROLLER-VOICES-DEV0.4.2.0.md",
+            "RADIO-CONTACT-HISTORY-DEV0.4.2.0.md",
+            "CONTEXTUAL-ASR-DEV0.4.2.0.md",
+            "CHANGELOG-DEV0.4.2.0.md",
+            "STATIC-VALIDATION-DEV0.4.2.0.txt",
+            "SOURCE-MANIFEST-DEV0.4.2.0.txt"
           )
           $missing = @($required | Where-Object { -not (Test-Path $_) })
           if ($missing.Count -gt 0) {
@@ -74,24 +81,54 @@ jobs:
           }
           $groundSource = Get-Content "src/Phonie.Core/GroundOperationsEngine.cs" -Raw
           $intentSource = Get-Content "src/Phonie.Core/PilotIntentParser.cs" -Raw
+          $utteranceSource = Get-Content "src/Phonie.Core/RadioUtteranceAnalysis.cs" -Raw
+          $phraseologySource = Get-Content "src/Phonie/Services/PhraseologyService.cs" -Raw
+          $coordinatorSource = Get-Content "src/Phonie/Services/GroundOperationsCoordinator.cs" -Raw
+          $whisperSource = Get-Content "src/Phonie/Services/WhisperService.cs" -Raw
           $coreTestsSource = Get-Content "tests/Phonie.Core.Tests/Program.cs" -Raw
           $simConnectSource = Get-Content "src/Phonie/Services/SimConnectService.cs" -Raw
           $siaSource = Get-Content "src/Phonie.Core/SiaRadioCatalog.cs" -Raw
-          if ($groundSource -notmatch 'ResetFlightSession' -or $groundSource -notmatch 'CALLED_STATION_MISMATCH') {
-            throw "Historique radio ou réinitialisation de session absent du moteur sol."
+          if ($groundSource -notmatch 'ResetFlightSession' -or
+              $groundSource -notmatch 'CALLED_STATION_CORRECTED_WITH_FREQUENCY' -or
+              $groundSource -notmatch 'CALLED_STATION_CORRECTED_CHECK_FREQUENCY') {
+            throw "Historique radio, réinitialisation ou correction pédagogique de station absente."
           }
-          if ($intentSource -notmatch '"de retour"' -or
-              $intentSource -notmatch '"rebonjour"' -or
-              $intentSource -notmatch '"bonsoir"') {
-            throw "Salutations bonsoir/rebonjour/de retour absentes du parseur d'intentions."
+          if ($groundSource -match 'ClearlyCallsAnotherService' -or
+              $groundSource -match 'CALLED_STATION_MISMATCH') {
+            throw "Ancien détecteur ouvert de station encore présent dans le moteur."
           }
-          if ($coreTestsSource -notmatch 'TestReturnGreetingIntent' -or
-              $coreTestsSource -notmatch 'Poitiers Tour de F-HNNY bonsoir' -or
-              $coreTestsSource -notmatch 'Contains\("piste deux un"' -or
-              $coreTestsSource -notmatch 'Contains\("alignez-vous"' -or
-              $coreTestsSource -notmatch 'Contains\("autorisé décollage"' -or
-              $coreTestsSource -match 'Contains\("piste deux un, alignez-vous"') {
-            throw "Régressions salutations ou test départ robuste absentes."
+          if ($utteranceSource -notmatch 'RadioUtteranceAnalyzer' -or
+              $utteranceSource -notmatch 'Le fragment capté ne correspond à aucune station connue') {
+            throw "Analyse canonique ou ensemble fermé de stations absent."
+          }
+          if ($phraseologySource -match 'StationRegex' -or
+              $phraseologySource -notmatch 'OperationalAnalysis') {
+            throw "PhraseologyService utilise encore une extraction libre ou ne transmet pas l'analyse canonique."
+          }
+          if ($intentSource -notmatch '"retour avec vous"' -or
+              $intentSource -notmatch '"bonsoir"' -or
+              $intentSource -notmatch 'mentionsIntersection && departureContext') {
+            throw "Reprise de contact ou intentions intersection contextuelles absentes."
+          }
+          if ($coordinatorSource -notmatch 'BuildSpeechRecognitionContext' -or
+              $coordinatorSource -notmatch '!contactEstablished' -or
+              $coordinatorSource -notmatch 'Indicatif abrégé') {
+            throw "Contexte ASR dynamique ou omission de la station après contact absente."
+          }
+          if ($whisperSource -notmatch 'WithPrompt' -or
+              $whisperSource -notmatch 'WithNoContext' -or
+              $whisperSource -notmatch 'WithSingleSegment' -or
+              $whisperSource -notmatch 'WithNoSpeechThreshold' -or
+              $whisperSource -notmatch 'Fragment du prompt dynamique rejeté') {
+            throw "Prompt Whisper contextuel ou garde-fous anti-hallucination absents."
+          }
+          if ($coreTestsSource -notmatch 'TestDeparturePhraseDoesNotBecomeStation' -or
+              $coreTestsSource -notmatch 'TestCommonPhraseologyFragmentsDoNotBecomeStation' -or
+              $coreTestsSource -notmatch 'TestStationNameOptionalAfterContact' -or
+              $coreTestsSource -notmatch 'TestClearlyCalledOtherAirportCorrected' -or
+              $coreTestsSource -notmatch 'TestIntersectionDepartureWithoutReadyWord' -or
+              $coreTestsSource -notmatch 'TestRealRadioCorpusReplay') {
+            throw "Régressions radio contextuelle ou corpus réel absents."
           }
           if ($simConnectSource -notmatch 'FlightLoaded' -or $simConnectSource -notmatch 'SimStop') {
             throw "Détection des changements de session MSFS absente."
@@ -184,7 +221,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $preflight = "dist-preflight/PHONIE-DEV0.4.1.9-win-x64"
+          $preflight = "dist-preflight/PHONIE-DEV0.4.2.0-win-x64"
           dotnet publish src/Phonie/Phonie.csproj `
             --configuration Release `
             --runtime win-x64 `
@@ -253,7 +290,7 @@ jobs:
           --runtime win-x64
           --self-contained true
           --no-restore
-          --output dist/PHONIE-DEV0.4.1.9-win-x64
+          --output dist/PHONIE-DEV0.4.2.0-win-x64
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
           -p:PublishReadyToRun=false
@@ -263,7 +300,7 @@ jobs:
       - name: Add portable folders and documentation
         shell: pwsh
         run: |
-          $root = "dist/PHONIE-DEV0.4.1.9-win-x64"
+          $root = "dist/PHONIE-DEV0.4.2.0-win-x64"
           $folders = @(
             "config",
             "logs",
@@ -283,13 +320,13 @@ jobs:
           }
           $commit = "${{ github.sha }}".Substring(0, 7)
           @"
-          PHONIE DEV0.4.1.9 - RADIO CONTEXT, CONTACT HISTORY & FLIGHT RESET
+          PHONIE DEV0.4.2.0 - RADIO INTENT & CONTEXTUAL ASR
           Commit: $commit
           Build UTC: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss')
           Runtime: Windows x64 autonome
           Radio France: base nationale générée depuis les publications officielles SIA, aucune fréquence d'aérodrome codée dans l'application
-          Sécurité radio: le type Facilities actif départage un canal SIA multimode; silence si la station appelée est incompatible
-          Historique: contacts, salutations et indicatifs abrégés mémorisés par organisme; remise à zéro à chaque nouvelle session de vol
+          Sécurité radio: stations fermées SIA; correction pédagogique d’une mauvaise station; aucun fragment libre ne provoque de silence
+          Analyse: intention canonique partagée; prompt Whisper dynamique; corpus réel rejoué en Core Tests
           Voix: attribution aléatoire homme/femme par station, stable pendant la session, cache séparé par voix
           Aérodromes: moteur dynamique DEV0.4.0.9 conservé
           "@ | Set-Content -Encoding UTF8 "$root/BUILD-INFO.txt"
@@ -306,13 +343,14 @@ jobs:
           "@ | Set-Content -Encoding UTF8 "$root/models/vosk/LISEZ-MOI.txt"
           $docs = @(
             "README.md",
-            "TEST-DEV0.4.1.9.md",
-            "SIA-RADIO-DATABASE-DEV0.4.1.9.md",
-            "CONTROLLER-VOICES-DEV0.4.1.9.md",
-            "RADIO-CONTACT-HISTORY-DEV0.4.1.9.md",
-            "CHANGELOG-DEV0.4.1.9.md",
-            "STATIC-VALIDATION-DEV0.4.1.9.txt",
-            "SOURCE-MANIFEST-DEV0.4.1.9.txt",
+            "TEST-DEV0.4.2.0.md",
+            "SIA-RADIO-DATABASE-DEV0.4.2.0.md",
+            "CONTROLLER-VOICES-DEV0.4.2.0.md",
+            "RADIO-CONTACT-HISTORY-DEV0.4.2.0.md",
+            "CONTEXTUAL-ASR-DEV0.4.2.0.md",
+            "CHANGELOG-DEV0.4.2.0.md",
+            "STATIC-VALIDATION-DEV0.4.2.0.txt",
+            "SOURCE-MANIFEST-DEV0.4.2.0.txt",
             "GROUND-OPERATIONS-DEV0.4.0.9.md",
             "FACILITIES-NORMALIZATION-DEV0.4.0.9.md",
             "CALLSIGN-RULES-DEV0.4.0.9.md",
@@ -327,7 +365,7 @@ jobs:
       - name: Verify portable artifact
         shell: pwsh
         run: |
-          $root = "dist/PHONIE-DEV0.4.1.9-win-x64"
+          $root = "dist/PHONIE-DEV0.4.2.0-win-x64"
           $required = @(
             "$root/PHONIE.exe",
             "$root/config",
@@ -352,7 +390,7 @@ jobs:
       - name: Upload portable artifact - single extraction
         uses: actions/upload-artifact@v4
         with:
-          name: PHONIE-DEV0.4.1.9-win-x64
-          path: dist/PHONIE-DEV0.4.1.9-win-x64/**
+          name: PHONIE-DEV0.4.2.0-win-x64
+          path: dist/PHONIE-DEV0.4.2.0-win-x64/**
           if-no-files-found: error
           retention-days: 14

@@ -1,4 +1,7 @@
 # PHONIE - intégrité des jeux de données vérifiés par SHA-256.
+# Le fichier d'attributs reste lui-même en LF, y compris avec core.autocrlf=true.
+.gitattributes text eol=lf
+
 # Ces fichiers doivent conserver exactement leurs octets, sans conversion LF/CRLF.
 data/radio/france/** -text
 tests/Phonie.SmokeTests/Fixtures/radio/france/** -text

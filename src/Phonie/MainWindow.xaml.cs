@@ -674,7 +674,12 @@ public partial class MainWindow : Window
                     return $"{name} - {result.Status}";
                 }
 
-                var analysis = PhraseologyService.Analyze(result.Transcript, expectedCallsign);
+                var analysis = PhraseologyService.Analyze(
+                    result.Transcript,
+                    expectedCallsign,
+                    this.currentOperationalFrequency.ServiceName,
+                    this.currentOperationalFrequency,
+                    OfficialRadioCatalogService.GetKnownInteractiveServices());
                 return $"{name} - {result.ProcessingTime.TotalSeconds:F2} s\n" +
                        $"Indicatif {analysis.Callsign ?? "-"} | Station {analysis.CalledStation ?? "-"} | Intention {analysis.Intention ?? "-"}\n" +
                        result.Transcript;
@@ -684,7 +689,12 @@ public partial class MainWindow : Window
             foreach (var result in results)
             {
                 var operationalSummary = result.WasRun
-                    ? FormatAnalysis(PhraseologyService.Analyze(result.Transcript, expectedCallsign))
+                    ? FormatAnalysis(PhraseologyService.Analyze(
+                        result.Transcript,
+                        expectedCallsign,
+                        this.currentOperationalFrequency.ServiceName,
+                        this.currentOperationalFrequency,
+                        OfficialRadioCatalogService.GetKnownInteractiveServices()))
                     : result.Status;
                 this.diagnosticsService.WriteEvent(
                     "ASR_COMPARE",
@@ -1664,7 +1674,23 @@ public partial class MainWindow : Window
 
         try
         {
-            var result = await this.speechRecognitionService.TranscribeAsync(audioPath, this.transcriptionCancellation.Token);
+            var recognitionContext = this.groundOperationsCoordinator.BuildSpeechRecognitionContext(
+                this.currentOperationalFrequency,
+                this.latestSnapshot);
+            var result = await this.speechRecognitionService.TranscribeAsync(
+                audioPath,
+                recognitionContext,
+                this.transcriptionCancellation.Token);
+            if (result.WasRejected)
+            {
+                this.PilotTranscriptTextBox.Text = $"Transmission rejetée : {result.RejectionReason}";
+                this.ExchangeLatencyText.Text = "PTT VIDE / BRUIT";
+                this.diagnosticsService.WriteEvent(
+                    "ASR",
+                    $"Transmission rejetée - {result.RejectionReason} - durée {result.SignalDuration.TotalSeconds:F2} s - niveau {result.SignalDbfs:F1} dBFS - prompt : {result.Prompt}");
+                return;
+            }
+
             if (acknowledgementOnly)
             {
                 this.PilotTranscriptTextBox.Text = result.NormalizedText;
@@ -1681,7 +1707,9 @@ public partial class MainWindow : Window
 
             this.diagnosticsService.WriteEvent(
                 "ASR",
-                $"{result.ModelName} - inférence {result.ProcessingTime.TotalSeconds:F2} s - chargement {result.ModelLoadTime.TotalSeconds:F2} s - total {result.EndToEndTime.TotalSeconds:F2} s - {result.Segments.Count} segment(s) - {result.NormalizedText}");
+                $"{result.ModelName} - inférence {result.ProcessingTime.TotalSeconds:F2} s - chargement {result.ModelLoadTime.TotalSeconds:F2} s - total {result.EndToEndTime.TotalSeconds:F2} s - " +
+                $"probabilité {result.AverageProbability:F3} - signal {result.SignalDuration.TotalSeconds:F2} s / {result.SignalDbfs:F1} dBFS - {result.Segments.Count} segment(s) - " +
+                $"brut : {result.RawText} - nettoyé : {result.NormalizedText} - prompt : {result.Prompt}");
             this.AppendLog(
                 $"[{DateTime.Now:HH:mm:ss}] {result.ModelName} : inférence {result.ProcessingTime.TotalSeconds:F1} s - total {result.EndToEndTime.TotalSeconds:F1} s.");
         }
@@ -1739,11 +1767,18 @@ public partial class MainWindow : Window
     private void ProcessPilotText(string text, bool fromMicrophone, TimeSpan processingTime)
     {
         var cleanText = text.Trim();
-        var analysis = PhraseologyService.Analyze(cleanText, this.latestSnapshot?.AircraftAtcId, this.currentOperationalFrequency.ServiceName);
+        var knownStations = OfficialRadioCatalogService.GetKnownInteractiveServices();
+        var analysis = PhraseologyService.Analyze(
+            cleanText,
+            this.latestSnapshot?.AircraftAtcId,
+            this.currentOperationalFrequency.ServiceName,
+            this.currentOperationalFrequency,
+            knownStations);
         var decision = this.groundOperationsCoordinator.Process(
             cleanText,
             this.latestSnapshot,
-            this.currentOperationalFrequency);
+            this.currentOperationalFrequency,
+            analysis.OperationalAnalysis);
 
         var response = decision.Action == ControllerAction.Silent
             ? $"[SILENCE] {decision.SystemMessage}"
@@ -2485,7 +2520,15 @@ public partial class MainWindow : Window
         var callsignDetail = analysis.Callsign is null
             ? "-"
             : $"{analysis.Callsign} ({analysis.CallsignSource}, {analysis.CallsignConfidence:P0})";
-        return $"Station {analysis.CalledStation ?? "-"} | Indicatif {callsignDetail} | Position {analysis.Position ?? "-"} | Intention {analysis.Intention ?? "-"} | ATIS {analysis.AtisLetter ?? "-"}" +
+        var stationDetail = analysis.CalledStation is null
+            ? "-"
+            : $"{analysis.CalledStation} ({analysis.CalledStationConfidence:P0})";
+        var correctionDetail = analysis.Corrections is { Count: > 0 }
+            ? $" | Corrections {string.Join(", ", analysis.Corrections)}"
+            : string.Empty;
+        return $"Station {stationDetail} | Indicatif {callsignDetail} | Position {analysis.Position ?? "-"} | " +
+               $"Intention {analysis.Intention ?? "-"} [{analysis.IntentSource}] | ATIS {analysis.AtisLetter ?? "-"} | " +
+               $"Texte corrigé {analysis.CorrectedText}" + correctionDetail +
                (analysis.MissingCriticalFields.Count > 0 ? $" | Manque : {string.Join(", ", analysis.MissingCriticalFields)}" : string.Empty);
     }
 

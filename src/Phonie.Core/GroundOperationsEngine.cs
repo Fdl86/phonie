@@ -12,6 +12,12 @@ public sealed class GroundOperationsEngine
 
     public IReadOnlyCollection<RadioContactState> ContactHistory => this.contacts.Values.ToArray();
 
+    public bool HasEstablishedContact(RadioContext radio)
+    {
+        var key = BuildStationKey(radio);
+        return this.contacts.TryGetValue(key, out var contact) && contact.ContactEstablished;
+    }
+
     public void Reset() => this.ResetFlightSession();
 
     public void ResetFlightSession()
@@ -52,7 +58,8 @@ public sealed class GroundOperationsEngine
         double windDirectionDegrees,
         double windSpeedKnots,
         AirportOperationalProfile? profile = null,
-        double qnhHpa = double.NaN)
+        double qnhHpa = double.NaN,
+        RadioUtteranceAnalysis? utteranceAnalysis = null)
     {
         var stateBefore = this.session.State;
         var fullCallsign = CallsignFormatter.Normalize(simulatorCallsign);
@@ -72,7 +79,8 @@ public sealed class GroundOperationsEngine
         this.SyncSessionContact();
         var spokenFull = CallsignFormatter.SpeakFull(this.session.FullCallsign);
         var spokenShort = CallsignFormatter.SpeakShort(this.session.FullCallsign);
-        var intentDetails = PilotIntentParser.ParseDetailed(pilotText);
+        var analysis = utteranceAnalysis ?? RadioUtteranceAnalyzer.Analyze(pilotText, radio);
+        var intentDetails = analysis.IntentDetails;
         var intent = intentDetails.Intent;
         this.session.LastPilotRequest = pilotText.Trim();
         var requiresAcknowledgement = radio.Capability is ServiceCapability.Controlled or ServiceCapability.InformationOnly;
@@ -97,18 +105,38 @@ public sealed class GroundOperationsEngine
                 false);
         }
 
-        if (ClearlyCallsAnotherService(pilotText, radio))
+        if (analysis.StationCall.IsOtherKnownStation)
         {
+            var correctionCallsign = string.IsNullOrWhiteSpace(this.session.FullCallsign)
+                ? "Station appelante"
+                : CurrentCallsign(spokenFull, spokenShort);
+            var target = string.IsNullOrWhiteSpace(analysis.StationCall.StationName)
+                ? "la station demandée"
+                : analysis.StationCall.StationName;
+            if (analysis.StationCall.FrequencyUsable && analysis.StationCall.FrequencyMhz.HasValue)
+            {
+                return Decision(
+                    ControllerAction.Speak,
+                    "CALLED_STATION_CORRECTED_WITH_FREQUENCY",
+                    $"{correctionCallsign}, ici {radio.StationName}. Contactez {target} sur {SpeakFrequency(analysis.StationCall.FrequencyMhz.Value)}.",
+                    $"Autre station connue explicitement appelée. Fréquence officielle unique fournie : {analysis.StationCall.FrequencyMhz.Value:F3} MHz.",
+                    stateBefore,
+                    stateBefore,
+                    null,
+                    analysis.StationCall.Confidence,
+                    true);
+            }
+
             return Decision(
-                ControllerAction.Silent,
-                "CALLED_STATION_MISMATCH",
-                string.Empty,
-                "Une autre station ou un autre service est clairement appelé : PHONIE ne répond pas.",
+                ControllerAction.Speak,
+                "CALLED_STATION_CORRECTED_CHECK_FREQUENCY",
+                $"{correctionCallsign}, ici {radio.StationName}, vérifiez la fréquence de {target}.",
+                "Autre station connue explicitement appelée, mais aucune fréquence active unique ne peut être annoncée avec certitude.",
                 stateBefore,
                 stateBefore,
                 null,
-                1,
-                false);
+                analysis.StationCall.Confidence,
+                true);
         }
 
         if (string.IsNullOrWhiteSpace(this.session.FullCallsign))
@@ -817,7 +845,8 @@ public sealed class GroundOperationsEngine
         if (normalized.Contains("bonsoir", StringComparison.Ordinal)) return "bonsoir";
         if (normalized.Contains("rebonjour", StringComparison.Ordinal)
             || normalized.Contains("re bonjour", StringComparison.Ordinal)
-            || normalized.Contains("de retour", StringComparison.Ordinal)) return "rebonjour";
+            || normalized.Contains("de retour", StringComparison.Ordinal)
+            || normalized.Contains("retour avec vous", StringComparison.Ordinal)) return "rebonjour";
         return "bonjour";
     }
 
@@ -826,7 +855,8 @@ public sealed class GroundOperationsEngine
         var normalized = NormalizeRadioText(text);
         return normalized.Contains("rebonjour", StringComparison.Ordinal)
             || normalized.Contains("re bonjour", StringComparison.Ordinal)
-            || normalized.Contains("de retour", StringComparison.Ordinal);
+            || normalized.Contains("de retour", StringComparison.Ordinal)
+            || normalized.Contains("retour avec vous", StringComparison.Ordinal);
     }
 
     private static bool IsRegionalInformation(RadioContext radio) =>
@@ -836,62 +866,37 @@ public sealed class GroundOperationsEngine
             || radio.ServiceRole.Contains("FIS", StringComparison.OrdinalIgnoreCase)
             || radio.ServiceRole.Contains("FLIGHT", StringComparison.OrdinalIgnoreCase));
 
-    private static bool ClearlyCallsAnotherService(string text, RadioContext radio)
+    private static string SpeakFrequency(double frequencyMhz)
     {
-        var normalized = NormalizeRadioText(text);
-        var tokenArray = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var tokens = tokenArray.ToHashSet(StringComparer.Ordinal);
-        var roleToken = tokens.Contains("tour") ? "tour"
-            : tokens.Contains("sol") ? "sol"
-            : tokens.Contains("approche") ? "approche"
-            : tokens.Contains("depart") ? "depart"
-            : tokens.Contains("information") ? "information"
-            : tokens.Contains("info") ? "info"
-            : tokens.Contains("afis") ? "afis"
-            : tokens.Contains("siv") ? "siv"
-            : string.Empty;
-        var calledRole = roleToken switch
+        if (!double.IsFinite(frequencyMhz) || frequencyMhz <= 0)
         {
-            "tour" => "TOWER",
-            "sol" => "GROUND",
-            "approche" => "APPROACH",
-            "depart" => "DEPARTURE",
-            "information" or "info" or "afis" or "siv" => "INFORMATION",
-            _ => string.Empty,
-        };
-        if (string.IsNullOrWhiteSpace(calledRole))
-        {
-            return false;
+            return "fréquence à vérifier";
         }
 
-        var roleIndex = Array.IndexOf(tokenArray, roleToken);
-        if (roleIndex is > 0 and <= 3)
+        var channel = frequencyMhz.ToString("F3", System.Globalization.CultureInfo.InvariantCulture).TrimEnd('0').TrimEnd('.');
+        var parts = channel.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        var spoken = string.Join(' ', parts[0].Select(SpeakFrequencyDigit));
+        if (parts.Length > 1)
         {
-            var calledPlace = tokenArray[roleIndex - 1];
-            var currentStation = NormalizeRadioText(radio.StationName);
-            if (calledPlace.Length >= 4
-                && !currentStation.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(calledPlace, StringComparer.Ordinal))
-            {
-                return true;
-            }
+            spoken += " décimale " + string.Join(' ', parts[1].Select(SpeakFrequencyDigit));
         }
-
-        var role = radio.ServiceRole.Trim().ToUpperInvariant();
-        if (string.IsNullOrWhiteSpace(role))
-        {
-            role = radio.StationName.Trim().ToUpperInvariant();
-        }
-
-        return calledRole switch
-        {
-            "TOWER" => !role.Contains("TWR", StringComparison.Ordinal) && !role.Contains("TOUR", StringComparison.Ordinal) && !role.Contains("TOWER", StringComparison.Ordinal),
-            "GROUND" => !role.Contains("GND", StringComparison.Ordinal) && !role.Contains("SOL", StringComparison.Ordinal) && !role.Contains("GROUND", StringComparison.Ordinal),
-            "APPROACH" => !role.Contains("APP", StringComparison.Ordinal) && !role.Contains("APPROCHE", StringComparison.Ordinal),
-            "DEPARTURE" => !role.Contains("DEP", StringComparison.Ordinal) && !role.Contains("DEPART", StringComparison.Ordinal),
-            "INFORMATION" => !role.Contains("INFO", StringComparison.Ordinal) && !role.Contains("AFIS", StringComparison.Ordinal) && !role.Contains("SIV", StringComparison.Ordinal) && !role.Contains("FIS", StringComparison.Ordinal),
-            _ => false,
-        };
+        return spoken;
     }
+
+    private static string SpeakFrequencyDigit(char value) => value switch
+    {
+        '0' => "zéro",
+        '1' => "unité",
+        '2' => "deux",
+        '3' => "trois",
+        '4' => "quatre",
+        '5' => "cinq",
+        '6' => "six",
+        '7' => "sept",
+        '8' => "huit",
+        '9' => "neuf",
+        _ => value.ToString(),
+    };
 
     private static string NormalizeRadioText(string value)
     {

@@ -18,6 +18,7 @@ public static class OfficialRadioCatalogService
 
     private static SiaRadioCatalog? catalog;
     private static SiaRadioManifest? manifest;
+    private static IReadOnlyList<OperationalFrequency> knownInteractiveServices = Array.Empty<OperationalFrequency>();
     private static SiaRadioDatabaseStatus status = Unavailable("Base radio SIA non chargée.");
 
     public static event EventHandler<SiaRadioDatabaseStatus>? StatusChanged;
@@ -37,6 +38,7 @@ public static class OfficialRadioCatalogService
     {
         lock (Gate)
         {
+            knownInteractiveServices = Array.Empty<OperationalFrequency>();
             var now = timestamp ?? DateTimeOffset.UtcNow;
             Directory.CreateDirectory(AppPaths.FranceRadioDataDirectory);
             var manifestPath = AppPaths.FranceRadioManifestPath;
@@ -209,8 +211,9 @@ public static class OfficialRadioCatalogService
         EnsureLoaded(DateTimeOffset.UtcNow);
         lock (Gate)
         {
-            var airport = catalog?.GetAirport(icao);
-            if (airport is null || catalog is null)
+            var activeCatalog = catalog;
+            var airport = activeCatalog?.GetAirport(icao);
+            if (airport is null || activeCatalog is null)
             {
                 return Array.Empty<OperationalFrequency>();
             }
@@ -225,10 +228,57 @@ public static class OfficialRadioCatalogService
                         record,
                         new[] { record },
                         "Service publié dans la base SIA active."),
-                    catalog.Dataset))
+                    activeCatalog.Dataset))
                 .OrderBy(item => item.FrequencyMhz)
                 .ThenBy(item => item.ServiceName, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+    }
+
+    public static IReadOnlyList<OperationalFrequency> GetKnownInteractiveServices()
+    {
+        EnsureLoaded(DateTimeOffset.UtcNow);
+        lock (Gate)
+        {
+            var activeCatalog = catalog;
+            if (activeCatalog is null)
+            {
+                return Array.Empty<OperationalFrequency>();
+            }
+
+            if (knownInteractiveServices.Count > 0)
+            {
+                return knownInteractiveServices;
+            }
+
+            knownInteractiveServices = activeCatalog.Dataset.Airports
+                .SelectMany(airport => airport.Frequencies.Select(record => (Airport: airport, Record: record)))
+                .Where(item => item.Record.Interactive
+                    && (item.Record.Kind is SiaRadioServiceKind.Tower
+                        or SiaRadioServiceKind.Ground
+                        or SiaRadioServiceKind.Clearance
+                        or SiaRadioServiceKind.Approach
+                        or SiaRadioServiceKind.Departure
+                        or SiaRadioServiceKind.Information
+                        or SiaRadioServiceKind.FlightInformation
+                        or SiaRadioServiceKind.ControlledOther))
+                .Select(item => BuildOperationalFrequency(
+                    new SiaRadioResolution(
+                        true,
+                        true,
+                        false,
+                        item.Airport,
+                        item.Record,
+                        new[] { item.Record },
+                        "Station connue de la base SIA active.",
+                        item.Record.ScheduleState != SiaRadioScheduleState.PublishedNotEvaluated),
+                    activeCatalog.Dataset))
+                .GroupBy(item => string.Join("|", item.StationKey, item.FrequencyMhz.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)), StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(item => item.ServiceName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item.FrequencyMhz)
+                .ToArray();
+            return knownInteractiveServices;
         }
     }
 

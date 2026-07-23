@@ -167,7 +167,15 @@ public sealed class SpeechRecognitionService : IDisposable
         }
     }
 
-    public async Task<SpeechTranscriptionResult> TranscribeAsync(string audioPath, CancellationToken cancellationToken = default)
+    public Task<SpeechTranscriptionResult> TranscribeAsync(
+        string audioPath,
+        CancellationToken cancellationToken = default) =>
+        this.TranscribeAsync(audioPath, null, cancellationToken);
+
+    public async Task<SpeechTranscriptionResult> TranscribeAsync(
+        string audioPath,
+        SpeechRecognitionContext? context,
+        CancellationToken cancellationToken = default)
     {
         if (this.RequiresRestart(this.selectedProfile))
         {
@@ -176,7 +184,7 @@ public sealed class SpeechRecognitionService : IDisposable
 
         return SpeechRecognitionProfiles.Get(this.selectedProfile).Backend switch
         {
-            SpeechRecognitionBackend.Whisper => await this.whisperService.TranscribeAsync(this.selectedProfile, audioPath, cancellationToken).ConfigureAwait(false),
+            SpeechRecognitionBackend.Whisper => await this.whisperService.TranscribeAsync(this.selectedProfile, audioPath, context, cancellationToken).ConfigureAwait(false),
             SpeechRecognitionBackend.Vosk => await this.voskService.TranscribeAsync(audioPath, cancellationToken).ConfigureAwait(false),
             _ => throw new InvalidOperationException("Profil ASR inconnu."),
         };

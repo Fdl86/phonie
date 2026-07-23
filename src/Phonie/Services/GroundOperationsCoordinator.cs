@@ -204,7 +204,8 @@ public sealed class GroundOperationsCoordinator
     public ControllerDecision Process(
         string pilotText,
         SimulatorSnapshot? snapshot,
-        OperationalFrequency frequency)
+        OperationalFrequency frequency,
+        RadioUtteranceAnalysis? analysis = null)
     {
         ArgumentNullException.ThrowIfNull(frequency);
 
@@ -227,12 +228,84 @@ public sealed class GroundOperationsCoordinator
                 snapshot?.WindDirectionTrueDegrees ?? double.NaN,
                 snapshot?.WindVelocityKnots ?? double.NaN,
                 this.profile,
-                snapshot?.QnhHpa ?? double.NaN);
+                snapshot?.QnhHpa ?? double.NaN,
+                analysis);
             this.lastDecision = decision;
         }
 
         this.SaveDecision(decision);
         return decision;
+    }
+
+    public SpeechRecognitionContext BuildSpeechRecognitionContext(
+        OperationalFrequency frequency,
+        SimulatorSnapshot? snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(frequency);
+        lock (this.sync)
+        {
+            var radio = BuildRadioContext(frequency);
+            var contactEstablished = this.engine.HasEstablishedContact(radio);
+            var fullCallsign = CallsignFormatter.SpeakFull(snapshot?.AircraftAtcId ?? this.ownCallsign);
+            var shortCallsign = CallsignFormatter.SpeakShort(snapshot?.AircraftAtcId ?? this.ownCallsign);
+            var runway = this.engine.Session.AssignedRunway?.Designator
+                ?? this.runway.RunwayEnd?.Designator
+                ?? string.Empty;
+            var hold = this.engine.Session.AssignedOperationalPoint?.RadioLabel
+                ?? this.engine.Session.AssignedHoldShort?.Label
+                ?? string.Empty;
+            var phase = this.engine.Session.State.ToString();
+            var likely = this.engine.Session.State switch
+            {
+                GroundSessionState.Unknown or GroundSessionState.Parked or GroundSessionState.StartupRequested or GroundSessionState.ReadyToTaxi =>
+                    "bonjour, bonsoir, demande roulage, prêt au roulage, tours de piste",
+                GroundSessionState.TaxiClearanceIssued or GroundSessionState.Taxiing or GroundSessionState.AtIntermediateHoldingPoint =>
+                    "je roule, point d'attente, prêt, prêt au départ, prêt pour un départ depuis l'intersection",
+                GroundSessionState.AtHoldShort or GroundSessionState.ReadyForDeparture or GroundSessionState.IntersectionDepartureRequested =>
+                    "prêt, prêt au départ, prêt pour un départ depuis l'intersection, alignement, décollage",
+                _ => "bonjour, rebonjour, retour avec vous, je répète, alignement, décollage",
+            };
+
+            var promptParts = new List<string> { "Phraséologie ATC française." };
+            if (!contactEstablished && !string.IsNullOrWhiteSpace(frequency.ServiceName))
+            {
+                promptParts.Add($"Station {frequency.ServiceName}.");
+            }
+            if (!string.IsNullOrWhiteSpace(fullCallsign))
+            {
+                if (contactEstablished && !string.IsNullOrWhiteSpace(shortCallsign))
+                {
+                    promptParts.Add($"Indicatif abrégé {shortCallsign}.");
+                }
+                else if (!contactEstablished && !string.IsNullOrWhiteSpace(shortCallsign))
+                {
+                    promptParts.Add($"Indicatif complet {fullCallsign}, abrégé {shortCallsign}.");
+                }
+                else
+                {
+                    promptParts.Add($"Indicatif {fullCallsign}.");
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(runway))
+            {
+                promptParts.Add($"Piste {runway}.");
+            }
+            if (!string.IsNullOrWhiteSpace(hold))
+            {
+                promptParts.Add($"Point d'attente {hold}.");
+            }
+            promptParts.Add($"Expressions probables : {likely}.");
+
+            return new SpeechRecognitionContext(
+                string.Join(' ', promptParts),
+                frequency.ServiceName,
+                fullCallsign,
+                shortCallsign,
+                runway,
+                hold,
+                contactEstablished,
+                phase);
+        }
     }
 
     public void ArmAcknowledgement(DateTimeOffset now)

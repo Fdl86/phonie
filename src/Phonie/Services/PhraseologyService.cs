@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Phonie.Core;
 using Phonie.Models;
 
 namespace Phonie.Services;
@@ -81,24 +82,93 @@ public static partial class PhraseologyService
         ["foxtrotgolf"] = ["foxtrot", "golf"],
     };
 
-    public static PilotMessageAnalysis Analyze(string rawText, string? expectedCallsign = null, string? expectedStationName = null)
+    public static PilotMessageAnalysis Analyze(
+        string rawText,
+        string? expectedCallsign = null,
+        string? expectedStationName = null,
+        OperationalFrequency? activeFrequency = null,
+        IReadOnlyList<OperationalFrequency>? knownFrequencies = null)
     {
-        var normalized = Normalize(rawText);
-        var station = DetectStation(normalized, expectedStationName);
-        var callsignResult = DetectCallsign(rawText, normalized, expectedCallsign, station);
-        var position = DetectPosition(normalized);
-        var intention = DetectIntention(normalized);
-        var atis = DetectAtis(normalized);
+        var active = activeFrequency ?? new OperationalFrequency(
+            0,
+            expectedStationName ?? "STATION ACTIVE",
+            OperationalRadioKind.Unknown,
+            true,
+            string.Empty,
+            "Analyse locale");
+        var radio = new RadioContext(
+            active.Kind switch
+            {
+                OperationalRadioKind.Controlled => ServiceCapability.Controlled,
+                OperationalRadioKind.InformationService => ServiceCapability.InformationOnly,
+                OperationalRadioKind.AutomaticBroadcast => ServiceCapability.AutomaticBroadcast,
+                OperationalRadioKind.RecordedMessage => ServiceCapability.RecordedMessage,
+                OperationalRadioKind.SelfInformation => ServiceCapability.SelfInformation,
+                _ => ServiceCapability.Unknown,
+            },
+            active.ServiceName,
+            active.DialogueAllowed,
+            active.Source,
+            active.StationKey,
+            active.ServiceCode,
+            active.AirportIcao,
+            active.FrequencyMhz,
+            active.Scope);
+        var candidates = (knownFrequencies ?? Array.Empty<OperationalFrequency>())
+            .Append(active)
+            .Where(item => !string.IsNullOrWhiteSpace(item.ServiceName))
+            .Select(item => new RadioStationCandidate(
+                item.ServiceName,
+                item.StationKey,
+                item.ServiceCode,
+                item.AirportIcao,
+                item.FrequencyMhz,
+                item.DialogueAllowed,
+                item.Scope))
+            .ToArray();
+        var operational = RadioUtteranceAnalyzer.Analyze(rawText, radio, candidates);
+        var normalized = operational.NormalizedText;
+        var corrected = operational.CorrectedText;
+        var station = operational.StationCall.StationName;
+        var callsignResult = DetectCallsign(rawText, corrected, expectedCallsign, station);
+        var position = DetectPosition(corrected);
+        var displayIntention = DetectIntention(corrected);
+        var operationalIntent = operational.IntentDetails.Intent;
+        if (operationalIntent == PilotIntent.Unknown && !string.IsNullOrWhiteSpace(displayIntention))
+        {
+            var fallbackIntent = displayIntention switch
+            {
+                "roulage" or "tours de piste" => PilotIntent.TaxiRequest,
+                "alignement et décollage" => PilotIntent.LineUpAndTakeoffRequest,
+                "alignement" => PilotIntent.LineUpRequest,
+                "décollage" => PilotIntent.TakeoffRequest,
+                "départ" when operational.IntentDetails.ReportedPoint is not null && operational.IntentDetails.MentionsIntersection => PilotIntent.ReadyForIntersectionDeparture,
+                "départ" when operational.IntentDetails.ReportedPoint is not null => PilotIntent.ReadyAtHoldShort,
+                _ => PilotIntent.Unknown,
+            };
+            if (fallbackIntent != PilotIntent.Unknown)
+            {
+                operational = operational with
+                {
+                    IntentDetails = operational.IntentDetails with { Intent = fallbackIntent },
+                    IntentSource = "PhraseologyServiceFallback",
+                    SemanticConfidence = Math.Max(operational.SemanticConfidence, 0.62),
+                };
+                operationalIntent = fallbackIntent;
+            }
+        }
+
+        var intention = displayIntention ?? IntentLabel(operationalIntent);
+        var atis = DetectAtis(corrected);
         var missing = new List<string>();
         if (string.IsNullOrWhiteSpace(callsignResult.Callsign)) missing.Add("indicatif");
-        // Le nom de la station est facultatif : la fréquence active route la communication.
-        if (string.IsNullOrWhiteSpace(intention)) missing.Add("intention");
+        if (operationalIntent == PilotIntent.Unknown && string.IsNullOrWhiteSpace(intention)) missing.Add("intention");
 
         var recognized = 0.0;
-        if (station is not null || !string.IsNullOrWhiteSpace(expectedStationName)) recognized += 1.0;
+        if (operational.StationCall.ExplicitlyCalled || !string.IsNullOrWhiteSpace(expectedStationName)) recognized += 1.0;
         if (callsignResult.Callsign is not null) recognized += Math.Max(0.5, callsignResult.Confidence);
         if (position is not null) recognized += 1.0;
-        if (intention is not null) recognized += 1.0;
+        if (operationalIntent != PilotIntent.Unknown || intention is not null) recognized += 1.0;
         if (atis is not null) recognized += 1.0;
 
         return new PilotMessageAnalysis(
@@ -112,9 +182,17 @@ public static partial class PhraseologyService
             position,
             intention,
             atis,
-            normalized.Contains("bonjour", StringComparison.Ordinal) || position is not null,
+            operationalIntent == PilotIntent.InitialContact || position is not null,
             missing,
-            Math.Clamp(recognized / 5.0, 0, 1));
+            Math.Max(Math.Clamp(recognized / 5.0, 0, 1), operational.SemanticConfidence),
+            corrected,
+            operational.StationCall.StationKey,
+            operational.StationCall.Confidence,
+            operational.IntentSource,
+            operational.Corrections)
+        {
+            OperationalAnalysis = operational,
+        };
     }
 
     public static string BuildFirstContactResponse(
@@ -191,30 +269,6 @@ public static partial class PhraseologyService
         var normalized = builder.ToString().Normalize(NormalizationForm.FormC);
         normalized = Regex.Replace(normalized, "[^a-z0-9-]+", " ");
         return Regex.Replace(normalized, "\\s+", " ").Trim();
-    }
-
-    private static string? DetectStation(string text, string? expectedStationName)
-    {
-        if (!string.IsNullOrWhiteSpace(expectedStationName))
-        {
-            var normalizedExpected = Normalize(expectedStationName);
-            var significant = normalizedExpected
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .Where(token => token.Length >= 3)
-                .ToArray();
-            if (significant.Length > 0 && significant.All(token => text.Contains(token, StringComparison.Ordinal)))
-            {
-                return expectedStationName.Trim();
-            }
-        }
-
-        var match = StationRegex().Match(text);
-        if (!match.Success)
-        {
-            return null;
-        }
-
-        return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(match.Value.Trim());
     }
 
     private static CallsignDetection DetectCallsign(
@@ -565,6 +619,22 @@ public static partial class PhraseologyService
         return null;
     }
 
+    private static string? IntentLabel(PilotIntent intent) => intent switch
+    {
+        PilotIntent.InitialContact => "contact",
+        PilotIntent.StartupRequest => "mise en route",
+        PilotIntent.TaxiRequest => "roulage",
+        PilotIntent.ReadyAtHoldShort => "prêt au départ",
+        PilotIntent.ReadyForIntersectionDeparture => "départ depuis l'intersection",
+        PilotIntent.LineUpRequest => "alignement",
+        PilotIntent.TakeoffRequest => "décollage",
+        PilotIntent.LineUpAndTakeoffRequest => "alignement et décollage",
+        PilotIntent.BacktrackRequest => "remontée de piste",
+        PilotIntent.RepeatRequest => "répétition",
+        PilotIntent.Readback => "collationnement",
+        _ => null,
+    };
+
     private static string? DetectAtis(string text)
     {
         foreach (var pair in NatoLetters)
@@ -578,10 +648,6 @@ public static partial class PhraseologyService
         if (text.Contains("information alpes", StringComparison.Ordinal)) return "A";
         return null;
     }
-
-
-    [GeneratedRegex(@"\b[a-z0-9-]{2,}(?:\s+[a-z0-9-]{2,}){0,3}\s+(?:tour|sol|approche|depart|information|info|afis|siv)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex StationRegex();
     [GeneratedRegex(@"\b([A-Z])\s*-\s*([A-Z0-9]{3,5})\b", RegexOptions.CultureInvariant)]
     private static partial Regex DirectCallsignRegex();
 

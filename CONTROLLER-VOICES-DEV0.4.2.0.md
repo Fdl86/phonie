@@ -1,4 +1,4 @@
-# Voix contrôleur DEV0.4.1.7
+# Voix contrôleur DEV0.4.2.0
 
 La clé station est normalisée une seule fois et sert à la fois à l'attribution de voix et au chemin de cache. Deux variantes de casse comme `lfbi|tour` et `LFBI|TOUR` réutilisent donc le même répertoire.
 

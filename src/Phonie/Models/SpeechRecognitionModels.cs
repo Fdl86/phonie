@@ -95,6 +95,16 @@ public sealed record SpeechModelStatus(
     long DownloadedBytes = 0,
     long? TotalBytes = null);
 
+public sealed record SpeechRecognitionContext(
+    string Prompt,
+    string StationName,
+    string FullCallsign,
+    string ShortCallsign,
+    string RunwayDesignator,
+    string HoldShortName,
+    bool ContactEstablished,
+    string OperationalPhase);
+
 public sealed record SpeechTranscriptionResult(
     SpeechRecognitionProfile Profile,
     string RawText,
@@ -109,6 +119,18 @@ public sealed record SpeechTranscriptionResult(
     public TimeSpan EndToEndTime { get; init; }
 
     public bool ColdModelLoad { get; init; }
+
+    public string Prompt { get; init; } = string.Empty;
+
+    public double AverageProbability { get; init; }
+
+    public bool WasRejected { get; init; }
+
+    public string RejectionReason { get; init; } = string.Empty;
+
+    public TimeSpan SignalDuration { get; init; }
+
+    public double SignalDbfs { get; init; } = double.NaN;
 }
 
 public sealed record SpeechComparisonResult(
@@ -131,7 +153,15 @@ public sealed record PilotMessageAnalysis(
     string? AtisLetter,
     bool IsFirstContact,
     IReadOnlyList<string> MissingCriticalFields,
-    double Confidence);
+    double Confidence,
+    string CorrectedText = "",
+    string? CalledStationKey = null,
+    double CalledStationConfidence = 0,
+    string IntentSource = "",
+    IReadOnlyList<string>? Corrections = null)
+{
+    public Phonie.Core.RadioUtteranceAnalysis? OperationalAnalysis { get; init; }
+}
 
 public sealed record RadioExchange(
     DateTimeOffset Timestamp,
