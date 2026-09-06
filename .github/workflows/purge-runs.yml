@@ -1,0 +1,82 @@
+name: PURGE ALL WORKFLOW RUNS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete all completed workflow runs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+
+        run: |
+          set -euo pipefail
+
+          echo "========================================"
+          echo " PURGE ALL WORKFLOW RUNS"
+          echo "========================================"
+          echo
+          echo "Repository: $REPO"
+          echo
+          echo "Collecting completed workflow runs..."
+
+          gh api --paginate \
+            "/repos/$REPO/actions/runs?status=completed&per_page=100" \
+            --jq '.workflow_runs[].id' \
+            > /tmp/run_ids.txt
+
+          TOTAL=$(wc -l < /tmp/run_ids.txt)
+
+          echo
+          echo "Found $TOTAL completed workflow runs."
+
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "Nothing to delete."
+            exit 0
+          fi
+
+          echo
+          echo "Deleting up to 10 runs simultaneously..."
+          echo
+
+          export GH_TOKEN
+          export REPO
+
+          xargs -r -P 10 -I {} \
+            bash -c '
+              RUN_ID="$1"
+
+              echo "Deleting run $RUN_ID..."
+
+              for ATTEMPT in 1 2 3; do
+                if gh api \
+                  --method DELETE \
+                  "/repos/$REPO/actions/runs/$RUN_ID" \
+                  --silent
+                then
+                  echo "[OK] $RUN_ID"
+                  exit 0
+                fi
+
+                echo "[RETRY $ATTEMPT/3] $RUN_ID"
+                sleep $((ATTEMPT * 2))
+              done
+
+              echo "[FAILED] $RUN_ID"
+              exit 1
+            ' _ {} < /tmp/run_ids.txt
+
+          echo
+          echo "========================================"
+          echo " PURGE COMPLETED"
+          echo " Deleted: $TOTAL workflow runs"
+          echo "========================================"
