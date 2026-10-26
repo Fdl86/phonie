@@ -1,13 +1,13 @@
 {
   "schemaVersion": 2,
   "datasetId": "phonie-france-radio-sia",
-  "revision": "03b530a4d6aa8c169c60c6e76b46dceb2ce65b781d39cbac30ad0faca8c39d09",
+  "revision": "7203fd24fd8a537fed31b360f175931dda40ffc24064623bd35c5b9e40651786",
   "authority": "SIA",
   "sourceKind": "SIA eAIP HTML/PDF AD 2.18 + Atlas VAC officiel (secours lorsque l'export XML direct n'est pas accessible)",
   "airacCycle": "10/26",
   "effectiveFrom": "2026-10-01T00:00:00+00:00",
   "effectiveUntil": "2026-10-29T00:00:00+00:00",
-  "generatedAt": "2026-10-01T11:42:22.419388+00:00",
+  "generatedAt": "2026-10-26T11:14:54.774871+00:00",
   "generatorVersion": "DEV0.4.2.0",
   "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/media/dvd/eAIP_01_OCT_2026/FRANCE/AIRAC-2026-10-01/html/eAIP",
   "airports": [
@@ -1488,23 +1488,6 @@
           "confidence": 1.0
         },
         {
-          "channel": "124.975",
-          "channelKhz": 124975,
-          "carrierHz": 124975000,
-          "serviceCode": "APP",
-          "callsign": "TOULOUSE Approche",
-          "kind": "Approach",
-          "scope": "Regional",
-          "interactive": true,
-          "scheduleState": "Always",
-          "hoursText": "H24",
-          "remarks": "APP | TOULOUSE Approche (FR) TOULOUSE Approach (EN) | 124.975 124.980 MHz | H24 | Fréquence supplétive/Auxiliary frequency.",
-          "sourceReference": "SIA eAIP HTML AD 2.18",
-          "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/media/dvd/eAIP_01_OCT_2026/FRANCE/AIRAC-2026-10-01/html/eAIP/FR-AD-2.LFBO-fr-FR.html",
-          "sourceRecordId": "AIPHTML:LFBO:AD2.18:6:0",
-          "confidence": 1.0
-        },
-        {
           "channel": "124.980",
           "channelKhz": 124980,
           "carrierHz": 124975000,
@@ -1515,10 +1498,10 @@
           "interactive": true,
           "scheduleState": "Always",
           "hoursText": "H24",
-          "remarks": "APP | TOULOUSE Approche (FR) TOULOUSE Approach (EN) | 124.975 124.980 MHz | H24 | Fréquence supplétive/Auxiliary frequency.",
+          "remarks": "APP | TOULOUSE Approche (FR) TOULOUSE Approach (EN) | 124.980 MHz | H24 | Fréquence supplétive/Auxiliary frequency.",
           "sourceReference": "SIA eAIP HTML AD 2.18",
           "sourceUrl": "https://www.sia.aviation-civile.gouv.fr/media/dvd/eAIP_01_OCT_2026/FRANCE/AIRAC-2026-10-01/html/eAIP/FR-AD-2.LFBO-fr-FR.html",
-          "sourceRecordId": "AIPHTML:LFBO:AD2.18:6:1",
+          "sourceRecordId": "AIPHTML:LFBO:AD2.18:6:0",
           "confidence": 1.0
         },
         {

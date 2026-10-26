@@ -3,8 +3,8 @@
   "cycle": "10/26",
   "sourceKind": "SIA eAIP HTML/PDF AD 2.18 + Atlas VAC officiel (secours lorsque l'export XML direct n'est pas accessible)",
   "airportCount": 420,
-  "frequencyCount": 687,
-  "interactiveCount": 502,
+  "frequencyCount": 686,
+  "interactiveCount": 501,
   "silentCount": 185,
   "airportsWithoutFrequency": [
     "LFAB",
@@ -278,5 +278,5 @@
     "LFYG",
     "LFYV"
   ],
-  "revision": "03b530a4d6aa8c169c60c6e76b46dceb2ce65b781d39cbac30ad0faca8c39d09"
+  "revision": "7203fd24fd8a537fed31b360f175931dda40ffc24064623bd35c5b9e40651786"
 }

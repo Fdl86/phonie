@@ -1,12 +1,18 @@
 {
   "schemaVersion": 1,
   "catalogUrl": "https://www.sia.aviation-civile.gouv.fr/produits-numeriques-en-libre-disposition/les-bases-de-donnees-sia.html",
-  "signature": "2c913d428fdb999cd586db00892b23ea141abb6fd14f3eff094a09aea4143aba",
+  "signature": "d4eafd8418ac851a590b84b418c5e0877100805ec8d3b2aca2d345908c928dc4",
   "products": [
     {
       "cycle": "10/26",
       "from": "01/10/2026",
       "until": "28/10/2026",
+      "corrigendum": false
+    },
+    {
+      "cycle": "12/26",
+      "from": "26/11/2026",
+      "until": "23/12/2026",
       "corrigendum": false
     },
     {
